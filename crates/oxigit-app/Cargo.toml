@@ -1,0 +1,43 @@
+[package]
+name = "oxigit-app"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leptos = { workspace = true }
+leptos_meta = { workspace = true }
+leptos_router = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+# Server-side only
+leptos_axum = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+oxigit-core = { path = "../oxigit-core", optional = true }
+tokio = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
+
+# Client-side only
+wasm-bindgen = { workspace = true, optional = true }
+console_error_panic_hook = { workspace = true, optional = true }
+
+[features]
+hydrate = [
+    "leptos/hydrate",
+    "dep:wasm-bindgen",
+    "dep:console_error_panic_hook",
+]
+ssr = [
+    "leptos/ssr",
+    "leptos_meta/ssr",
+    "leptos_router/ssr",
+    "dep:leptos_axum",
+    "dep:axum",
+    "dep:oxigit-core",
+    "dep:tokio",
+    "dep:sqlx",
+]

@@ -1,0 +1,12 @@
+[package]
+name = "oxigit-ssh"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+oxigit-core = { path = "../oxigit-core" }
+russh = { workspace = true }
+russh-keys = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

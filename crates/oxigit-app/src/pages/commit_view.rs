@@ -127,12 +127,12 @@ async fn get_diff_review(
     sha: String,
 ) -> Result<DiffReviewData, ServerFnError> {
     use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_effective_llm_config};
-    use oxigit_core::{db, git, risk};
+    use oxigit_core::{db, git, llm, risk};
 
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
     let current_user = extract_session_user().await;
-    let (llm_provider, _, _, _) = get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
+    let (llm_provider, api_key, model, base_url) = get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
@@ -155,25 +155,48 @@ async fn get_diff_review(
         })
         .collect();
 
+    // Check for cached summary
     let cached = db::get_diff_summary(&pool, repo_db.id, &sha)
         .await
         .ok()
-        .flatten()
-        .map(|s| {
-            let flags: Vec<RiskFlagInfo> = s.risk_flags
-                .and_then(|f| serde_json::from_str(&f).ok())
-                .unwrap_or_default();
-            DiffSummaryInfo {
-                summary: s.summary,
-                risk_flags: flags,
-                generated_by: s.generated_by,
+        .flatten();
+
+    let llm_available = llm_provider != "none";
+
+    // Auto-generate summary if LLM is configured and no cache exists
+    let summary = if let Some(s) = cached {
+        let flags: Vec<RiskFlagInfo> = s.risk_flags
+            .and_then(|f| serde_json::from_str(&f).ok())
+            .unwrap_or_default();
+        Some(DiffSummaryInfo {
+            summary: s.summary,
+            risk_flags: flags,
+            generated_by: s.generated_by,
+        })
+    } else if llm_available {
+        let ai_prompt = db::get_ai_metadata_for_commit(&pool, repo_db.id, &sha)
+            .await.ok().flatten().and_then(|m| m.ai_prompt);
+        let config = llm::LlmConfig { provider: llm_provider.clone(), api_key, model: model.clone(), base_url };
+        match llm::generate_summary(&config, &diff, ai_prompt.as_deref()).await {
+            Ok(summary_text) => {
+                let flags_json = serde_json::to_string(&risk_flags).ok();
+                let _ = db::upsert_diff_summary(&pool, repo_db.id, &sha, &summary_text, flags_json.as_deref(), &model).await;
+                Some(DiffSummaryInfo {
+                    summary: summary_text,
+                    risk_flags: risk_flags.clone(),
+                    generated_by: model,
+                })
             }
-        });
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
 
     Ok(DiffReviewData {
-        cached_summary: cached,
+        cached_summary: summary,
         risk_flags,
-        llm_available: llm_provider != "none",
+        llm_available,
     })
 }
 
@@ -309,8 +332,6 @@ pub fn CommitViewPage() -> impl IntoView {
         move |(owner, repo, sha)| get_diff_review(owner, repo, sha),
     );
 
-    let generate_action = ServerAction::<GenerateDiffSummary>::new();
-
     view! {
         <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
             {move || {
@@ -372,20 +393,14 @@ pub fn CommitViewPage() -> impl IntoView {
                                     }
                                 })}
                                 // AI Diff Review panel
-                                <Suspense fallback=|| ()>
+                                <Suspense fallback=|| view! { <p class="text-secondary" style="font-size: 0.8125rem;">"Analyzing diff..."</p> }>
                                     {move || {
-                                        let on = owner_name.clone();
-                                        let rn = repo_name.clone();
-                                        let cs = commit_sha.clone();
-                                        let gen_value = generate_action.value();
                                         Suspend::new(async move {
                                             let review_data = review.await.ok();
                                             let has_risk = review_data.as_ref().map_or(false, |r| !r.risk_flags.is_empty());
                                             let has_summary = review_data.as_ref().map_or(false, |r| r.cached_summary.is_some());
-                                            let llm_available = review_data.as_ref().map_or(false, |r| r.llm_available);
-                                            let show_panel = has_risk || has_summary || llm_available;
 
-                                            if !show_panel {
+                                            if !has_risk && !has_summary {
                                                 return view! { <div></div> }.into_any();
                                             }
 
@@ -397,7 +412,6 @@ pub fn CommitViewPage() -> impl IntoView {
                                                     <div class="ai-review-header">
                                                         <span class="ai-review-title">"AI Diff Review"</span>
                                                     </div>
-                                                    // Risk badges
                                                     {(!risk_flags.is_empty()).then(|| {
                                                         let flags = risk_flags.clone();
                                                         view! {
@@ -414,38 +428,11 @@ pub fn CommitViewPage() -> impl IntoView {
                                                             </div>
                                                         }
                                                     })}
-                                                    // Cached summary
                                                     {cached.map(|s| view! {
                                                         <div class="ai-review-summary">{s.summary}</div>
                                                         <div class="ai-review-meta">
                                                             "Generated by " {s.generated_by}
                                                         </div>
-                                                    })}
-                                                    // Generate button (from action result)
-                                                    {move || {
-                                                        let generated = gen_value.get().and_then(|r| r.ok());
-                                                        generated.map(|s| view! {
-                                                            <div class="ai-review-summary">{s.summary}</div>
-                                                            <div class="ai-review-meta">
-                                                                "Generated by " {s.generated_by}
-                                                            </div>
-                                                        })
-                                                    }}
-                                                    // Generate button (if no cached and LLM available)
-                                                    {(llm_available && !has_summary).then(|| {
-                                                        let gen_on = on.clone();
-                                                        let gen_rn = rn.clone();
-                                                        let gen_cs = cs.clone();
-                                                        view! {
-                                                            <ActionForm action=generate_action>
-                                                                <input type="hidden" name="owner" value={gen_on} />
-                                                                <input type="hidden" name="repo" value={gen_rn} />
-                                                                <input type="hidden" name="sha" value={gen_cs} />
-                                                                <button type="submit" class="btn btn-sm btn-generate">
-                                                                    "Generate AI Summary"
-                                                                </button>
-                                                            </ActionForm>
-                                                        }
                                                     })}
                                                 </div>
                                             }.into_any()

@@ -1,4 +1,6 @@
 pub mod ai_timeline;
+pub mod session_list;
+pub mod session_view;
 pub mod commit_view;
 pub mod explore;
 pub mod commits;
@@ -117,6 +119,35 @@ pub struct DiffReviewData {
     pub cached_summary: Option<DiffSummaryInfo>,
     pub risk_flags: Vec<RiskFlagInfo>,
     pub llm_available: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionDetailResponse {
+    pub session_id: String,
+    pub ai_tool: String,
+    pub ai_model: Option<String>,
+    pub entries: Vec<AiTimelineEntry>,
+    pub diff_html: String,
+    pub files_changed: Vec<String>,
+    pub first_time: String,
+    pub last_time: String,
+    pub summary: Option<DiffSummaryInfo>,
+    pub can_revert: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionListItem {
+    pub session_id: String,
+    pub ai_tool: String,
+    pub commit_count: i64,
+    pub first_prompt: Option<String>,
+    pub first_time: String,
+    pub last_time: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionListResponse {
+    pub sessions: Vec<SessionListItem>,
 }
 
 #[server]

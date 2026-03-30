@@ -1694,6 +1694,84 @@ a:hover {
     color: var(--text);
 }
 
+/* ============================================================
+   Session Snapshots
+   ============================================================ */
+
+.session-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.session-card {
+    display: block;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.15s;
+}
+
+.session-card:hover {
+    border-color: var(--accent);
+}
+
+.session-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+}
+
+.session-card-id {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.session-card-prompt {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-2) 0;
+    line-height: 1.4;
+}
+
+.session-card-time {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.session-header-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+}
+
+.session-header-time {
+    font-size: 0.8125rem;
+}
+
+.session-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+}
+
+.session-file {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-muted);
+}
+
 /* ── Empty repo onboarding instructions ── */
 
 .setup-instructions {

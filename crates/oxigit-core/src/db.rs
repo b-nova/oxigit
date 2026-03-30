@@ -831,6 +831,44 @@ pub async fn upsert_diff_summary(
     Ok(row)
 }
 
+/// Session summary row from GROUP BY query.
+pub struct SessionSummaryRow {
+    pub session_id: String,
+    pub ai_tool: String,
+    pub first_time: String,
+    pub last_time: String,
+    pub commit_count: i64,
+    pub first_prompt: Option<String>,
+}
+
+/// List session summaries for a repo (efficient GROUP BY query).
+pub async fn list_session_summaries(pool: &SqlitePool, repo_id: i64) -> Result<Vec<SessionSummaryRow>> {
+    let rows: Vec<(String, String, String, String, i64, Option<String>)> = sqlx::query_as(
+        "SELECT ai_session_id, ai_tool, MIN(created_at), MAX(created_at), COUNT(*), MIN(ai_prompt) \
+         FROM ai_commit_metadata \
+         WHERE repo_id = ? AND ai_session_id IS NOT NULL \
+         GROUP BY ai_session_id \
+         ORDER BY MAX(created_at) DESC",
+    )
+    .bind(repo_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(session_id, ai_tool, first_time, last_time, commit_count, first_prompt)| {
+            SessionSummaryRow {
+                session_id,
+                ai_tool,
+                first_time,
+                last_time,
+                commit_count,
+                first_prompt,
+            }
+        })
+        .collect())
+}
+
 // --- User Settings queries ---
 
 pub async fn get_user_settings(pool: &SqlitePool, user_id: i64) -> Result<Option<UserSettings>> {

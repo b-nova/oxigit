@@ -631,3 +631,129 @@ pub fn list_new_commit_shas_excluding(repo_path: &Path, new_sha: &str, exclude_s
     let stdout = String::from_utf8_lossy(&output.stdout);
     Ok(stdout.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
 }
+
+/// Get the aggregate diff for a session (diff between parent of earliest commit and latest commit).
+/// `shas` must be ordered oldest-first.
+pub fn session_aggregate_diff(repo_path: &Path, shas: &[String]) -> Result<String> {
+    if shas.is_empty() {
+        return Ok(String::new());
+    }
+
+    let earliest = &shas[0];
+    let latest = &shas[shas.len() - 1];
+
+    // Get parent of earliest commit
+    let parent_output = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["rev-parse", &format!("{}^", earliest)])
+        .output()?;
+
+    let diff = if parent_output.status.success() {
+        let parent = String::from_utf8_lossy(&parent_output.stdout).trim().to_string();
+        let output = Command::new("git")
+            .env("GIT_DIR", repo_path)
+            .args(["diff", &parent, latest])
+            .output()?;
+        String::from_utf8_lossy(&output.stdout).to_string()
+    } else {
+        // Root commit — show full diff
+        let output = Command::new("git")
+            .env("GIT_DIR", repo_path)
+            .args(["diff-tree", "-p", "--root", latest])
+            .output()?;
+        String::from_utf8_lossy(&output.stdout).to_string()
+    };
+
+    Ok(diff)
+}
+
+/// Revert a sequence of commits on a bare repo, creating a single revert commit.
+/// `shas` should be ordered oldest-first; they are reverted newest-first.
+pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: &str) -> Result<()> {
+    if shas.is_empty() {
+        return Ok(());
+    }
+
+    let branch_ref = format!("refs/heads/{}", branch);
+    let tip_output = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["rev-parse", &branch_ref])
+        .output()?;
+    if !tip_output.status.success() {
+        return Err(OxigitError::Git(format!("Branch {} not found", branch)));
+    }
+    let original_tip = String::from_utf8_lossy(&tip_output.stdout).trim().to_string();
+    let mut current = original_tip.clone();
+
+    // Revert each commit newest-first
+    for sha in shas.iter().rev() {
+        let parent_output = Command::new("git")
+            .env("GIT_DIR", repo_path)
+            .args(["rev-parse", &format!("{}^", sha)])
+            .output()?;
+        if !parent_output.status.success() {
+            continue; // Can't revert root commit
+        }
+        let parent = String::from_utf8_lossy(&parent_output.stdout).trim().to_string();
+
+        // Three-way merge to revert: base=sha, ours=current, theirs=sha^
+        let read_tree = Command::new("git")
+            .env("GIT_DIR", repo_path)
+            .args(["read-tree", "-m", "-i", sha, &current, &parent])
+            .output()?;
+        if !read_tree.status.success() {
+            return Err(OxigitError::Git(format!(
+                "Cannot revert commit {}: conflicts detected", &sha[..7.min(sha.len())]
+            )));
+        }
+
+        let write_tree = Command::new("git")
+            .env("GIT_DIR", repo_path)
+            .args(["write-tree"])
+            .output()?;
+        if !write_tree.status.success() {
+            return Err(OxigitError::Git("Failed to write revert tree".into()));
+        }
+        let tree_sha = String::from_utf8_lossy(&write_tree.stdout).trim().to_string();
+
+        let commit = Command::new("git")
+            .env("GIT_DIR", repo_path)
+            .env("GIT_AUTHOR_NAME", "Oxigit")
+            .env("GIT_AUTHOR_EMAIL", "noreply@oxigit")
+            .env("GIT_COMMITTER_NAME", "Oxigit")
+            .env("GIT_COMMITTER_EMAIL", "noreply@oxigit")
+            .args(["commit-tree", &tree_sha, "-p", &current, "-m", &format!("revert {}", sha)])
+            .output()?;
+        if !commit.status.success() {
+            return Err(OxigitError::Git("Failed to create revert commit".into()));
+        }
+        current = String::from_utf8_lossy(&commit.stdout).trim().to_string();
+    }
+
+    // Squash into single commit parented on original tip
+    let final_tree = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["rev-parse", &format!("{}^{{tree}}", current)])
+        .output()?;
+    let final_tree_sha = String::from_utf8_lossy(&final_tree.stdout).trim().to_string();
+
+    let squash = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .env("GIT_AUTHOR_NAME", "Oxigit")
+        .env("GIT_AUTHOR_EMAIL", "noreply@oxigit")
+        .env("GIT_COMMITTER_NAME", "Oxigit")
+        .env("GIT_COMMITTER_EMAIL", "noreply@oxigit")
+        .args(["commit-tree", &final_tree_sha, "-p", &original_tip, "-m", message])
+        .output()?;
+    if !squash.status.success() {
+        return Err(OxigitError::Git("Failed to create squashed revert commit".into()));
+    }
+    let squash_sha = String::from_utf8_lossy(&squash.stdout).trim().to_string();
+
+    Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["update-ref", &branch_ref, &squash_sha])
+        .output()?;
+
+    Ok(())
+}

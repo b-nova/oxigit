@@ -122,11 +122,17 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 if ! echo "$COMMAND" | grep -qE "^git commit"; then exit 0; fi
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 {extra_session}MODEL=$(echo "$INPUT" | jq -r '.model // empty')
+TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
+PROMPT=""
+if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+  PROMPT=$(jq -r '[.[] | select(.type == "human")] | last | .message.content[]? | select(.type == "text") | .text' "$TRANSCRIPT" 2>/dev/null | head -c 500 || true)
+fi
 mkdir -p .oxigit
-jq -n --arg tool "{tool_name}" --arg model "$MODEL" --arg session_id "$SESSION_ID" \
+jq -n --arg tool "{tool_name}" --arg model "$MODEL" --arg session_id "$SESSION_ID" --arg prompt "$PROMPT" \
   '{{ tool: $tool,
      model: (if $model == "" then null else $model end),
-     session_id: (if $session_id == "" then null else $session_id end) }}' \
+     session_id: (if $session_id == "" then null else $session_id end),
+     prompt: (if $prompt == "" then null else $prompt end) }}' \
   > .oxigit/context.json
 git add .oxigit/context.json"#,
         tool_name = tool_name,

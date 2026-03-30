@@ -658,6 +658,30 @@ pub fn RepoSettingsPage() -> impl IntoView {
                             class="btn btn-sm"
                             on:click=move |_| {
                                 if let Some(el) = document().get_element_by_id("webhook_url") {
+                                    let _ = el.set_attribute("value", "https://api.digitalocean.com/v2/apps//deployments");
+                                }
+                                if let Some(el) = document().get_element_by_id("webhook_url_hint") {
+                                    el.set_text_content(Some("Replace <app_id> in the URL. Use your DO API token as the webhook secret for Bearer auth."));
+                                }
+                            }
+                        >"DigitalOcean"</button>
+                        <button
+                            type="button"
+                            class="btn btn-sm"
+                            on:click=move |_| {
+                                if let Some(el) = document().get_element_by_id("webhook_url") {
+                                    let _ = el.set_attribute("value", "https://api.machines.dev/v1/apps//machines//restart");
+                                }
+                                if let Some(el) = document().get_element_by_id("webhook_url_hint") {
+                                    el.set_text_content(Some("Replace <app_name> and <machine_id>. Use your Fly.io auth token as the webhook secret."));
+                                }
+                            }
+                        >"Fly.io"</button>
+                        <button
+                            type="button"
+                            class="btn btn-sm"
+                            on:click=move |_| {
+                                if let Some(el) = document().get_element_by_id("webhook_url") {
                                     let _ = el.set_attribute("value", "");
                                 }
                                 if let Some(el) = document().get_element_by_id("webhook_url_hint") {

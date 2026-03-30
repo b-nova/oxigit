@@ -301,7 +301,7 @@ impl TestClient {
             .post(format!("{}{}", self.base_url, API_GET_BLOB))
             .header("content-type", "application/x-www-form-urlencoded")
             .body(format!(
-                "owner={}&repo={}&path={}",
+                "owner={}&repo={}&path={}&git_ref=",
                 urlencoded(owner),
                 urlencoded(repo),
                 urlencoded(path)
@@ -443,7 +443,7 @@ impl TestClient {
         self.client
             .post(format!("{}{}", self.base_url, API_EXPLORE_REPOS))
             .header("content-type", "application/x-www-form-urlencoded")
-            .body(format!("query={}", urlencoded(query)))
+            .body(format!("query={}&remixable_only=false", urlencoded(query)))
             .send()
             .await
             .expect("explore_repos request failed")

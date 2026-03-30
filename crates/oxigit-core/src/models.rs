@@ -118,3 +118,14 @@ pub struct AiDiffSummary {
     pub generated_by: String,
     pub created_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserSettings {
+    pub id: i64,
+    pub user_id: i64,
+    pub llm_provider: Option<String>,
+    pub llm_api_key: Option<String>,
+    pub llm_model: Option<String>,
+    pub llm_base_url: Option<String>,
+    pub updated_at: String,
+}

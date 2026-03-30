@@ -232,13 +232,13 @@ async fn get_pr_diff_review(
     repo: String,
     number: i64,
 ) -> Result<DiffReviewData, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_llm_config};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_effective_llm_config};
     use oxigit_core::{db, git, risk};
 
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
     let current_user = extract_session_user().await;
-    let (llm_provider, _, _, _) = get_llm_config().await?;
+    let (llm_provider, _, _, _) = get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
@@ -300,7 +300,7 @@ async fn generate_pr_diff_summary(
     repo: String,
     number: i64,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_llm_config};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_effective_llm_config};
     use oxigit_core::{db, git, llm, risk};
 
     let user = extract_session_user()
@@ -308,7 +308,7 @@ async fn generate_pr_diff_summary(
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
-    let (provider, api_key, model, base_url) = get_llm_config().await?;
+    let (provider, api_key, model, base_url) = get_effective_llm_config(Some(user.id)).await?;
 
     if provider == "none" {
         return Err(ServerFnError::new("LLM not configured"));

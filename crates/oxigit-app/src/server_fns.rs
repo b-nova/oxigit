@@ -35,6 +35,24 @@ pub async fn get_llm_config() -> Result<(String, Option<String>, String, Option<
     Ok((state.llm_provider, state.llm_api_key, state.llm_model, state.llm_base_url))
 }
 
+/// Resolve effective LLM config: user settings override server defaults.
+pub async fn get_effective_llm_config(user_id: Option<i64>) -> Result<(String, Option<String>, String, Option<String>), ServerFnError> {
+    let Extension(state): Extension<AppState> = extract().await?;
+    let (mut provider, mut api_key, mut model, mut base_url) =
+        (state.llm_provider, state.llm_api_key, state.llm_model, state.llm_base_url);
+
+    if let Some(uid) = user_id {
+        if let Ok(Some(settings)) = oxigit_core::db::get_user_settings(&state.pool, uid).await {
+            if let Some(p) = settings.llm_provider { provider = p; }
+            if let Some(k) = settings.llm_api_key { api_key = Some(k); }
+            if let Some(m) = settings.llm_model { model = m; }
+            if let Some(u) = settings.llm_base_url { base_url = Some(u); }
+        }
+    }
+
+    Ok((provider, api_key, model, base_url))
+}
+
 /// Extract the base URL from the request Host header.
 pub async fn get_base_url() -> String {
     let headers: axum::http::HeaderMap = match extract().await {

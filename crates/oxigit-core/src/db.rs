@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::auth::{hash_password, validate_repo_name, validate_username, verify_password};
 use crate::error::{OxigitError, Result};
-use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, Issue, IssueComment, PullRequest, Repository, SshKey, User};
+use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, Issue, IssueComment, PullRequest, Repository, SshKey, User, UserSettings};
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
@@ -826,6 +826,47 @@ pub async fn upsert_diff_summary(
     .bind(summary)
     .bind(risk_flags)
     .bind(generated_by)
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
+}
+
+// --- User Settings queries ---
+
+pub async fn get_user_settings(pool: &SqlitePool, user_id: i64) -> Result<Option<UserSettings>> {
+    let settings = sqlx::query_as::<_, UserSettings>(
+        "SELECT * FROM user_settings WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(settings)
+}
+
+pub async fn upsert_user_settings(
+    pool: &SqlitePool,
+    user_id: i64,
+    llm_provider: Option<&str>,
+    llm_api_key: Option<&str>,
+    llm_model: Option<&str>,
+    llm_base_url: Option<&str>,
+) -> Result<UserSettings> {
+    let row = sqlx::query_as::<_, UserSettings>(
+        "INSERT INTO user_settings (user_id, llm_provider, llm_api_key, llm_model, llm_base_url, updated_at) \
+         VALUES (?, ?, ?, ?, ?, datetime('now')) \
+         ON CONFLICT(user_id) DO UPDATE SET \
+         llm_provider = excluded.llm_provider, \
+         llm_api_key = excluded.llm_api_key, \
+         llm_model = excluded.llm_model, \
+         llm_base_url = excluded.llm_base_url, \
+         updated_at = datetime('now') \
+         RETURNING *",
+    )
+    .bind(user_id)
+    .bind(llm_provider)
+    .bind(llm_api_key)
+    .bind(llm_model)
+    .bind(llm_base_url)
     .fetch_one(pool)
     .await?;
     Ok(row)

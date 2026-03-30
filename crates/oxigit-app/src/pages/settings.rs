@@ -135,6 +135,71 @@ fn base64_encode_nopad(data: &[u8]) -> String {
     result
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LlmSettingsInfo {
+    pub provider: String,
+    pub api_key: String,
+    pub model: String,
+    pub base_url: String,
+}
+
+#[server]
+async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_llm_config, get_pool};
+    use oxigit_core::db;
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let (default_provider, default_key, default_model, default_base_url) = get_llm_config().await?;
+
+    let settings = db::get_user_settings(&pool, user.id)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    Ok(LlmSettingsInfo {
+        provider: settings.as_ref().and_then(|s| s.llm_provider.clone()).unwrap_or(default_provider),
+        api_key: settings.as_ref().and_then(|s| s.llm_api_key.clone()).unwrap_or_else(|| default_key.unwrap_or_default()),
+        model: settings.as_ref().and_then(|s| s.llm_model.clone()).unwrap_or(default_model),
+        base_url: settings.as_ref().and_then(|s| s.llm_base_url.clone()).unwrap_or_else(|| default_base_url.unwrap_or_default()),
+    })
+}
+
+#[server]
+async fn save_llm_settings(
+    provider: String,
+    api_key: String,
+    model: String,
+    base_url: String,
+) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_pool};
+    use oxigit_core::db;
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+
+    let provider = if provider.is_empty() || provider == "none" { None } else { Some(provider) };
+    let api_key = if api_key.is_empty() { None } else { Some(api_key) };
+    let model = if model.is_empty() { None } else { Some(model) };
+    let base_url = if base_url.is_empty() { None } else { Some(base_url) };
+
+    db::upsert_user_settings(
+        &pool,
+        user.id,
+        provider.as_deref(),
+        api_key.as_deref(),
+        model.as_deref(),
+        base_url.as_deref(),
+    )
+    .await
+    .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    Ok(())
+}
+
 #[server]
 async fn delete_key(key_id: i64) -> Result<(), ServerFnError> {
     use crate::server_fns::{extract_session_user, get_pool};
@@ -167,9 +232,85 @@ pub fn SettingsPage() -> impl IntoView {
         add_action.value().get().and_then(|r| r.err().map(|e| e.to_string()))
     };
 
+    // LLM settings
+    let llm_settings = Resource::new(|| (), |_| fetch_llm_settings());
+    let save_llm_action = ServerAction::<SaveLlmSettings>::new();
+
+    let llm_save_success = move || {
+        save_llm_action.value().get().and_then(|r| r.ok()).map(|_| true)
+    };
+    let llm_save_error = move || {
+        save_llm_action.value().get().and_then(|r| r.err().map(|e| e.to_string()))
+    };
+
     view! {
         <div class="page-header">
             <h1 class="page-title">"Settings"</h1>
+        </div>
+
+        // LLM Configuration
+        <div class="card mb-4">
+            <div class="card-header">"AI / LLM Configuration"</div>
+            {move || llm_save_success().map(|_| view! {
+                <div class="flash flash-success">"LLM settings saved."</div>
+            })}
+            {move || llm_save_error().map(|e| view! {
+                <div class="flash flash-error">{e}</div>
+            })}
+            <Suspense fallback=|| view! { <p class="text-secondary">"Loading..."</p> }>
+                {move || Suspend::new(async move {
+                    let defaults = llm_settings.await.unwrap_or(LlmSettingsInfo {
+                        provider: "none".into(),
+                        api_key: String::new(),
+                        model: "gpt-4o-mini".into(),
+                        base_url: String::new(),
+                    });
+                    view! {
+                        <ActionForm action=save_llm_action>
+                            <div class="form-group">
+                                <label for="provider">"Provider"</label>
+                                <select id="provider" name="provider" class="form-select">
+                                    <option value="none" selected={defaults.provider == "none"}>"None (disabled)"</option>
+                                    <option value="openai" selected={defaults.provider == "openai"}>"OpenAI"</option>
+                                    <option value="anthropic" selected={defaults.provider == "anthropic"}>"Anthropic"</option>
+                                    <option value="ollama" selected={defaults.provider == "ollama"}>"Ollama"</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="api_key">"API Key"</label>
+                                <input
+                                    type="password"
+                                    id="api_key"
+                                    name="api_key"
+                                    value={defaults.api_key}
+                                    placeholder="sk-... or your API key"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="model">"Model"</label>
+                                <input
+                                    type="text"
+                                    id="model"
+                                    name="model"
+                                    value={defaults.model}
+                                    placeholder="gpt-4o-mini"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="base_url">"Base URL"</label>
+                                <input
+                                    type="text"
+                                    id="base_url"
+                                    name="base_url"
+                                    value={defaults.base_url}
+                                    placeholder="For Ollama or custom endpoints (optional)"
+                                />
+                            </div>
+                            <button type="submit" class="btn btn-primary">"Save"</button>
+                        </ActionForm>
+                    }.into_any()
+                })}
+            </Suspense>
         </div>
 
         // Add SSH Key

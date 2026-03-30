@@ -776,6 +776,20 @@ pub async fn list_ai_sessions(
     Ok(metas)
 }
 
+/// Get AI commits without a session ID.
+pub async fn get_unsessioned_ai_commits(
+    pool: &SqlitePool,
+    repo_id: i64,
+) -> Result<Vec<AiCommitMetadata>> {
+    let metas = sqlx::query_as::<_, AiCommitMetadata>(
+        "SELECT * FROM ai_commit_metadata WHERE repo_id = ? AND ai_session_id IS NULL ORDER BY created_at DESC",
+    )
+    .bind(repo_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(metas)
+}
+
 /// Get all AI metadata for a specific session.
 pub async fn get_ai_metadata_by_session(
     pool: &SqlitePool,

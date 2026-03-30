@@ -253,9 +253,7 @@ pub fn RepoViewPage() -> impl IntoView {
                                 let issues_href = format!("/{}/{}/issues", owner_name, repo_name);
                                 let commits_href = format!("/{}/{}/commits", owner_name, repo_name);
                                 let pulls_href = format!("/{}/{}/pulls", owner_name, repo_name);
-                                let ai_log_href = format!("/{}/{}/ai-log", owner_name, repo_name);
-                                let ai_href = format!("/{}/{}/ai-timeline", owner_name, repo_name);
-                                let sessions_href = format!("/{}/{}/sessions", owner_name, repo_name);
+                                let ai_href = format!("/{}/{}/ai", owner_name, repo_name);
                                 Some(view! {
                                     <div class="flex-row gap-2 mb-4">
                                         <select
@@ -274,9 +272,7 @@ pub fn RepoViewPage() -> impl IntoView {
                                         <a href={issues_href} class="btn btn-sm">"Issues"</a>
                                         <a href={commits_href} class="btn btn-sm">"Commits"</a>
                                         <a href={pulls_href} class="btn btn-sm">"Pull Requests"</a>
-                                        <a href={sessions_href} class="btn btn-sm btn-ai">"Sessions"</a>
-                                        <a href={ai_log_href} class="btn btn-sm btn-ai">"AI Log"</a>
-                                        <a href={ai_href} class="btn btn-sm btn-ai">"AI Timeline"</a>
+                                        <a href={ai_href} class="btn btn-sm btn-ai">"AI"</a>
                                     </div>
                                 })
                             } else {

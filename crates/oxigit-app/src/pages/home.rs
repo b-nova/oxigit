@@ -167,7 +167,7 @@ pub fn HomePage() -> impl IntoView {
                                     let prompt = s.first_prompt.clone()
                                         .map(|p| if p.len() > 80 { format!("{}...", &p[..80]) } else { p })
                                         .unwrap_or_default();
-                                    let href = format!("/{}/{}/sessions/{}", username, s.repo_name, s.session_id);
+                                    let href = format!("/{}/{}/ai/{}", username, s.repo_name, s.session_id);
                                     view! {
                                         <li class="list-item">
                                             <div>

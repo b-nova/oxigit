@@ -379,7 +379,7 @@ pub fn CommitViewPage() -> impl IntoView {
                                 </div>
                                 {d.ai_metadata.clone().map(|meta| {
                                     let session_href = meta.ai_session_id.clone().map(|sid| {
-                                        format!("/{}/{}/ai-timeline?session={}", owner_name, repo_name, sid)
+                                        format!("/{}/{}/ai/{}", owner_name, repo_name, sid)
                                     });
                                     view! {
                                         <div class="ai-context-panel mb-4">

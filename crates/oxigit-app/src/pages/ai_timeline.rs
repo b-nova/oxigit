@@ -63,9 +63,10 @@ async fn fetch_ai_timeline(
         session_map.entry(key).or_default().push(entry);
     }
 
-    let sessions: Vec<AiTimelineSession> = session_map
+    let mut sessions: Vec<AiTimelineSession> = session_map
         .into_iter()
-        .map(|(session_id, entries)| {
+        .map(|(session_id, mut entries)| {
+            entries.reverse();
             let ai_tool = session_tools
                 .get(&session_id)
                 .cloned()
@@ -77,6 +78,11 @@ async fn fetch_ai_timeline(
             }
         })
         .collect();
+    sessions.sort_by(|a, b| {
+        let a_time = a.entries.first().map(|e| e.commit_time.as_str()).unwrap_or("");
+        let b_time = b.entries.first().map(|e| e.commit_time.as_str()).unwrap_or("");
+        b_time.cmp(a_time)
+    });
 
     Ok(AiTimelineResponse {
         owner,

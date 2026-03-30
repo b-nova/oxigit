@@ -112,6 +112,194 @@ async fn remove_collaborator(
     Ok(())
 }
 
+#[cfg(feature = "ssr")]
+fn hook_script(tool_name: &str, extra_session: &str) -> String {
+    format!(
+        r#"#!/bin/bash
+set -e
+INPUT=$(cat)
+COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+if ! echo "$COMMAND" | grep -qE "^git commit"; then exit 0; fi
+SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
+{extra_session}MODEL=$(echo "$INPUT" | jq -r '.model // empty')
+mkdir -p .oxigit
+jq -n --arg tool "{tool_name}" --arg model "$MODEL" --arg session_id "$SESSION_ID" \
+  '{{ tool: $tool,
+     model: (if $model == "" then null else $model end),
+     session_id: (if $session_id == "" then null else $session_id end) }}' \
+  > .oxigit/context.json
+git add .oxigit/context.json"#,
+        tool_name = tool_name,
+        extra_session = extra_session,
+    )
+}
+
+#[cfg_attr(not(feature = "ssr"), allow(dead_code))]
+struct AiToolConfig {
+    tool_id: &'static str,
+    display_name: &'static str,
+    hook_dir: &'static str,
+    config_path: &'static str,
+    config_content: &'static str,
+    extra_session: &'static str,
+}
+
+const AI_TOOLS: &[AiToolConfig] = &[
+    AiToolConfig {
+        tool_id: "claude-code",
+        display_name: "Claude Code",
+        hook_dir: ".claude/hooks",
+        config_path: ".claude/settings.json",
+        config_content: r#"{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/oxigit-context.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}"#,
+        extra_session: "",
+    },
+    AiToolConfig {
+        tool_id: "codex",
+        display_name: "Codex CLI",
+        hook_dir: ".codex/hooks",
+        config_path: ".codex/hooks.json",
+        config_content: r#"{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".codex/hooks/oxigit-context.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}"#,
+        extra_session: "",
+    },
+    AiToolConfig {
+        tool_id: "gemini-cli",
+        display_name: "Gemini CLI",
+        hook_dir: ".gemini/hooks",
+        config_path: ".gemini/settings.json",
+        config_content: r#"{
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".gemini/hooks/oxigit-context.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}"#,
+        extra_session: "if [ -z \"$SESSION_ID\" ] && [ -n \"$GEMINI_SESSION_ID\" ]; then\n  SESSION_ID=\"$GEMINI_SESSION_ID\"\nfi\n",
+    },
+];
+
+#[cfg(feature = "ssr")]
+fn get_tool_config(tool_id: &str) -> Option<&'static AiToolConfig> {
+    AI_TOOLS.iter().find(|t| t.tool_id == tool_id)
+}
+
+#[server]
+async fn install_ai_hook(
+    owner: String,
+    repo: String,
+    tool_id: String,
+) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use oxigit_core::{db, git};
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let data_dir = get_data_dir().await?;
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if repo_db.owner_id != user.id {
+        return Err(ServerFnError::new("Only the owner can install AI hooks"));
+    }
+
+    let tool = get_tool_config(&tool_id)
+        .ok_or_else(|| ServerFnError::new("Unknown AI tool"))?;
+
+    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+
+    let branch = git::default_branch(&repo_path)
+        .map_err(|e| ServerFnError::new(e.to_string()))?
+        .ok_or_else(|| ServerFnError::new("Repository has no branches"))?;
+
+    let script_content = hook_script(tool.tool_id, tool.extra_session);
+    let script_path = format!("{}/oxigit-context.sh", tool.hook_dir);
+
+    let files: Vec<(&str, &str, bool)> = vec![
+        (&script_path, &script_content, true),
+        (tool.config_path, tool.config_content, false),
+    ];
+
+    git::add_files_to_branch(
+        &repo_path,
+        &branch,
+        &files,
+        &format!("chore: install {} AI hook for Oxigit", tool.display_name),
+        &user.username,
+        &format!("{}@oxigit", user.username),
+    )
+    .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    Ok(())
+}
+
+#[server]
+async fn check_installed_hooks(
+    owner: String,
+    repo: String,
+) -> Result<Vec<String>, ServerFnError> {
+    use crate::server_fns::get_data_dir;
+    use oxigit_core::git;
+
+    let data_dir = get_data_dir().await?;
+    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+
+    let branch = match git::default_branch(&repo_path) {
+        Ok(Some(b)) => b,
+        _ => return Ok(vec![]),
+    };
+
+    let mut installed = Vec::new();
+    for tool in AI_TOOLS {
+        let entries = git::list_tree(&repo_path, &branch, tool.hook_dir).unwrap_or_default();
+        if entries.iter().any(|e| e.name == "oxigit-context.sh") {
+            installed.push(tool.tool_id.to_string());
+        }
+    }
+    Ok(installed)
+}
+
 #[component]
 pub fn RepoSettingsPage() -> impl IntoView {
     let params = use_params_map();
@@ -125,6 +313,12 @@ pub fn RepoSettingsPage() -> impl IntoView {
 
     let add_action = ServerAction::<AddCollaborator>::new();
     let remove_action = ServerAction::<RemoveCollaborator>::new();
+    let install_hook_action = ServerAction::<InstallAiHook>::new();
+
+    let installed_hooks = Resource::new(
+        move || (owner(), repo()),
+        move |(o, r)| check_installed_hooks(o, r),
+    );
 
     Effect::new(move || {
         add_action.version().get();
@@ -132,8 +326,20 @@ pub fn RepoSettingsPage() -> impl IntoView {
         collabs.refetch();
     });
 
+    Effect::new(move || {
+        install_hook_action.version().get();
+        installed_hooks.refetch();
+    });
+
     let error = move || {
         add_action.value().get().and_then(|r| r.err().map(|e| e.to_string()))
+    };
+
+    let hook_error = move || {
+        install_hook_action.value().get().and_then(|r| r.err().map(|e| e.to_string()))
+    };
+    let hook_success = move || {
+        install_hook_action.value().get().and_then(|r| r.ok()).is_some()
     };
 
     view! {
@@ -216,6 +422,57 @@ pub fn RepoSettingsPage() -> impl IntoView {
                     })
                 }}
             </Suspense>
+        </div>
+
+        <div class="card">
+            <div class="card-header">"AI Hooks"</div>
+            <p class="text-secondary mb-4" style="font-size: 0.875rem;">
+                "Install AI coding tool hooks to automatically track AI-generated commits in the "
+                <a href={move || format!("/{}/{}/ai-timeline", owner(), repo())}>"AI Timeline"</a>
+                ". Clicking install commits the hook files directly to the default branch."
+            </p>
+            {move || hook_error().map(|e| view! {
+                <div class="flash flash-error">{e}</div>
+            })}
+            {move || hook_success().then(|| view! {
+                <div class="flash flash-success">"AI hook installed successfully. Pull to get the new files."</div>
+            })}
+            {AI_TOOLS.iter().map(|tool| {
+                let tool_id = tool.tool_id.to_string();
+                let tool_id_check = tool.tool_id.to_string();
+                let display_name = tool.display_name.to_string();
+                let hook_dir = tool.hook_dir.to_string();
+                let config_path = tool.config_path.to_string();
+                let is_installed = Memo::new(move |_| {
+                    installed_hooks.get()
+                        .and_then(|r| r.ok())
+                        .map(|ids| ids.contains(&tool_id_check))
+                        .unwrap_or(false)
+                });
+                view! {
+                    <div class="list-item">
+                        <div>
+                            <span class="font-semibold">{display_name}</span>
+                            <span class="text-secondary" style="font-size: 0.8125rem; margin-left: 0.5rem;">
+                                {format!("{}/oxigit-context.sh + {}", hook_dir, config_path)}
+                            </span>
+                        </div>
+                        <ActionForm action=install_hook_action>
+                            <input type="hidden" name="owner" value={move || owner()} />
+                            <input type="hidden" name="repo" value={move || repo()} />
+                            <input type="hidden" name="tool_id" value={tool_id} />
+                            <button
+                                type="submit"
+                                class="btn btn-sm"
+                                class:btn-primary=move || !is_installed.get()
+                                disabled=move || is_installed.get()
+                            >
+                                {move || if is_installed.get() { "Installed" } else { "Install" }}
+                            </button>
+                        </ActionForm>
+                    </div>
+                }
+            }).collect::<Vec<_>>()}
         </div>
     }
 }

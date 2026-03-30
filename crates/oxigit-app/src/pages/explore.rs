@@ -9,17 +9,24 @@ pub struct ExploreRepo {
     pub name: String,
     pub description: String,
     pub created_at: String,
+    pub has_remix: bool,
 }
 
 #[server]
-async fn explore_repos(query: String) -> Result<Vec<ExploreRepo>, ServerFnError> {
+async fn explore_repos(query: String, remixable_only: bool) -> Result<Vec<ExploreRepo>, ServerFnError> {
     use crate::server_fns::get_pool;
     use oxigit_core::db;
 
     let pool = get_pool().await?;
-    let results = db::search_public_repositories(&pool, &query)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    let results = if remixable_only {
+        db::search_remixable_repositories(&pool, &query)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?
+    } else {
+        db::search_public_repositories(&pool, &query)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?
+    };
 
     Ok(results
         .into_iter()
@@ -28,6 +35,7 @@ async fn explore_repos(query: String) -> Result<Vec<ExploreRepo>, ServerFnError>
             name: repo.name,
             description: repo.description,
             created_at: repo.created_at,
+            has_remix: repo.has_remix,
         })
         .collect())
 }
@@ -35,10 +43,11 @@ async fn explore_repos(query: String) -> Result<Vec<ExploreRepo>, ServerFnError>
 #[component]
 pub fn ExplorePage() -> impl IntoView {
     let (query, set_query) = signal(String::new());
+    let (remixable_only, set_remixable_only) = signal(false);
 
     let repos = Resource::new(
-        move || query.get(),
-        move |q| explore_repos(q),
+        move || (query.get(), remixable_only.get()),
+        move |(q, remix)| explore_repos(q, remix),
     );
 
     view! {
@@ -58,6 +67,17 @@ pub fn ExplorePage() -> impl IntoView {
             />
         </div>
 
+        <div class="explore-filters mb-4">
+            <button
+                class=move || if !remixable_only.get() { "btn btn-sm btn-active" } else { "btn btn-sm" }
+                on:click=move |_| set_remixable_only.set(false)
+            >"All"</button>
+            <button
+                class=move || if remixable_only.get() { "btn btn-sm btn-ai btn-active" } else { "btn btn-sm btn-ai" }
+                on:click=move |_| set_remixable_only.set(true)
+            >"Remixable"</button>
+        </div>
+
         <div class="card-flush">
             <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
                 {move || Suspend::new(async move {
@@ -74,11 +94,15 @@ pub fn ExplorePage() -> impl IntoView {
                                     let full_name = format!("{}/{}", repo.owner, repo.name);
                                     let desc = repo.description.clone();
                                     let created = repo.created_at.clone();
+                                    let is_remix = repo.has_remix;
                                     view! {
                                         <li class="list-item">
                                             <div>
                                                 <div class="list-item-title">
                                                     <a href={href}>{full_name}</a>
+                                                    {is_remix.then(|| view! {
+                                                        <span class="remix-card-badge" style="margin-left: var(--space-2);">"Remixable"</span>
+                                                    })}
                                                 </div>
                                                 {(!desc.is_empty()).then(|| view! {
                                                     <p class="list-item-desc">{desc.clone()}</p>

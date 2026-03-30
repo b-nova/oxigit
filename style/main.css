@@ -1762,6 +1762,99 @@ a:hover {
     padding: var(--space-3) var(--space-4);
 }
 
+/* ============================================================
+   Remix & Fork 2.0
+   ============================================================ */
+
+.remix-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.remix-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--accent-muted);
+    border-bottom: 1px solid rgba(224, 138, 74, 0.3);
+}
+
+.remix-card-title {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--accent);
+}
+
+.remix-card-badge {
+    display: inline-block;
+    padding: 0.0625rem 0.375rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-radius: var(--radius-full);
+    background: var(--accent-muted);
+    color: var(--accent);
+    border: 1px solid rgba(224, 138, 74, 0.3);
+}
+
+.remix-card-content {
+    padding: var(--space-4);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--text);
+}
+
+.remix-card-content h1,
+.remix-card-content h2,
+.remix-card-content h3 {
+    margin-top: var(--space-3);
+    margin-bottom: var(--space-2);
+}
+
+.remix-card-content code {
+    background: var(--bg-tertiary);
+    padding: 0.125rem 0.375rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+}
+
+.remix-card-content pre {
+    background: var(--bg);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    border: 1px solid var(--border-muted);
+}
+
+.remix-guide {
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.remix-guide-header {
+    text-align: center;
+    margin-bottom: var(--space-6);
+}
+
+.remix-guide-title {
+    font-size: 1.5rem;
+    margin-bottom: var(--space-2);
+}
+
+.explore-filters {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.btn-active {
+    background: var(--bg-overlay);
+    border-color: var(--text-secondary);
+}
+
 .session-file {
     font-family: var(--font-mono);
     font-size: 0.75rem;

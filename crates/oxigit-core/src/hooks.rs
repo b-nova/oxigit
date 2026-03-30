@@ -54,6 +54,12 @@ pub async fn process_post_receive(
             }
         };
 
+        // Check if REMIX.md exists at the tip of the pushed branch
+        if let Ok(content) = git::read_blob(repo_path, new_sha, "REMIX.md") {
+            let has_remix = !content.is_empty();
+            let _ = db::update_has_remix(pool, repo_id, has_remix).await;
+        }
+
         for sha in &shas {
             let context = match git::read_oxigit_context(repo_path, sha) {
                 Ok(Some(ctx)) => ctx,

@@ -35,6 +35,7 @@ use pages::{
     pr_new::PrNewPage,
     pr_view::PrViewPage,
     register::RegisterPage,
+    remix_guide::RemixGuidePage,
     repo_blob::RepoBlobPage,
     repo_list::RepoListPage,
     repo_settings::RepoSettingsPage,
@@ -88,6 +89,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/:owner/:repo/issues/new") view=IssueNewPage />
                     <Route path=path!("/:owner/:repo/issues/:number") view=IssueViewPage />
                     <Route path=path!("/:owner/:repo/ai-timeline") view=AiTimelinePage />
+                    <Route path=path!("/:owner/:repo/remix-guide") view=RemixGuidePage />
                     <Route path=path!("/:owner/:repo/sessions") view=SessionListPage />
                     <Route path=path!("/:owner/:repo/sessions/:session_id") view=SessionViewPage />
                     <Route path=path!("/:owner/:repo/commits") view=CommitsPage />

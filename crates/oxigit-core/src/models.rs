@@ -34,6 +34,7 @@ pub struct Repository {
     pub description: String,
     pub is_private: bool,
     pub forked_from: Option<i64>,
+    pub has_remix: bool,
     pub created_at: String,
     pub updated_at: String,
 }

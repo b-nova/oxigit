@@ -13,6 +13,7 @@ pub mod pr_new;
 pub mod pr_view;
 pub mod login;
 pub mod register;
+pub mod remix_guide;
 pub mod repo_blob;
 pub mod repo_list;
 pub mod repo_new;
@@ -61,6 +62,7 @@ pub struct RepoTreeResponse {
     pub branches: Vec<String>,
     pub current_ref: String,
     pub readme_html: Option<String>,
+    pub remix_html: Option<String>,
     pub forked_from: Option<String>,
     pub can_fork: bool,
     pub is_owner: bool,

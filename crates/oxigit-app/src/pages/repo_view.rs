@@ -78,10 +78,10 @@ async fn fetch_repo_tree(
         created_at: repo_db.created_at,
     };
 
-    // Check for README and render markdown
-    let readme_html = if path.is_empty() {
+    // Check for README and REMIX.md, render markdown
+    let (readme_html, remix_html) = if path.is_empty() {
         let readme_names = ["README.md", "readme.md", "Readme.md"];
-        let mut html = None;
+        let mut readme = None;
         for name in &readme_names {
             if let Ok(content) = git::read_blob(&repo_path, &effective_ref, name) {
                 if let Ok(text) = String::from_utf8(content) {
@@ -89,14 +89,23 @@ async fn fetch_repo_tree(
                     let parser = Parser::new(&text);
                     let mut output = String::new();
                     push_html(&mut output, parser);
-                    html = Some(output);
+                    readme = Some(output);
                     break;
                 }
             }
         }
-        html
+        let remix = if let Ok(content) = git::read_blob(&repo_path, &effective_ref, "REMIX.md") {
+            if let Ok(text) = String::from_utf8(content) {
+                use pulldown_cmark::{Parser, html::push_html};
+                let parser = Parser::new(&text);
+                let mut output = String::new();
+                push_html(&mut output, parser);
+                Some(output)
+            } else { None }
+        } else { None };
+        (readme, remix)
     } else {
-        None
+        (None, None)
     };
 
     Ok(RepoTreeResponse {
@@ -106,6 +115,7 @@ async fn fetch_repo_tree(
         branches,
         current_ref: effective_ref,
         readme_html,
+        remix_html,
         forked_from,
         can_fork,
         is_owner,
@@ -116,7 +126,7 @@ async fn fetch_repo_tree(
 #[server]
 async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
     use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
-    use oxigit_core::db;
+    use oxigit_core::{db, git};
 
     let user = extract_session_user()
         .await
@@ -124,11 +134,20 @@ async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
 
+    // Check if source repo has REMIX.md before forking
+    let source_path = git::repo_path(&data_dir, &owner, &repo);
+    let default_ref = git::default_branch(&source_path).unwrap_or(None).unwrap_or_else(|| "main".to_string());
+    let has_remix = git::read_blob(&source_path, &default_ref, "REMIX.md").is_ok();
+
     let forked = db::fork_repository(&pool, &owner, &repo, user.id, &data_dir)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    leptos_axum::redirect(&format!("/{}/{}", user.username, forked.name));
+    if has_remix {
+        leptos_axum::redirect(&format!("/{}/{}/remix-guide", user.username, forked.name));
+    } else {
+        leptos_axum::redirect(&format!("/{}/{}", user.username, forked.name));
+    }
     Ok(())
 }
 
@@ -204,12 +223,15 @@ pub fn RepoViewPage() -> impl IntoView {
                                     {resp.can_fork.then(|| {
                                         let fork_owner = owner_name.clone();
                                         let fork_repo = repo_name.clone();
+                                        let is_remix = resp.remix_html.is_some();
                                         let fork_action = ServerAction::<ForkRepo>::new();
                                         view! {
                                             <ActionForm action=fork_action>
                                                 <input type="hidden" name="owner" value={fork_owner} />
                                                 <input type="hidden" name="repo" value={fork_repo} />
-                                                <button type="submit" class="btn">"Fork"</button>
+                                                <button type="submit" class={if is_remix { "btn btn-primary" } else { "btn" }}>
+                                                    {if is_remix { "Remix" } else { "Fork" }}
+                                                </button>
                                             </ActionForm>
                                         }
                                     })}
@@ -352,6 +374,17 @@ git push -u origin main", existing_repo_url)}</pre>
                                     </div>
                                 }.into_any()
                             }}
+
+                            // REMIX.md card
+                            {resp.remix_html.map(|html| view! {
+                                <div class="remix-card mt-4">
+                                    <div class="remix-card-header">
+                                        <span class="remix-card-title">"Remix this project"</span>
+                                        <span class="remix-card-badge">"Remixable"</span>
+                                    </div>
+                                    <div class="remix-card-content" inner_html={html}></div>
+                                </div>
+                            })}
 
                             // README
                             {resp.readme_html.map(|html| view! {

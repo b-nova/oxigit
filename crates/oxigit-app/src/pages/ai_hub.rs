@@ -76,6 +76,7 @@ async fn fetch_ai_hub(
                     ai_session_id: None,
                     ai_files_touched: meta.ai_files_touched.and_then(|f| serde_json::from_str(&f).ok()),
                 },
+                diff_html: None,
             }
         })
         .collect();

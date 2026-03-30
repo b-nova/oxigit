@@ -59,6 +59,11 @@ async fn fetch_session_detail(
             }
         }
 
+        // Get per-commit diff
+        let commit_diff = git::show_commit_diff(&repo_path, &meta.commit_sha)
+            .ok()
+            .map(|(_, d)| render_diff(&d));
+
         shas.push(meta.commit_sha.clone());
         entries.push(AiTimelineEntry {
             short_sha: meta.commit_sha[..7.min(meta.commit_sha.len())].to_string(),
@@ -73,6 +78,7 @@ async fn fetch_session_detail(
                 ai_session_id: meta.ai_session_id.clone(),
                 ai_files_touched: meta.ai_files_touched.as_ref().and_then(|f| serde_json::from_str(f).ok()),
             },
+            diff_html: commit_diff,
         });
     }
 
@@ -307,6 +313,7 @@ pub fn AiSessionDetailPage() -> impl IntoView {
 
                                 let files_str = entry.metadata.ai_files_touched.as_ref()
                                     .map(|f| f.join(", ")).unwrap_or_default();
+                                let entry_diff = entry.diff_html.clone();
                                 msg_parts.push(view! {
                                     <div class="chat-message chat-ai">
                                         <div class="chat-message-header">
@@ -322,6 +329,13 @@ pub fn AiSessionDetailPage() -> impl IntoView {
                                                 <div class="chat-files">{files_str}</div>
                                             })}
                                         </div>
+                                        // Inline code diff
+                                        {entry_diff.map(|dh| view! {
+                                            <details class="chat-diff-details">
+                                                <summary class="chat-diff-summary">"Show generated code"</summary>
+                                                <div class="diff-container" inner_html={dh}></div>
+                                            </details>
+                                        })}
                                     </div>
                                 }.into_any());
 

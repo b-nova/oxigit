@@ -2136,6 +2136,30 @@ a:hover {
     background: var(--border-muted);
 }
 
+.chat-diff-details {
+    margin-top: var(--space-2);
+    max-width: 100%;
+}
+
+.chat-diff-summary {
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: var(--accent);
+    font-weight: 600;
+    padding: var(--space-1) 0;
+}
+
+.chat-diff-details[open] .chat-diff-summary {
+    margin-bottom: var(--space-2);
+}
+
+.chat-diff-details .diff-container {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--border-muted);
+    border-radius: var(--radius-md);
+}
+
 .chat-session-break-text {
     font-size: 0.6875rem;
     color: var(--text-tertiary);

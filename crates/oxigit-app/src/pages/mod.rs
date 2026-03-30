@@ -85,6 +85,7 @@ pub struct AiTimelineEntry {
     pub commit_author: String,
     pub commit_time: String,
     pub metadata: AiMetadataInfo,
+    pub diff_html: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

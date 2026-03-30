@@ -768,7 +768,7 @@ pub async fn list_ai_sessions(
     repo_id: i64,
 ) -> Result<Vec<AiCommitMetadata>> {
     let metas = sqlx::query_as::<_, AiCommitMetadata>(
-        "SELECT * FROM ai_commit_metadata WHERE repo_id = ? ORDER BY ai_session_id, created_at ASC",
+        "SELECT * FROM ai_commit_metadata WHERE repo_id = ? ORDER BY created_at DESC",
     )
     .bind(repo_id)
     .fetch_all(pool)
@@ -797,7 +797,7 @@ pub async fn get_ai_metadata_by_session(
     session_id: &str,
 ) -> Result<Vec<AiCommitMetadata>> {
     let metas = sqlx::query_as::<_, AiCommitMetadata>(
-        "SELECT * FROM ai_commit_metadata WHERE repo_id = ? AND ai_session_id = ? ORDER BY created_at ASC",
+        "SELECT * FROM ai_commit_metadata WHERE repo_id = ? AND ai_session_id = ? ORDER BY created_at DESC",
     )
     .bind(repo_id)
     .bind(session_id)

@@ -82,11 +82,14 @@ async fn fetch_session_detail(
         });
     }
 
-    let first_time = entries.first().map(|e| e.commit_time.clone()).unwrap_or_default();
-    let last_time = entries.last().map(|e| e.commit_time.clone()).unwrap_or_default();
+    // Entries are newest-first; times: first entry is latest, last is earliest
+    let first_time = entries.last().map(|e| e.commit_time.clone()).unwrap_or_default();
+    let last_time = entries.first().map(|e| e.commit_time.clone()).unwrap_or_default();
 
-    // Aggregate diff
-    let diff = git::session_aggregate_diff(&repo_path, &shas).unwrap_or_default();
+    // Aggregate diff needs SHAs in oldest-first order
+    let mut shas_asc = shas.clone();
+    shas_asc.reverse();
+    let diff = git::session_aggregate_diff(&repo_path, &shas_asc).unwrap_or_default();
     let diff_html = render_diff(&diff);
 
     // Auto-generate AI summary if LLM configured
@@ -157,8 +160,10 @@ async fn revert_session(
         return Err(ServerFnError::new("Session not found"));
     }
 
-    let shas: Vec<String> = metas.iter().map(|m| m.commit_sha.clone()).collect();
-    let first_prompt = metas.iter().find_map(|m| m.ai_prompt.clone()).unwrap_or_default();
+    // Metas are DESC — reverse for revert (needs oldest-first)
+    let mut shas: Vec<String> = metas.iter().map(|m| m.commit_sha.clone()).collect();
+    shas.reverse();
+    let first_prompt = metas.last().and_then(|m| m.ai_prompt.clone()).unwrap_or_default();
     let short_id = &session_id[..8.min(session_id.len())];
 
     let default_branch = git::default_branch(&repo_path)

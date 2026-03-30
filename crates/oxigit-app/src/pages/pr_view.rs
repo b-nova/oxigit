@@ -2,7 +2,8 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
-use super::CommitSummary;
+#[allow(unused_imports)]
+use super::{CommitSummary, DiffReviewData, DiffSummaryInfo, RiskFlagInfo};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PrDetail {
@@ -225,6 +226,138 @@ async fn close_pr(
     Ok(())
 }
 
+#[server]
+async fn get_pr_diff_review(
+    owner: String,
+    repo: String,
+    number: i64,
+) -> Result<DiffReviewData, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_llm_config};
+    use oxigit_core::{db, git, risk};
+
+    let pool = get_pool().await?;
+    let data_dir = get_data_dir().await?;
+    let current_user = extract_session_user().await;
+    let (llm_provider, _, _, _) = get_llm_config().await?;
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if !db::can_access_repo(&repo_db, current_user.map(|u| u.id)) {
+        return Err(ServerFnError::new("Repository not found"));
+    }
+
+    let pr = db::get_pull_request(&pool, repo_db.id, number)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let diff = if pr.status == "open"
+        && git::branch_exists(&repo_path, &pr.source_branch)
+        && git::branch_exists(&repo_path, &pr.target_branch)
+    {
+        git::branch_diff(&repo_path, &pr.target_branch, &pr.source_branch).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let risk_flags: Vec<RiskFlagInfo> = risk::scan_diff(&diff)
+        .into_iter()
+        .map(|f| RiskFlagInfo {
+            category: f.category.label().to_string(),
+            message: f.message,
+            file: f.file,
+        })
+        .collect();
+
+    let cache_key = format!("pr-{}-diff", number);
+    let cached = db::get_diff_summary(&pool, repo_db.id, &cache_key)
+        .await
+        .ok()
+        .flatten()
+        .map(|s| {
+            let flags: Vec<RiskFlagInfo> = s.risk_flags
+                .and_then(|f| serde_json::from_str(&f).ok())
+                .unwrap_or_default();
+            DiffSummaryInfo {
+                summary: s.summary,
+                risk_flags: flags,
+                generated_by: s.generated_by,
+            }
+        });
+
+    Ok(DiffReviewData {
+        cached_summary: cached,
+        risk_flags,
+        llm_available: llm_provider != "none",
+    })
+}
+
+#[server]
+async fn generate_pr_diff_summary(
+    owner: String,
+    repo: String,
+    number: i64,
+) -> Result<DiffSummaryInfo, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_llm_config};
+    use oxigit_core::{db, git, llm, risk};
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let data_dir = get_data_dir().await?;
+    let (provider, api_key, model, base_url) = get_llm_config().await?;
+
+    if provider == "none" {
+        return Err(ServerFnError::new("LLM not configured"));
+    }
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if !db::can_access_repo(&repo_db, Some(user.id)) {
+        return Err(ServerFnError::new("Repository not found"));
+    }
+
+    let pr = db::get_pull_request(&pool, repo_db.id, number)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let diff = git::branch_diff(&repo_path, &pr.target_branch, &pr.source_branch)
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let config = llm::LlmConfig { provider, api_key, model: model.clone(), base_url };
+    let summary = llm::generate_summary(&config, &diff, None)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let risk_flags: Vec<RiskFlagInfo> = risk::scan_diff(&diff)
+        .into_iter()
+        .map(|f| RiskFlagInfo {
+            category: f.category.label().to_string(),
+            message: f.message,
+            file: f.file,
+        })
+        .collect();
+
+    let flags_json = serde_json::to_string(&risk_flags).ok();
+    let cache_key = format!("pr-{}-diff", number);
+
+    db::upsert_diff_summary(&pool, repo_db.id, &cache_key, &summary, flags_json.as_deref(), &model)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    Ok(DiffSummaryInfo {
+        summary,
+        risk_flags,
+        generated_by: model,
+    })
+}
+
 #[component]
 pub fn PrViewPage() -> impl IntoView {
     let params = use_params_map();
@@ -237,6 +370,12 @@ pub fn PrViewPage() -> impl IntoView {
         move |(o, r, n)| get_pr(o, r, n),
     );
 
+    let pr_review = Resource::new(
+        move || (owner(), repo(), number()),
+        move |(o, r, n)| get_pr_diff_review(o, r, n),
+    );
+
+    let gen_pr_action = ServerAction::<GeneratePrDiffSummary>::new();
     let merge_action = ServerAction::<MergePr>::new();
     let close_action = ServerAction::<ClosePr>::new();
 
@@ -343,6 +482,81 @@ pub fn PrViewPage() -> impl IntoView {
                                         </div>
                                     }
                                 })}
+
+                                // AI Diff Review panel
+                                <Suspense fallback=|| ()>
+                                    {move || {
+                                        let on = owner_name.clone();
+                                        let rn = repo_name.clone();
+                                        let pr_num = num;
+                                        let gen_value = gen_pr_action.value();
+                                        Suspend::new(async move {
+                                            let review_data = pr_review.await.ok();
+                                            let has_risk = review_data.as_ref().map_or(false, |r| !r.risk_flags.is_empty());
+                                            let has_summary = review_data.as_ref().map_or(false, |r| r.cached_summary.is_some());
+                                            let llm_available = review_data.as_ref().map_or(false, |r| r.llm_available);
+                                            let show_panel = has_risk || has_summary || llm_available;
+
+                                            if !show_panel {
+                                                return view! { <div></div> }.into_any();
+                                            }
+
+                                            let risk_flags = review_data.as_ref().map(|r| r.risk_flags.clone()).unwrap_or_default();
+                                            let cached = review_data.and_then(|r| r.cached_summary);
+
+                                            view! {
+                                                <div class="ai-review-panel mb-4">
+                                                    <div class="ai-review-header">
+                                                        <span class="ai-review-title">"AI Diff Review"</span>
+                                                    </div>
+                                                    {(!risk_flags.is_empty()).then(|| {
+                                                        let flags = risk_flags.clone();
+                                                        view! {
+                                                            <div class="risk-badges">
+                                                                {flags.into_iter().map(|f| {
+                                                                    let class = format!("risk-badge risk-{}", f.category);
+                                                                    let label = format!("{}: {}", f.category, f.message);
+                                                                    view! {
+                                                                        <span class={class} title={f.file.unwrap_or_default()}>
+                                                                            {label}
+                                                                        </span>
+                                                                    }
+                                                                }).collect::<Vec<_>>()}
+                                                            </div>
+                                                        }
+                                                    })}
+                                                    {cached.map(|s| view! {
+                                                        <div class="ai-review-summary">{s.summary}</div>
+                                                        <div class="ai-review-meta">
+                                                            "Generated by " {s.generated_by}
+                                                        </div>
+                                                    })}
+                                                    {move || {
+                                                        let generated = gen_value.get().and_then(|r| r.ok());
+                                                        generated.map(|s| view! {
+                                                            <div class="ai-review-summary">{s.summary}</div>
+                                                            <div class="ai-review-meta">
+                                                                "Generated by " {s.generated_by}
+                                                            </div>
+                                                        })
+                                                    }}
+                                                    {(llm_available && !has_summary).then(|| {
+                                                        view! {
+                                                            <ActionForm action=gen_pr_action>
+                                                                <input type="hidden" name="owner" value={on.clone()} />
+                                                                <input type="hidden" name="repo" value={rn.clone()} />
+                                                                <input type="hidden" name="number" value={pr_num.to_string()} />
+                                                                <button type="submit" class="btn btn-sm btn-generate">
+                                                                    "Generate AI Summary"
+                                                                </button>
+                                                            </ActionForm>
+                                                        }
+                                                    })}
+                                                </div>
+                                            }.into_any()
+                                        })
+                                    }}
+                                </Suspense>
 
                                 // Diff
                                 {(!detail.diff_html.is_empty()).then(|| {

@@ -98,6 +98,27 @@ pub struct AiTimelineResponse {
     pub sessions: Vec<AiTimelineSession>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RiskFlagInfo {
+    pub category: String,
+    pub message: String,
+    pub file: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DiffSummaryInfo {
+    pub summary: String,
+    pub risk_flags: Vec<RiskFlagInfo>,
+    pub generated_by: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DiffReviewData {
+    pub cached_summary: Option<DiffSummaryInfo>,
+    pub risk_flags: Vec<RiskFlagInfo>,
+    pub llm_available: bool,
+}
+
 #[server]
 pub async fn get_current_user() -> Result<Option<UserInfo>, ServerFnError> {
     use crate::server_fns::extract_session_user;

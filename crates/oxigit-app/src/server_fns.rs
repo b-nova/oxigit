@@ -14,6 +14,10 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub secret_key: Vec<u8>,
     pub leptos_options: LeptosOptions,
+    pub llm_provider: String,
+    pub llm_api_key: Option<String>,
+    pub llm_model: String,
+    pub llm_base_url: Option<String>,
 }
 
 pub async fn get_pool() -> Result<SqlitePool, ServerFnError> {
@@ -24,6 +28,11 @@ pub async fn get_pool() -> Result<SqlitePool, ServerFnError> {
 pub async fn get_data_dir() -> Result<PathBuf, ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
     Ok(state.data_dir)
+}
+
+pub async fn get_llm_config() -> Result<(String, Option<String>, String, Option<String>), ServerFnError> {
+    let Extension(state): Extension<AppState> = extract().await?;
+    Ok((state.llm_provider, state.llm_api_key, state.llm_model, state.llm_base_url))
 }
 
 /// Extract the base URL from the request Host header.

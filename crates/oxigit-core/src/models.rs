@@ -107,3 +107,14 @@ pub struct AiCommitMetadata {
     pub ai_files_touched: Option<String>,
     pub created_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AiDiffSummary {
+    pub id: i64,
+    pub repo_id: i64,
+    pub commit_sha: String,
+    pub summary: String,
+    pub risk_flags: Option<String>,
+    pub generated_by: String,
+    pub created_at: String,
+}

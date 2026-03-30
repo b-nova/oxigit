@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::auth::{hash_password, validate_repo_name, validate_username, verify_password};
 use crate::error::{OxigitError, Result};
-use crate::models::{AiCommitMetadata, Collaborator, Issue, IssueComment, PullRequest, Repository, SshKey, User};
+use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, Issue, IssueComment, PullRequest, Repository, SshKey, User};
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
@@ -790,4 +790,43 @@ pub async fn get_ai_metadata_by_session(
     .fetch_all(pool)
     .await?;
     Ok(metas)
+}
+
+// --- AI Diff Summary queries ---
+
+pub async fn get_diff_summary(
+    pool: &SqlitePool,
+    repo_id: i64,
+    commit_sha: &str,
+) -> Result<Option<AiDiffSummary>> {
+    let summary = sqlx::query_as::<_, AiDiffSummary>(
+        "SELECT * FROM ai_diff_summaries WHERE repo_id = ? AND commit_sha = ?",
+    )
+    .bind(repo_id)
+    .bind(commit_sha)
+    .fetch_optional(pool)
+    .await?;
+    Ok(summary)
+}
+
+pub async fn upsert_diff_summary(
+    pool: &SqlitePool,
+    repo_id: i64,
+    commit_sha: &str,
+    summary: &str,
+    risk_flags: Option<&str>,
+    generated_by: &str,
+) -> Result<AiDiffSummary> {
+    let row = sqlx::query_as::<_, AiDiffSummary>(
+        "INSERT OR REPLACE INTO ai_diff_summaries (repo_id, commit_sha, summary, risk_flags, generated_by) \
+         VALUES (?, ?, ?, ?, ?) RETURNING *",
+    )
+    .bind(repo_id)
+    .bind(commit_sha)
+    .bind(summary)
+    .bind(risk_flags)
+    .bind(generated_by)
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
 }

@@ -1,6 +1,6 @@
 {
   "tool": "claude-code",
-  "model": "claude-opus-4-6",
-  "session_id": "test-123",
+  "model": null,
+  "session_id": "3f9e319d-6e1f-4c43-9919-62dc92a3f94d",
   "prompt": null
 }

@@ -402,6 +402,124 @@ pub fn branch_exists(repo_path: &Path, branch: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Add files to a branch in a bare repo by creating a new commit.
+/// Uses git plumbing (hash-object, mktree, commit-tree, update-ref).
+/// `files` is a list of (path, content, executable) tuples.
+pub fn add_files_to_branch(
+    repo_path: &Path,
+    branch: &str,
+    files: &[(&str, &str, bool)],
+    message: &str,
+    author_name: &str,
+    author_email: &str,
+) -> Result<String> {
+    use std::io::Write;
+
+    let branch_ref = format!("refs/heads/{}", branch);
+
+    // Get parent commit SHA
+    let parent = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["rev-parse", &branch_ref])
+        .output()?;
+    if !parent.status.success() {
+        return Err(OxigitError::Git(format!("Branch '{}' not found", branch)));
+    }
+    let parent_sha = String::from_utf8_lossy(&parent.stdout).trim().to_string();
+
+    // Use a temp index so we don't disturb anything
+    let tmp_index = repo_path.join("tmp_index_addfiles");
+
+    // Read parent tree into temp index
+    let read = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .env("GIT_INDEX_FILE", &tmp_index)
+        .args(["read-tree", &parent_sha])
+        .output()?;
+    if !read.status.success() {
+        let _ = std::fs::remove_file(&tmp_index);
+        return Err(OxigitError::Git("Failed to read parent tree".into()));
+    }
+
+    // Hash each file and add to index
+    for (path, content, executable) in files {
+        let mut child = Command::new("git")
+            .env("GIT_DIR", repo_path)
+            .args(["hash-object", "-w", "--stdin"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()?;
+
+        if let Some(ref mut stdin) = child.stdin {
+            stdin.write_all(content.as_bytes())?;
+        }
+        let output = child.wait_with_output()?;
+        if !output.status.success() {
+            let _ = std::fs::remove_file(&tmp_index);
+            return Err(OxigitError::Git(format!("Failed to hash object for {}", path)));
+        }
+        let blob_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        let mode = if *executable { "100755" } else { "100644" };
+        let update = Command::new("git")
+            .env("GIT_DIR", repo_path)
+            .env("GIT_INDEX_FILE", &tmp_index)
+            .args(["update-index", "--add", "--cacheinfo", &format!("{},{},{}", mode, blob_sha, path)])
+            .output()?;
+        if !update.status.success() {
+            let _ = std::fs::remove_file(&tmp_index);
+            return Err(OxigitError::Git(format!(
+                "Failed to update index for {}: {}",
+                path,
+                String::from_utf8_lossy(&update.stderr)
+            )));
+        }
+    }
+
+    // Write tree
+    let write_tree = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .env("GIT_INDEX_FILE", &tmp_index)
+        .args(["write-tree"])
+        .output()?;
+    let _ = std::fs::remove_file(&tmp_index);
+
+    if !write_tree.status.success() {
+        return Err(OxigitError::Git("Failed to write tree".into()));
+    }
+    let tree_sha = String::from_utf8_lossy(&write_tree.stdout).trim().to_string();
+
+    // Create commit
+    let commit = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .env("GIT_AUTHOR_NAME", author_name)
+        .env("GIT_AUTHOR_EMAIL", author_email)
+        .env("GIT_COMMITTER_NAME", author_name)
+        .env("GIT_COMMITTER_EMAIL", author_email)
+        .args(["commit-tree", &tree_sha, "-p", &parent_sha, "-m", message])
+        .output()?;
+
+    if !commit.status.success() {
+        return Err(OxigitError::Git(format!(
+            "Failed to create commit: {}",
+            String::from_utf8_lossy(&commit.stderr)
+        )));
+    }
+    let commit_sha = String::from_utf8_lossy(&commit.stdout).trim().to_string();
+
+    // Update branch ref
+    let update_ref = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["update-ref", &branch_ref, &commit_sha])
+        .output()?;
+
+    if !update_ref.status.success() {
+        return Err(OxigitError::Git("Failed to update branch ref".into()));
+    }
+
+    Ok(commit_sha)
+}
+
 // --- .oxigit/context.json AI metadata ---
 
 #[derive(Debug, Clone, Deserialize)]

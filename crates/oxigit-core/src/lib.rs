@@ -3,4 +3,6 @@ pub mod db;
 pub mod error;
 pub mod git;
 pub mod hooks;
+pub mod llm;
 pub mod models;
+pub mod risk;

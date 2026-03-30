@@ -5,47 +5,47 @@ use tempfile::TempDir;
 
 // Leptos 0.8 appends a hash to server function URLs based on module path.
 // These are stable as long as the module structure doesn't change.
-const API_REGISTER_USER: &str = "/api/register_user7369397377459021377";
-const API_LOGIN_USER: &str = "/api/login_user1990639712270358737";
-const API_CREATE_REPO: &str = "/api/create_repo5303270923979939997";
-const API_ADD_SSH_KEY: &str = "/api/add_ssh_key6124160161295249415";
-const API_DELETE_KEY: &str = "/api/delete_key6124160161295249415";
-const API_LIST_SSH_KEYS: &str = "/api/list_ssh_keys6124160161295249415";
-const API_LIST_REPOS: &str = "/api/list_repos8263135991273651100";
-const API_GET_REPO_TREE: &str = "/api/get_repo_tree13941354728913308461";
-const API_GET_BLOB: &str = "/api/get_blob16825275655980583145";
+const API_REGISTER_USER: &str = "/api/register_user14969902946520757255";
+const API_LOGIN_USER: &str = "/api/login_user9081721409912083587";
+const API_CREATE_REPO: &str = "/api/create_repo1862433574170527599";
+const API_ADD_SSH_KEY: &str = "/api/add_ssh_key18273532019570338376";
+const API_DELETE_KEY: &str = "/api/delete_key18273532019570338376";
+const API_LIST_SSH_KEYS: &str = "/api/list_ssh_keys18273532019570338376";
+const API_LIST_REPOS: &str = "/api/list_repos2931821442575655280";
+const API_GET_REPO_TREE: &str = "/api/get_repo_tree12474197787027312135";
+const API_GET_BLOB: &str = "/api/get_blob1012343709035136737";
 
 // Phase 7+ server functions
-const API_FETCH_REPO_TREE: &str = "/api/fetch_repo_tree13941354728913308461";
-const API_FETCH_COMMITS: &str = "/api/fetch_commits9790621075323477947";
-const API_FETCH_COMMIT_DIFF: &str = "/api/fetch_commit_diff14048240763101790269";
-const API_FETCH_USER_PROFILE: &str = "/api/fetch_user_profile10576369475516542132";
-const API_FORK_REPO: &str = "/api/fork_repo13941354728913308461";
+const API_FETCH_REPO_TREE: &str = "/api/fetch_repo_tree12474197787027312135";
+const API_FETCH_COMMITS: &str = "/api/fetch_commits14035443652913035783";
+const API_FETCH_COMMIT_DIFF: &str = "/api/fetch_commit_diff7316923189440040834";
+const API_FETCH_USER_PROFILE: &str = "/api/fetch_user_profile8625115204815136243";
+const API_FORK_REPO: &str = "/api/fork_repo12474197787027312135";
 // Issues
-const API_CREATE_ISSUE: &str = "/api/create_issue18200392593341856158";
-const API_LIST_ISSUES: &str = "/api/list_issues14820508467033819727";
-const API_GET_ISSUE: &str = "/api/get_issue17359750668367926196";
-const API_CLOSE_ISSUE: &str = "/api/close_issue_action17359750668367926196";
-const API_REOPEN_ISSUE: &str = "/api/reopen_issue_action17359750668367926196";
-const API_ADD_COMMENT: &str = "/api/add_comment17359750668367926196";
+const API_CREATE_ISSUE: &str = "/api/create_issue12346134817373895594";
+const API_LIST_ISSUES: &str = "/api/list_issues16345326029088989429";
+const API_GET_ISSUE: &str = "/api/get_issue516512015013301334";
+const API_CLOSE_ISSUE: &str = "/api/close_issue_action516512015013301334";
+const API_REOPEN_ISSUE: &str = "/api/reopen_issue_action516512015013301334";
+const API_ADD_COMMENT: &str = "/api/add_comment516512015013301334";
 
 // Explore
-const API_EXPLORE_REPOS: &str = "/api/explore_repos1960154575694798443";
+const API_EXPLORE_REPOS: &str = "/api/explore_repos8670121273841898870";
 
 // Pull Request endpoints
-const API_LIST_PRS: &str = "/api/list_prs10190582681436013828";
-const API_CREATE_PR: &str = "/api/create_pr2627984678080233679";
-const API_GET_PR: &str = "/api/get_pr846130105414292458";
-const API_MERGE_PR: &str = "/api/merge_pr846130105414292458";
-const API_CLOSE_PR: &str = "/api/close_pr846130105414292458";
+const API_LIST_PRS: &str = "/api/list_prs7737783772562051914";
+const API_CREATE_PR: &str = "/api/create_pr10776610590872517659";
+const API_GET_PR: &str = "/api/get_pr9549500000915392773";
+const API_MERGE_PR: &str = "/api/merge_pr9549500000915392773";
+const API_CLOSE_PR: &str = "/api/close_pr9549500000915392773";
 
-const API_ADD_COLLABORATOR: &str = "/api/add_collaborator2090155042817890545";
-const API_REMOVE_COLLABORATOR: &str = "/api/remove_collaborator2090155042817890545";
-const API_LIST_COLLABORATORS: &str = "/api/list_collaborators2090155042817890545";
+const API_ADD_COLLABORATOR: &str = "/api/add_collaborator2543744637116902123";
+const API_REMOVE_COLLABORATOR: &str = "/api/remove_collaborator2543744637116902123";
+const API_LIST_COLLABORATORS: &str = "/api/list_collaborators2543744637116902123";
 
 // AI Timeline
-const API_FETCH_AI_TIMELINE: &str = "/api/fetch_ai_timeline16115729671913729000";
-const API_ATTACH_AI_METADATA: &str = "/api/attach_ai_metadata14048240763101790269";
+const API_FETCH_AI_TIMELINE: &str = "/api/fetch_ai_timeline4144953925164700098";
+const API_ATTACH_AI_METADATA: &str = "/api/attach_ai_metadata7316923189440040834";
 
 /// A running server instance with its own data directory and ports.
 pub struct TestServer {

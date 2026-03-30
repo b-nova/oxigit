@@ -11,6 +11,8 @@ rand_core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }

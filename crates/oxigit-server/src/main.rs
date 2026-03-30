@@ -63,6 +63,10 @@ async fn main() {
         data_dir: config.data_dir.clone(),
         secret_key,
         leptos_options: leptos_options.clone(),
+        llm_provider: config.llm_provider.clone(),
+        llm_api_key: config.llm_api_key.clone(),
+        llm_model: config.llm_model.clone(),
+        llm_base_url: config.llm_base_url.clone(),
     };
 
     // Git Smart HTTP routes (must be before Leptos routes)

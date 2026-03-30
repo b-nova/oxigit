@@ -2,7 +2,8 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
-use super::{AiMetadataInfo, CommitSummary};
+#[allow(unused_imports)]
+use super::{AiMetadataInfo, CommitSummary, DiffReviewData, DiffSummaryInfo, RiskFlagInfo};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommitDetail {
@@ -119,6 +120,129 @@ async fn attach_ai_metadata(
     Ok(())
 }
 
+#[server]
+async fn get_diff_review(
+    owner: String,
+    repo: String,
+    sha: String,
+) -> Result<DiffReviewData, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_llm_config};
+    use oxigit_core::{db, git, risk};
+
+    let pool = get_pool().await?;
+    let data_dir = get_data_dir().await?;
+    let current_user = extract_session_user().await;
+    let (llm_provider, _, _, _) = get_llm_config().await?;
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if !db::can_access_repo(&repo_db, current_user.map(|u| u.id)) {
+        return Err(ServerFnError::new("Repository not found"));
+    }
+
+    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let (_, diff) = git::show_commit_diff(&repo_path, &sha)
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let risk_flags: Vec<RiskFlagInfo> = risk::scan_diff(&diff)
+        .into_iter()
+        .map(|f| RiskFlagInfo {
+            category: f.category.label().to_string(),
+            message: f.message,
+            file: f.file,
+        })
+        .collect();
+
+    let cached = db::get_diff_summary(&pool, repo_db.id, &sha)
+        .await
+        .ok()
+        .flatten()
+        .map(|s| {
+            let flags: Vec<RiskFlagInfo> = s.risk_flags
+                .and_then(|f| serde_json::from_str(&f).ok())
+                .unwrap_or_default();
+            DiffSummaryInfo {
+                summary: s.summary,
+                risk_flags: flags,
+                generated_by: s.generated_by,
+            }
+        });
+
+    Ok(DiffReviewData {
+        cached_summary: cached,
+        risk_flags,
+        llm_available: llm_provider != "none",
+    })
+}
+
+#[server]
+async fn generate_diff_summary(
+    owner: String,
+    repo: String,
+    sha: String,
+) -> Result<DiffSummaryInfo, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_llm_config};
+    use oxigit_core::{db, git, llm, risk};
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let data_dir = get_data_dir().await?;
+    let (provider, api_key, model, base_url) = get_llm_config().await?;
+
+    if provider == "none" {
+        return Err(ServerFnError::new("LLM not configured"));
+    }
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if !db::can_access_repo(&repo_db, Some(user.id)) {
+        return Err(ServerFnError::new("Repository not found"));
+    }
+
+    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let (_, diff) = git::show_commit_diff(&repo_path, &sha)
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    // Get AI prompt context if available
+    let ai_prompt = db::get_ai_metadata_for_commit(&pool, repo_db.id, &sha)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|m| m.ai_prompt);
+
+    let config = llm::LlmConfig { provider, api_key, model: model.clone(), base_url };
+    let summary = llm::generate_summary(&config, &diff, ai_prompt.as_deref())
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let risk_flags: Vec<RiskFlagInfo> = risk::scan_diff(&diff)
+        .into_iter()
+        .map(|f| RiskFlagInfo {
+            category: f.category.label().to_string(),
+            message: f.message,
+            file: f.file,
+        })
+        .collect();
+
+    let flags_json = serde_json::to_string(&risk_flags).ok();
+
+    db::upsert_diff_summary(&pool, repo_db.id, &sha, &summary, flags_json.as_deref(), &model)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    Ok(DiffSummaryInfo {
+        summary,
+        risk_flags,
+        generated_by: model,
+    })
+}
+
 #[cfg(feature = "ssr")]
 fn render_diff(diff: &str) -> String {
     use std::fmt::Write;
@@ -180,6 +304,13 @@ pub fn CommitViewPage() -> impl IntoView {
         move |(owner, repo, sha)| fetch_commit_diff(owner, repo, sha),
     );
 
+    let review = Resource::new(
+        move || (owner(), repo(), sha()),
+        move |(owner, repo, sha)| get_diff_review(owner, repo, sha),
+    );
+
+    let generate_action = ServerAction::<GenerateDiffSummary>::new();
+
     view! {
         <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
             {move || {
@@ -240,6 +371,87 @@ pub fn CommitViewPage() -> impl IntoView {
                                         </div>
                                     }
                                 })}
+                                // AI Diff Review panel
+                                <Suspense fallback=|| ()>
+                                    {move || {
+                                        let on = owner_name.clone();
+                                        let rn = repo_name.clone();
+                                        let cs = commit_sha.clone();
+                                        let gen_value = generate_action.value();
+                                        Suspend::new(async move {
+                                            let review_data = review.await.ok();
+                                            let has_risk = review_data.as_ref().map_or(false, |r| !r.risk_flags.is_empty());
+                                            let has_summary = review_data.as_ref().map_or(false, |r| r.cached_summary.is_some());
+                                            let llm_available = review_data.as_ref().map_or(false, |r| r.llm_available);
+                                            let show_panel = has_risk || has_summary || llm_available;
+
+                                            if !show_panel {
+                                                return view! { <div></div> }.into_any();
+                                            }
+
+                                            let risk_flags = review_data.as_ref().map(|r| r.risk_flags.clone()).unwrap_or_default();
+                                            let cached = review_data.and_then(|r| r.cached_summary);
+
+                                            view! {
+                                                <div class="ai-review-panel mb-4">
+                                                    <div class="ai-review-header">
+                                                        <span class="ai-review-title">"AI Diff Review"</span>
+                                                    </div>
+                                                    // Risk badges
+                                                    {(!risk_flags.is_empty()).then(|| {
+                                                        let flags = risk_flags.clone();
+                                                        view! {
+                                                            <div class="risk-badges">
+                                                                {flags.into_iter().map(|f| {
+                                                                    let class = format!("risk-badge risk-{}", f.category);
+                                                                    let label = format!("{}: {}", f.category, f.message);
+                                                                    view! {
+                                                                        <span class={class} title={f.file.unwrap_or_default()}>
+                                                                            {label}
+                                                                        </span>
+                                                                    }
+                                                                }).collect::<Vec<_>>()}
+                                                            </div>
+                                                        }
+                                                    })}
+                                                    // Cached summary
+                                                    {cached.map(|s| view! {
+                                                        <div class="ai-review-summary">{s.summary}</div>
+                                                        <div class="ai-review-meta">
+                                                            "Generated by " {s.generated_by}
+                                                        </div>
+                                                    })}
+                                                    // Generate button (from action result)
+                                                    {move || {
+                                                        let generated = gen_value.get().and_then(|r| r.ok());
+                                                        generated.map(|s| view! {
+                                                            <div class="ai-review-summary">{s.summary}</div>
+                                                            <div class="ai-review-meta">
+                                                                "Generated by " {s.generated_by}
+                                                            </div>
+                                                        })
+                                                    }}
+                                                    // Generate button (if no cached and LLM available)
+                                                    {(llm_available && !has_summary).then(|| {
+                                                        let gen_on = on.clone();
+                                                        let gen_rn = rn.clone();
+                                                        let gen_cs = cs.clone();
+                                                        view! {
+                                                            <ActionForm action=generate_action>
+                                                                <input type="hidden" name="owner" value={gen_on} />
+                                                                <input type="hidden" name="repo" value={gen_rn} />
+                                                                <input type="hidden" name="sha" value={gen_cs} />
+                                                                <button type="submit" class="btn btn-sm btn-generate">
+                                                                    "Generate AI Summary"
+                                                                </button>
+                                                            </ActionForm>
+                                                        }
+                                                    })}
+                                                </div>
+                                            }.into_any()
+                                        })
+                                    }}
+                                </Suspense>
                                 <div class="diff-container" inner_html={d.diff_html}></div>
                             }.into_any()
                         }

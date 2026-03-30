@@ -1580,6 +1580,92 @@ a:hover {
     font-size: 0.75rem;
 }
 
+/* ============================================================
+   AI Diff Review — Summaries & Risk Detection
+   ============================================================ */
+
+.ai-review-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+}
+
+.ai-review-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+
+.ai-review-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.ai-review-summary {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--text);
+    margin-bottom: var(--space-3);
+    padding: var(--space-3);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-muted);
+}
+
+.ai-review-meta {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-bottom: var(--space-3);
+}
+
+.risk-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    border-radius: var(--radius-full);
+}
+
+.risk-security {
+    background: var(--danger-muted);
+    color: var(--danger);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.risk-breaking {
+    background: var(--warning-muted);
+    color: var(--warning);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.risk-performance {
+    background: var(--accent-muted);
+    color: var(--accent);
+    border: 1px solid rgba(224, 138, 74, 0.3);
+}
+
+.risk-quality {
+    background: var(--merged-muted);
+    color: var(--merged);
+    border: 1px solid rgba(163, 113, 247, 0.3);
+}
+
+.btn-generate {
+    font-size: 0.8125rem;
+}
+
 /* ── Empty repo onboarding instructions ── */
 
 .setup-instructions {

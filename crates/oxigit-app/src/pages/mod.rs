@@ -152,6 +152,38 @@ pub struct SessionListResponse {
     pub sessions: Vec<SessionListItem>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DashboardData {
+    pub total_ai_commits: i64,
+    pub total_sessions: i64,
+    pub total_repos_with_ai: i64,
+    pub tool_usage: Vec<ToolUsageInfo>,
+    pub recent_sessions: Vec<RecentSessionInfo>,
+    pub risk_counts: Vec<RiskCountInfo>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ToolUsageInfo {
+    pub ai_tool: String,
+    pub commit_count: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecentSessionInfo {
+    pub session_id: String,
+    pub ai_tool: String,
+    pub repo_name: String,
+    pub commit_count: i64,
+    pub last_time: String,
+    pub first_prompt: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RiskCountInfo {
+    pub category: String,
+    pub count: i64,
+}
+
 #[server]
 pub async fn get_current_user() -> Result<Option<UserInfo>, ServerFnError> {
     use crate::server_fns::extract_session_user;

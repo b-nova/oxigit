@@ -1061,3 +1061,80 @@ pub async fn get_deploy_preview(
     .await?;
     Ok(preview)
 }
+
+// --- Dashboard aggregation queries ---
+
+pub struct UserAiStats {
+    pub total_ai_commits: i64,
+    pub total_sessions: i64,
+    pub total_repos_with_ai: i64,
+}
+
+pub async fn get_user_ai_stats(pool: &SqlitePool, user_id: i64) -> Result<UserAiStats> {
+    let row: (i64, i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*), COUNT(DISTINCT m.ai_session_id), COUNT(DISTINCT r.id) \
+         FROM ai_commit_metadata m JOIN repositories r ON m.repo_id = r.id \
+         WHERE r.owner_id = ?",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(UserAiStats {
+        total_ai_commits: row.0,
+        total_sessions: row.1,
+        total_repos_with_ai: row.2,
+    })
+}
+
+pub struct ToolUsageRow {
+    pub ai_tool: String,
+    pub commit_count: i64,
+}
+
+pub async fn get_user_tool_usage(pool: &SqlitePool, user_id: i64) -> Result<Vec<ToolUsageRow>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT m.ai_tool, COUNT(*) \
+         FROM ai_commit_metadata m JOIN repositories r ON m.repo_id = r.id \
+         WHERE r.owner_id = ? GROUP BY m.ai_tool ORDER BY COUNT(*) DESC",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(ai_tool, commit_count)| ToolUsageRow { ai_tool, commit_count }).collect())
+}
+
+pub struct RecentSessionRow {
+    pub session_id: String,
+    pub ai_tool: String,
+    pub repo_name: String,
+    pub commit_count: i64,
+    pub last_time: String,
+    pub first_prompt: Option<String>,
+}
+
+pub async fn get_user_recent_sessions(pool: &SqlitePool, user_id: i64, limit: i64) -> Result<Vec<RecentSessionRow>> {
+    let rows: Vec<(String, String, String, i64, String, Option<String>)> = sqlx::query_as(
+        "SELECT m.ai_session_id, m.ai_tool, r.name, COUNT(*), MAX(m.created_at), MIN(m.ai_prompt) \
+         FROM ai_commit_metadata m JOIN repositories r ON m.repo_id = r.id \
+         WHERE r.owner_id = ? AND m.ai_session_id IS NOT NULL \
+         GROUP BY m.ai_session_id ORDER BY MAX(m.created_at) DESC LIMIT ?",
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(session_id, ai_tool, repo_name, commit_count, last_time, first_prompt)| {
+        RecentSessionRow { session_id, ai_tool, repo_name, commit_count, last_time, first_prompt }
+    }).collect())
+}
+
+pub async fn get_user_risk_summaries(pool: &SqlitePool, user_id: i64) -> Result<Vec<AiDiffSummary>> {
+    let rows = sqlx::query_as::<_, AiDiffSummary>(
+        "SELECT d.* FROM ai_diff_summaries d JOIN repositories r ON d.repo_id = r.id \
+         WHERE r.owner_id = ? AND d.risk_flags IS NOT NULL AND d.risk_flags != '[]'",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}

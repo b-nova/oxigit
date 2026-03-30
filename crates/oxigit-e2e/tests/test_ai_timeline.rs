@@ -2,9 +2,9 @@ mod harness;
 
 use harness::*;
 
-/// Test that pushing a commit with AI trailers causes metadata to appear in the commit detail.
+/// Test that pushing a commit with .oxigit/context.json causes metadata to appear in the commit detail.
 #[tokio::test]
-async fn test_ai_trailer_parsing_on_http_push() {
+async fn test_ai_context_on_http_push() {
     let server = TestServer::start().await;
     let client = server.client();
 
@@ -12,13 +12,13 @@ async fn test_ai_trailer_parsing_on_http_push() {
     client.login("alice", "password123").await;
     client.create_repo("airepo", "AI test repo", false).await;
 
-    // Clone, create commit with AI trailers, push
+    // Clone, create commit with .oxigit/context.json, push
     let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "airepo");
     let dest = server.data_dir.path().join("clone-ai");
     git_clone_http(&clone_url, &dest);
     init_repo_config(&dest);
 
-    create_commit_with_ai_trailers(
+    create_commit_with_oxigit_context(
         &dest,
         "hello.rs",
         "fn main() { println!(\"hello\"); }",
@@ -57,9 +57,9 @@ async fn test_ai_badge_in_commits_list() {
     git_clone_http(&clone_url, &dest);
     init_repo_config(&dest);
 
-    // One commit with trailers, one without
+    // One commit without AI context, one with
     create_commit(&dest, "file1.txt", "content", "regular commit");
-    create_commit_with_ai_trailers(
+    create_commit_with_oxigit_context(
         &dest,
         "file2.txt",
         "more content",
@@ -95,7 +95,7 @@ async fn test_manual_ai_metadata_attachment() {
     git_clone_http(&clone_url, &dest);
     init_repo_config(&dest);
 
-    // Push a regular commit (no AI trailers)
+    // Push a regular commit (no AI context)
     create_commit(&dest, "app.rs", "fn app() {}", "initial commit");
     let sha = get_head_sha(&dest);
     let push_result = git_push(&dest);
@@ -126,9 +126,9 @@ async fn test_manual_ai_metadata_attachment() {
     assert!(body.contains("aider"), "Expected manually attached AI tool in commit detail");
 }
 
-/// Test that AI trailers survive SSH push.
+/// Test that .oxigit/context.json survives SSH push.
 #[tokio::test]
-async fn test_ai_trailers_via_ssh_push() {
+async fn test_ai_context_via_ssh_push() {
     if !ssh_available() {
         eprintln!("Skipping SSH test — ssh-keygen not available");
         return;
@@ -151,8 +151,8 @@ async fn test_ai_trailers_via_ssh_push() {
     assert!(clone_result.status.success(), "SSH clone failed");
     init_repo_config(&dest);
 
-    // Create commit with AI trailers and push via SSH
-    create_commit_with_ai_trailers(
+    // Create commit with .oxigit/context.json and push via SSH
+    create_commit_with_oxigit_context(
         &dest,
         "main.py",
         "print('hello')",

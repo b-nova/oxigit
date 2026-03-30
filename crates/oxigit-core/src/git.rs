@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
+use tracing;
 
 use crate::error::{OxigitError, Result};
 
@@ -45,8 +46,8 @@ pub struct CommitInfo {
 /// List branches in a repository using git command.
 pub fn list_branches(repo_path: &Path) -> Result<Vec<String>> {
     let output = Command::new("git")
+        .env("GIT_DIR", repo_path)
         .args(["branch", "--format=%(refname:short)"])
-        .arg(format!("--git-dir={}", repo_path.display()))
         .output()?;
 
     if !output.status.success() {
@@ -401,83 +402,57 @@ pub fn branch_exists(repo_path: &Path, branch: &str) -> bool {
         .unwrap_or(false)
 }
 
-// --- AI Trailer Parsing ---
+// --- .oxigit/context.json AI metadata ---
 
-#[derive(Debug, Clone)]
-pub struct AiTrailers {
-    pub ai_tool: String,
-    pub ai_model: Option<String>,
-    pub ai_prompt: Option<String>,
-    pub ai_session_id: Option<String>,
-    pub ai_files_touched: Option<String>,
+#[derive(Debug, Clone, Deserialize)]
+pub struct OxigitContext {
+    pub tool: String,
+    pub model: Option<String>,
+    pub session_id: Option<String>,
+    pub prompt: Option<String>,
 }
 
-/// Parse AI-specific trailers from a git commit message.
-/// Trailers appear after the last blank line, in `Key: Value` format.
-/// Recognized keys: AI-Tool, AI-Model, AI-Session, AI-Prompt, AI-Files.
-pub fn parse_ai_trailers(commit_message: &str) -> Option<AiTrailers> {
-    // Trim trailing whitespace/blank lines from the message before parsing
-    let trimmed = commit_message.trim_end();
-
-    // Find the trailer block: lines after the last blank line
-    let mut trailer_start = None;
-    for (i, line) in trimmed.lines().enumerate() {
-        if line.trim().is_empty() {
-            trailer_start = Some(i + 1);
-        }
-    }
-
-    let trailer_start = trailer_start?;
-    let lines: Vec<&str> = trimmed.lines().collect();
-    let trailer_lines = &lines[trailer_start..];
-
-    let mut ai_tool = None;
-    let mut ai_model = None;
-    let mut ai_prompt = None;
-    let mut ai_session_id = None;
-    let mut ai_files_touched = None;
-
-    for line in trailer_lines {
-        if let Some((key, value)) = line.split_once(": ") {
-            let key = key.trim();
-            let value = value.trim();
-            match key {
-                "AI-Tool" => ai_tool = Some(value.to_string()),
-                "AI-Model" => ai_model = Some(value.to_string()),
-                "AI-Prompt" => ai_prompt = Some(value.to_string()),
-                "AI-Session" => ai_session_id = Some(value.to_string()),
-                "AI-Files" => {
-                    // Convert comma-separated file list to JSON array
-                    let files: Vec<String> = value.split(',').map(|s| s.trim().to_string()).collect();
-                    ai_files_touched = Some(serde_json::to_string(&files).unwrap_or_default());
-                }
-                _ => {}
-            }
-        }
-    }
-
-    let ai_tool = ai_tool?;
-    Some(AiTrailers {
-        ai_tool,
-        ai_model,
-        ai_prompt,
-        ai_session_id,
-        ai_files_touched,
-    })
-}
-
-/// Get the full commit message body (including trailers) for a single commit.
-pub fn get_full_commit_message(repo_path: &Path, sha: &str) -> Result<String> {
+/// Read `.oxigit/context.json` from a specific commit in a bare repo.
+/// Returns `Ok(None)` if the file doesn't exist at that commit.
+pub fn read_oxigit_context(repo_path: &Path, sha: &str) -> Result<Option<OxigitContext>> {
+    let object = format!("{}:.oxigit/context.json", sha);
     let output = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .args(["log", "-1", "--format=%B", sha])
+        .args(["show", &object])
         .output()?;
 
     if !output.status.success() {
-        return Err(OxigitError::NotFound(format!("Commit not found: {}", sha)));
+        return Ok(None);
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    let content = String::from_utf8_lossy(&output.stdout);
+    match serde_json::from_str::<OxigitContext>(&content) {
+        Ok(ctx) => Ok(Some(ctx)),
+        Err(e) => {
+            tracing::warn!("Malformed .oxigit/context.json in commit {}: {}", sha, e);
+            Ok(None)
+        }
+    }
+}
+
+/// List files changed by a commit (auto-detected via diff-tree).
+/// Excludes files under `.oxigit/`.
+pub fn list_changed_files(repo_path: &Path, sha: &str) -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["diff-tree", "--root", "--name-only", "-r", "--no-commit-id", sha])
+        .output()?;
+
+    if !output.status.success() {
+        return Ok(vec![]);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter(|s| !s.is_empty() && !s.starts_with(".oxigit/"))
+        .map(|s| s.to_string())
+        .collect())
 }
 
 /// Snapshot all refs in a repository. Returns a map of refname -> SHA.

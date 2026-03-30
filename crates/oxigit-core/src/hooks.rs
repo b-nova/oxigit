@@ -7,8 +7,8 @@ use tracing;
 use crate::db;
 use crate::git;
 
-/// Process post-receive hook: parse AI trailers from new commits and store metadata.
-/// Compares before/after ref snapshots to find new commits, then parses their messages.
+/// Process post-receive hook: detect AI metadata from `.oxigit/context.json` in new commits.
+/// Compares before/after ref snapshots to find new commits, reads context files, and auto-detects changed files.
 pub async fn process_post_receive(
     pool: &SqlitePool,
     repo_path: &Path,
@@ -55,29 +55,35 @@ pub async fn process_post_receive(
         };
 
         for sha in &shas {
-            let message = match git::get_full_commit_message(repo_path, sha) {
-                Ok(m) => m,
+            let context = match git::read_oxigit_context(repo_path, sha) {
+                Ok(Some(ctx)) => ctx,
+                Ok(None) => continue,
                 Err(e) => {
-                    tracing::warn!("Failed to get commit message for {}: {}", sha, e);
+                    tracing::warn!("Failed to read .oxigit/context.json for {}: {}", sha, e);
                     continue;
                 }
             };
 
-            if let Some(trailers) = git::parse_ai_trailers(&message) {
-                if let Err(e) = db::insert_ai_metadata(
-                    pool,
-                    repo_id,
-                    sha,
-                    &trailers.ai_tool,
-                    trailers.ai_model.as_deref(),
-                    trailers.ai_prompt.as_deref(),
-                    trailers.ai_session_id.as_deref(),
-                    trailers.ai_files_touched.as_deref(),
-                )
-                .await
-                {
-                    tracing::warn!("Failed to insert AI metadata for commit {}: {}", sha, e);
-                }
+            let files = git::list_changed_files(repo_path, sha).unwrap_or_default();
+            let files_json = if files.is_empty() {
+                None
+            } else {
+                Some(serde_json::to_string(&files).unwrap_or_default())
+            };
+
+            if let Err(e) = db::insert_ai_metadata(
+                pool,
+                repo_id,
+                sha,
+                &context.tool,
+                context.model.as_deref(),
+                context.prompt.as_deref(),
+                context.session_id.as_deref(),
+                files_json.as_deref(),
+            )
+            .await
+            {
+                tracing::warn!("Failed to insert AI metadata for commit {}: {}", sha, e);
             }
         }
     }

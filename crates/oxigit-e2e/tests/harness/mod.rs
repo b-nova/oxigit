@@ -785,7 +785,7 @@ pub fn create_commit(repo_dir: &Path, filename: &str, content: &str, message: &s
 }
 
 /// Create a file, add, and commit with AI trailers in the commit message.
-pub fn create_commit_with_ai_trailers(
+pub fn create_commit_with_oxigit_context(
     repo_dir: &Path,
     filename: &str,
     content: &str,
@@ -801,28 +801,31 @@ pub fn create_commit_with_ai_trailers(
     }
     std::fs::write(&file_path, content).expect("failed to write file");
 
+    // Write .oxigit/context.json
+    let oxigit_dir = repo_dir.join(".oxigit");
+    std::fs::create_dir_all(&oxigit_dir).expect("failed to create .oxigit dir");
+    let mut ctx = serde_json::json!({ "tool": ai_tool });
+    if let Some(model) = ai_model {
+        ctx["model"] = serde_json::json!(model);
+    }
+    if let Some(prompt) = ai_prompt {
+        ctx["prompt"] = serde_json::json!(prompt);
+    }
+    if let Some(session) = ai_session {
+        ctx["session_id"] = serde_json::json!(session);
+    }
+    std::fs::write(oxigit_dir.join("context.json"), ctx.to_string())
+        .expect("failed to write context.json");
+
     let status = Command::new("git")
-        .args(["add", filename])
+        .args(["add", filename, ".oxigit/context.json"])
         .current_dir(repo_dir)
         .output()
         .expect("git add failed");
     assert!(status.status.success(), "git add failed");
 
-    // Build commit message with trailers
-    let mut message = format!("{}\n\n", subject);
-    message.push_str(&format!("AI-Tool: {}\n", ai_tool));
-    if let Some(model) = ai_model {
-        message.push_str(&format!("AI-Model: {}\n", model));
-    }
-    if let Some(prompt) = ai_prompt {
-        message.push_str(&format!("AI-Prompt: {}\n", prompt));
-    }
-    if let Some(session) = ai_session {
-        message.push_str(&format!("AI-Session: {}\n", session));
-    }
-
     let status = Command::new("git")
-        .args(["commit", "-m", &message])
+        .args(["commit", "-m", subject])
         .current_dir(repo_dir)
         .env("GIT_AUTHOR_NAME", "Test User")
         .env("GIT_AUTHOR_EMAIL", "test@example.com")
@@ -832,7 +835,7 @@ pub fn create_commit_with_ai_trailers(
         .expect("git commit failed");
     assert!(
         status.status.success(),
-        "git commit with trailers failed: {}",
+        "git commit with oxigit context failed: {}",
         String::from_utf8_lossy(&status.stderr)
     );
 }

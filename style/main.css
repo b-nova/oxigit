@@ -465,6 +465,24 @@ a:hover {
     border-radius: var(--radius-sm);
 }
 
+.branch-select {
+    background: var(--bg-tertiary);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    width: auto;
+}
+
+.branch-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
 .badge svg {
     width: 12px;
     height: 12px;

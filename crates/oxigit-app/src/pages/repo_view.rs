@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_router::hooks::use_params_map;
+use leptos_router::hooks::{use_location, use_params_map};
 
 use crate::components::icons::{IconFile, IconFolder, IconLock};
 
@@ -138,13 +138,27 @@ pub fn RepoViewPage() -> impl IntoView {
     let owner = move || params.read().get("owner");
     let repo = move || params.read().get("repo");
 
+    let location = use_location();
+    let git_ref = move || {
+        let search = location.search.get();
+        search
+            .strip_prefix('?')
+            .unwrap_or(&search)
+            .split('&')
+            .find_map(|pair| {
+                let (k, v) = pair.split_once('=')?;
+                (k == "ref").then(|| v.to_string())
+            })
+            .unwrap_or_default()
+    };
+
     let tree = Resource::new(
-        move || (owner(), repo()),
-        move |(owner, repo)| {
+        move || (owner(), repo(), git_ref()),
+        move |(owner, repo, git_ref)| {
             fetch_repo_tree(
                 owner.unwrap_or_default(),
                 repo.unwrap_or_default(),
-                String::new(),
+                git_ref,
                 String::new(),
             )
         },
@@ -211,13 +225,28 @@ pub fn RepoViewPage() -> impl IntoView {
                             // Branch selector + nav buttons
                             {if !resp.branches.is_empty() {
                                 let cr = resp.current_ref.clone();
+                                let branches = resp.branches.clone();
+                                let nav_owner = owner_name.clone();
+                                let nav_repo = repo_name.clone();
                                 let issues_href = format!("/{}/{}/issues", owner_name, repo_name);
                                 let commits_href = format!("/{}/{}/commits", owner_name, repo_name);
                                 let pulls_href = format!("/{}/{}/pulls", owner_name, repo_name);
                                 let ai_href = format!("/{}/{}/ai-timeline", owner_name, repo_name);
                                 Some(view! {
                                     <div class="flex-row gap-2 mb-4">
-                                        <span class="badge-branch">{cr}</span>
+                                        <select
+                                            class="branch-select"
+                                            on:change=move |ev| {
+                                                let selected = event_target_value(&ev);
+                                                let url = format!("/{}/{}?ref={}", nav_owner, nav_repo, selected);
+                                                let _ = window().location().set_href(&url);
+                                            }
+                                        >
+                                            {branches.iter().map(|b| {
+                                                let is_selected = *b == cr;
+                                                view! { <option value={b.clone()} selected=is_selected>{b.clone()}</option> }
+                                            }).collect::<Vec<_>>()}
+                                        </select>
                                         <a href={issues_href} class="btn btn-sm">"Issues"</a>
                                         <a href={commits_href} class="btn btn-sm">"Commits"</a>
                                         <a href={pulls_href} class="btn btn-sm">"Pull Requests"</a>
@@ -281,15 +310,19 @@ git push -u origin main", existing_repo_url)}</pre>
                             } else {
                                 let owner_for_list = owner_name.clone();
                                 let repo_for_list = repo_name.clone();
+                                let ref_query = {
+                                    let r = git_ref();
+                                    if r.is_empty() { String::new() } else { format!("?ref={}", r) }
+                                };
                                 view! {
                                     <div class="card-flush" style="border-top-left-radius: 0; border-top-right-radius: 0;">
                                         <ul class="file-tree">
                                             {resp.entries.into_iter().map(|entry| {
                                                 let name = entry.name.clone();
                                                 let href = if entry.is_dir {
-                                                    format!("/{}/{}/tree/{}", owner_for_list, repo_for_list, name)
+                                                    format!("/{}/{}/tree/{}{}", owner_for_list, repo_for_list, name, ref_query)
                                                 } else {
-                                                    format!("/{}/{}/blob/{}", owner_for_list, repo_for_list, name)
+                                                    format!("/{}/{}/blob/{}{}", owner_for_list, repo_for_list, name, ref_query)
                                                 };
                                                 let size_str = if entry.is_dir {
                                                     String::new()

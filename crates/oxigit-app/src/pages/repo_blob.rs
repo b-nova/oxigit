@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_router::hooks::use_params_map;
+use leptos_router::hooks::{use_location, use_params_map};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -16,6 +16,7 @@ async fn get_blob(
     owner: String,
     repo: String,
     path: String,
+    git_ref: String,
 ) -> Result<BlobResponse, ServerFnError> {
     use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
     use oxigit_core::{db, git};
@@ -34,9 +35,13 @@ async fn get_blob(
 
     let repo_path = git::repo_path(&data_dir, &owner, &repo);
 
-    let git_ref = git::default_branch(&repo_path)
-        .unwrap_or(None)
-        .unwrap_or_else(|| "main".to_string());
+    let git_ref = if git_ref.is_empty() {
+        git::default_branch(&repo_path)
+            .unwrap_or(None)
+            .unwrap_or_else(|| "main".to_string())
+    } else {
+        git_ref
+    };
 
     let content = git::read_blob(&repo_path, &git_ref, &path)
         .map_err(|e| ServerFnError::new(e.to_string()))?;
@@ -105,13 +110,28 @@ pub fn RepoBlobPage() -> impl IntoView {
     let repo = move || params.read().get("repo");
     let path = move || params.read().get("path");
 
+    let location = use_location();
+    let git_ref = move || {
+        let search = location.search.get();
+        search
+            .strip_prefix('?')
+            .unwrap_or(&search)
+            .split('&')
+            .find_map(|pair| {
+                let (k, v) = pair.split_once('=')?;
+                (k == "ref").then(|| v.to_string())
+            })
+            .unwrap_or_default()
+    };
+
     let blob = Resource::new(
-        move || (owner(), repo(), path()),
-        move |(owner, repo, path)| {
+        move || (owner(), repo(), path(), git_ref()),
+        move |(owner, repo, path, git_ref)| {
             get_blob(
                 owner.unwrap_or_default(),
                 repo.unwrap_or_default(),
                 path.unwrap_or_default(),
+                git_ref,
             )
         },
     );

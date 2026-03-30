@@ -192,8 +192,10 @@ impl Handler for OxigitSshHandler {
 
         let pool = self.pool.clone();
         let is_receive = service == "git-receive-pack";
+        let ssh_owner = owner.clone();
+        let ssh_repo = repo_name.clone();
         tokio::spawn(async move {
-            if let Err(e) = run_git_over_channel(&service, &path, &mut channel, is_receive, repo_db_id, &pool).await {
+            if let Err(e) = run_git_over_channel(&service, &path, &mut channel, is_receive, repo_db_id, &pool, &ssh_owner, &ssh_repo).await {
                 tracing::error!("Git SSH error: {}", e);
             }
         });
@@ -209,6 +211,8 @@ async fn run_git_over_channel(
     is_receive: bool,
     repo_db_id: Option<i64>,
     pool: &SqlitePool,
+    owner: &str,
+    repo_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Capture refs before push for AI metadata processing
     let before_refs = if is_receive {
@@ -298,6 +302,9 @@ async fn run_git_over_channel(
                                     rid,
                                     &before_refs,
                                     &after_refs,
+                                    owner,
+                                    repo_name,
+                                    "",
                                 )
                                 .await;
                             }

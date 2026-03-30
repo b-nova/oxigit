@@ -1,5 +1,7 @@
 use leptos::prelude::*;
 
+use super::get_current_user;
+
 #[server]
 async fn register_user(
     username: String,
@@ -21,6 +23,7 @@ async fn register_user(
 
 #[component]
 pub fn RegisterPage() -> impl IntoView {
+    let user = Resource::new(|| (), |_| get_current_user());
     let register_action = ServerAction::<RegisterUser>::new();
     let error = move || {
         register_action.value().get().and_then(|r| {
@@ -29,33 +32,48 @@ pub fn RegisterPage() -> impl IntoView {
     };
 
     view! {
-        <div class="auth-container">
-            <div class="card">
-                <h1 class="card-header">"Create your account"</h1>
-                {move || error().map(|e| view! {
-                    <div class="flash flash-error">{e}</div>
-                })}
-                <ActionForm action=register_action>
-                    <div class="form-group">
-                        <label for="username">"Username"</label>
-                        <input type="text" id="username" name="username" required autocomplete="username" />
+        <Suspense fallback=|| ()>
+            {move || Suspend::new(async move {
+                if let Ok(Some(_)) = user.await {
+                    return view! {
+                        <div class="auth-container text-center">
+                            <p>"You are already signed in."</p>
+                            <a href="/repos" class="btn btn-primary mt-4">"Go to Repositories"</a>
+                        </div>
+                    }.into_any();
+                }
+
+                view! {
+                    <div class="auth-container animate-in">
+                        <div class="card">
+                            <h1 class="card-header">"Create your account"</h1>
+                            {move || error().map(|e| view! {
+                                <div class="flash flash-error">{e}</div>
+                            })}
+                            <ActionForm action=register_action>
+                                <div class="form-group">
+                                    <label for="username">"Username"</label>
+                                    <input type="text" id="username" name="username" required autocomplete="username" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="email">"Email"</label>
+                                    <input type="email" id="email" name="email" required autocomplete="email" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="password">"Password"</label>
+                                    <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password" />
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-full">
+                                    "Create account"
+                                </button>
+                            </ActionForm>
+                            <p class="auth-footer">
+                                "Already have an account? " <a href="/login">"Sign in"</a>
+                            </p>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="email">"Email"</label>
-                        <input type="email" id="email" name="email" required autocomplete="email" />
-                    </div>
-                    <div class="form-group">
-                        <label for="password">"Password"</label>
-                        <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password" />
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">
-                        "Create account"
-                    </button>
-                </ActionForm>
-                <p style="text-align: center; margin-top: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
-                    "Already have an account? " <a href="/login">"Sign in"</a>
-                </p>
-            </div>
-        </div>
+                }.into_any()
+            })}
+        </Suspense>
     }
 }

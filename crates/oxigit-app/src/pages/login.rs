@@ -1,11 +1,6 @@
 use leptos::prelude::*;
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LoginForm {
-    pub username: String,
-    pub password: String,
-}
+use super::get_current_user;
 
 #[server]
 async fn login_user(username: String, password: String) -> Result<(), ServerFnError> {
@@ -24,6 +19,7 @@ async fn login_user(username: String, password: String) -> Result<(), ServerFnEr
 
 #[component]
 pub fn LoginPage() -> impl IntoView {
+    let user = Resource::new(|| (), |_| get_current_user());
     let login_action = ServerAction::<LoginUser>::new();
     let error = move || {
         login_action.value().get().and_then(|r| {
@@ -32,29 +28,45 @@ pub fn LoginPage() -> impl IntoView {
     };
 
     view! {
-        <div class="auth-container">
-            <div class="card">
-                <h1 class="card-header">"Sign in to Oxigit"</h1>
-                {move || error().map(|e| view! {
-                    <div class="flash flash-error">{e}</div>
-                })}
-                <ActionForm action=login_action>
-                    <div class="form-group">
-                        <label for="username">"Username"</label>
-                        <input type="text" id="username" name="username" required autocomplete="username" />
+        <Suspense fallback=|| ()>
+            {move || Suspend::new(async move {
+                // Redirect if already logged in
+                if let Ok(Some(_)) = user.await {
+                    return view! {
+                        <div class="auth-container text-center">
+                            <p>"You are already signed in."</p>
+                            <a href="/repos" class="btn btn-primary mt-4">"Go to Repositories"</a>
+                        </div>
+                    }.into_any();
+                }
+
+                view! {
+                    <div class="auth-container animate-in">
+                        <div class="card">
+                            <h1 class="card-header">"Sign in to Oxigit"</h1>
+                            {move || error().map(|e| view! {
+                                <div class="flash flash-error">{e}</div>
+                            })}
+                            <ActionForm action=login_action>
+                                <div class="form-group">
+                                    <label for="username">"Username"</label>
+                                    <input type="text" id="username" name="username" required autocomplete="username" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="password">"Password"</label>
+                                    <input type="password" id="password" name="password" required autocomplete="current-password" />
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-full">
+                                    "Sign in"
+                                </button>
+                            </ActionForm>
+                            <p class="auth-footer">
+                                "Don't have an account? " <a href="/register">"Sign up"</a>
+                            </p>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="password">"Password"</label>
-                        <input type="password" id="password" name="password" required autocomplete="current-password" />
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">
-                        "Sign in"
-                    </button>
-                </ActionForm>
-                <p style="text-align: center; margin-top: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
-                    "Don't have an account? " <a href="/register">"Sign up"</a>
-                </p>
-            </div>
-        </div>
+                }.into_any()
+            })}
+        </Suspense>
     }
 }

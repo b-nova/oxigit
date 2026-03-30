@@ -1,6 +1,31 @@
-/target
-/data
+# Build artifacts
+/target/
+/dist/
+/pkg/
+
+# Data directory (runtime)
+/data/
+
+# Database
 *.db
 *.db-shm
 *.db-wal
+
+# Environment / secrets
 .env
+.env.*
+secret_key
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Node (if any tooling)
+node_modules/

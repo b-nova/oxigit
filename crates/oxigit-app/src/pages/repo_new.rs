@@ -19,7 +19,7 @@ async fn create_repo(
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    leptos_axum::redirect("/repos");
+    leptos_axum::redirect(&format!("/{}/{}", user.username, name));
     Ok(())
 }
 
@@ -33,7 +33,7 @@ pub fn NewRepoPage() -> impl IntoView {
     };
 
     view! {
-        <div class="auth-container">
+        <div class="auth-container animate-in">
             <div class="card">
                 <h1 class="card-header">"Create a new repository"</h1>
                 {move || error().map(|e| view! {
@@ -48,11 +48,11 @@ pub fn NewRepoPage() -> impl IntoView {
                         <label for="description">"Description (optional)"</label>
                         <input type="text" id="description" name="description" />
                     </div>
-                    <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
-                        <input type="checkbox" id="is_private" name="is_private" value="true" />
-                        <label for="is_private" style="margin-bottom: 0;">"Private repository"</label>
+                    <div class="form-group form-inline">
+                        <input type="checkbox" id="is_private" name="is_private" value="true" class="form-checkbox" />
+                        <label for="is_private">"Private repository"</label>
                     </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">
+                    <button type="submit" class="btn btn-primary btn-full">
                         "Create repository"
                     </button>
                 </ActionForm>

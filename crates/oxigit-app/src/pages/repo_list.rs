@@ -1,9 +1,11 @@
 use leptos::prelude::*;
 
+use crate::components::icons::IconLock;
+
 use super::RepoInfo;
 
 #[server]
-async fn list_repos() -> Result<Vec<RepoInfo>, ServerFnError> {
+async fn list_repos() -> Result<(String, Vec<RepoInfo>), ServerFnError> {
     use crate::server_fns::{extract_session_user, get_pool};
     use oxigit_core::db;
 
@@ -13,7 +15,8 @@ async fn list_repos() -> Result<Vec<RepoInfo>, ServerFnError> {
     let pool = get_pool().await?;
     let repos = db::list_user_repositories(&pool, user.id).await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    Ok(repos
+    let username = user.username.clone();
+    Ok((username, repos
         .into_iter()
         .map(|r| RepoInfo {
             id: r.id,
@@ -22,7 +25,7 @@ async fn list_repos() -> Result<Vec<RepoInfo>, ServerFnError> {
             is_private: r.is_private,
             created_at: r.created_at,
         })
-        .collect())
+        .collect()))
 }
 
 #[component]
@@ -31,46 +34,50 @@ pub fn RepoListPage() -> impl IntoView {
 
     view! {
         <div class="page-header">
-            <h1>"Your repositories"</h1>
+            <h1 class="page-title">"Your repositories"</h1>
             <a href="/repos/new" class="btn btn-primary">"New repository"</a>
         </div>
-        <div class="card">
-            <Suspense fallback=|| view! { <p>"Loading..."</p> }>
+        <div class="card-flush">
+            <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
                 {move || Suspend::new(async move {
                     match repos.await {
-                        Ok(repos) if repos.is_empty() => view! {
-                            <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">
-                                "No repositories yet. " <a href="/repos/new">"Create one!"</a>
-                            </p>
+                        Ok((_, repos)) if repos.is_empty() => view! {
+                            <div class="empty-state">
+                                <p class="empty-state-title">"No repositories yet."</p>
+                                <p class="empty-state-text"><a href="/repos/new">"Create one!"</a></p>
+                            </div>
                         }.into_any(),
-                        Ok(repos) => view! {
-                            <ul class="repo-list">
+                        Ok((username, repos)) => view! {
+                            <ul class="list">
                                 {repos.into_iter().map(|repo| {
                                     let name = repo.name.clone();
-                                    let href = format!("/repos/{}", name);
+                                    let href = format!("/{}/{}", username, name);
                                     let desc = repo.description.clone();
                                     let created = repo.created_at.clone();
                                     view! {
-                                        <li class="repo-item">
+                                        <li class="list-item">
                                             <div>
-                                                <div class="repo-name">
-                                                    <a href={href}>{name}</a>
+                                                <div class="flex-row gap-2">
+                                                    <a href={href} class="list-item-title">{name}</a>
                                                     {repo.is_private.then(|| view! {
-                                                        <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-secondary); border: 1px solid var(--border); padding: 0.125rem 0.375rem; border-radius: 1rem;">"Private"</span>
+                                                        <span class="badge badge-private">
+                                                            <IconLock />
+                                                            "Private"
+                                                        </span>
                                                     })}
                                                 </div>
                                                 {(!desc.is_empty()).then(|| view! {
-                                                    <p class="repo-description">{desc.clone()}</p>
+                                                    <p class="list-item-desc">{desc.clone()}</p>
                                                 })}
                                             </div>
-                                            <span class="repo-meta">{created}</span>
+                                            <span class="list-item-meta">{created}</span>
                                         </li>
                                     }
                                 }).collect::<Vec<_>>()}
                             </ul>
                         }.into_any(),
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <div class="flash flash-error" style="margin: var(--space-4);">{e.to_string()}</div>
                         }.into_any(),
                     }
                 })}

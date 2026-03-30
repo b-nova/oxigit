@@ -1,0 +1,15 @@
+services:
+  oxigit:
+    build: .
+    ports:
+      - "9100:9100"
+      - "2222:2222"
+    volumes:
+      - oxigit-data:/app/data
+    environment:
+      - OXIGIT_HTTP_ADDR=0.0.0.0:9100
+      - OXIGIT_SSH_ADDR=0.0.0.0:2222
+      - RUST_LOG=info
+
+volumes:
+  oxigit-data:

@@ -5,6 +5,7 @@ members = [
     "crates/oxigit-app",
     "crates/oxigit-server",
     "crates/oxigit-ssh",
+    "crates/oxigit-e2e",
 ]
 
 [workspace.dependencies]
@@ -27,11 +28,13 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
 gix = { version = "0.72", default-features = false, features = ["basic", "index"] }
 
 # SSH
-russh = "0.48"
-russh-keys = "0.48"
+russh = "0.50"
+russh-keys = "0.50.0-beta.7"
+ssh-key = { version = "0.6", features = ["std"] }
 
 # Auth
-argon2 = "0.5"
+argon2 = { version = "0.5", features = ["rand"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -39,6 +42,12 @@ serde_json = "1"
 
 # Utilities
 uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+base64 = "0.22"
+pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2"
@@ -51,28 +60,29 @@ clap = { version = "4", features = ["derive", "env"] }
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
 
-[workspace.metadata.leptos]
+[[workspace.metadata.leptos]]
+name = "oxigit"
 output-name = "oxigit"
 site-root = "target/site"
 site-pkg-dir = "pkg"
 style-file = "style/main.css"
 assets-dir = "public"
-site-addr = "127.0.0.1:3000"
-reload-port = 3001
+site-addr = "127.0.0.1:9100"
+reload-port = 9101
 end2end-cmd = "echo 'no e2e tests yet'"
 end2end-dir = "."
 browserquery = "defaults"
-lib-cargo-args = ""
-bin-cargo-args = ""
+lib-cargo-args = []
+bin-cargo-args = []
 
 # Leptos lib crate (compiled to WASM)
-lib-name = "oxigit_app"
+lib-package = "oxigit-app"
 lib-default-features = false
 lib-features = ["hydrate"]
 lib-profile-release = "wasm-release"
 
 # Leptos bin crate (server binary)
-bin-name = "oxigit-server"
+bin-package = "oxigit-server"
 bin-default-features = false
 bin-features = ["ssr"]
 bin-profile-release = "server-release"

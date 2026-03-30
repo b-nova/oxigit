@@ -20,6 +20,11 @@ axum = { workspace = true, optional = true }
 oxigit-core = { path = "../oxigit-core", optional = true }
 tokio = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+pulldown-cmark = { workspace = true, optional = true }
+syntect = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
 
 # Client-side only
 wasm-bindgen = { workspace = true, optional = true }
@@ -40,4 +45,9 @@ ssr = [
     "dep:oxigit-core",
     "dep:tokio",
     "dep:sqlx",
+    "dep:sha2",
+    "dep:pulldown-cmark",
+    "dep:syntect",
+    "dep:hmac",
+    "dep:hex",
 ]

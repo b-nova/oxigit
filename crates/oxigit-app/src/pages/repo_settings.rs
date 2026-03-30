@@ -3,6 +3,12 @@ use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+struct HookStatus {
+    tool_id: String,
+    up_to_date: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CollaboratorInfo {
     pub user_id: i64,
     pub username: String,
@@ -284,7 +290,7 @@ async fn install_ai_hook(
 async fn check_installed_hooks(
     owner: String,
     repo: String,
-) -> Result<Vec<String>, ServerFnError> {
+) -> Result<Vec<HookStatus>, ServerFnError> {
     use crate::server_fns::get_data_dir;
     use oxigit_core::git;
 
@@ -296,14 +302,19 @@ async fn check_installed_hooks(
         _ => return Ok(vec![]),
     };
 
-    let mut installed = Vec::new();
+    let mut statuses = Vec::new();
     for tool in AI_TOOLS {
-        let entries = git::list_tree(&repo_path, &branch, tool.hook_dir).unwrap_or_default();
-        if entries.iter().any(|e| e.name == "oxigit-context.sh") {
-            installed.push(tool.tool_id.to_string());
+        let script_path = format!("{}/oxigit-context.sh", tool.hook_dir);
+        if let Ok(installed_content) = git::read_blob(&repo_path, &branch, &script_path) {
+            let expected = hook_script(tool.tool_id, tool.extra_session);
+            let up_to_date = String::from_utf8_lossy(&installed_content).as_ref() == expected;
+            statuses.push(HookStatus {
+                tool_id: tool.tool_id.to_string(),
+                up_to_date,
+            });
         }
     }
-    Ok(installed)
+    Ok(statuses)
 }
 
 #[component]
@@ -449,11 +460,15 @@ pub fn RepoSettingsPage() -> impl IntoView {
                 let display_name = tool.display_name.to_string();
                 let hook_dir = tool.hook_dir.to_string();
                 let config_path = tool.config_path.to_string();
-                let is_installed = Memo::new(move |_| {
+                // None = not installed, Some(true) = up to date, Some(false) = outdated
+                let hook_status = Memo::new(move |_| {
                     installed_hooks.get()
                         .and_then(|r| r.ok())
-                        .map(|ids| ids.contains(&tool_id_check))
-                        .unwrap_or(false)
+                        .and_then(|statuses| {
+                            statuses.iter()
+                                .find(|s| s.tool_id == tool_id_check)
+                                .map(|s| s.up_to_date)
+                        })
                 });
                 view! {
                     <div class="list-item">
@@ -470,10 +485,14 @@ pub fn RepoSettingsPage() -> impl IntoView {
                             <button
                                 type="submit"
                                 class="btn btn-sm"
-                                class:btn-primary=move || !is_installed.get()
-                                disabled=move || is_installed.get()
+                                class:btn-primary=move || !matches!(hook_status.get(), Some(true))
+                                disabled=move || hook_status.get() == Some(true)
                             >
-                                {move || if is_installed.get() { "Installed" } else { "Install" }}
+                                {move || match hook_status.get() {
+                                    None => "Install",
+                                    Some(true) => "Installed",
+                                    Some(false) => "Update",
+                                }}
                             </button>
                         </ActionForm>
                     </div>

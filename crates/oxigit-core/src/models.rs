@@ -130,3 +130,26 @@ pub struct UserSettings {
     pub llm_base_url: Option<String>,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct RepoWebhook {
+    pub id: i64,
+    pub repo_id: i64,
+    pub url: String,
+    pub secret: Option<String>,
+    pub events: String,
+    pub active: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct DeployPreview {
+    pub id: i64,
+    pub repo_id: i64,
+    pub commit_sha: String,
+    pub branch: String,
+    pub preview_url: Option<String>,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}

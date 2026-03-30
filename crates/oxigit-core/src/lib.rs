@@ -6,3 +6,4 @@ pub mod hooks;
 pub mod llm;
 pub mod models;
 pub mod risk;
+pub mod webhook;

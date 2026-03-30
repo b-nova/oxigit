@@ -186,9 +186,12 @@ pub async fn receive_pack(
 
     let response = run_git_service("git-receive-pack", &path, &body).await;
 
-    // After push: capture refs again and process AI trailers in background
+    // After push: capture refs again and process AI trailers + webhooks in background
     let pool_clone = pool.clone();
     let path_clone = path.clone();
+    let owner_clone = owner.clone();
+    let repo_name_clone = repo_name.to_string();
+    let base_url = format!("http://{}", state.leptos_options.site_addr);
     tokio::spawn(async move {
         let after_refs = oxigit_core::git::capture_refs(&path_clone).unwrap_or_default();
         oxigit_core::hooks::process_post_receive(
@@ -197,11 +200,49 @@ pub async fn receive_pack(
             repo_db_id,
             &before_refs,
             &after_refs,
+            &owner_clone,
+            &repo_name_clone,
+            &base_url,
         )
         .await;
     });
 
     response
+}
+
+/// POST /api/deploy-callback/:commit_sha — Receive deploy preview URL from external service.
+pub async fn deploy_callback(
+    Path(commit_sha): Path<String>,
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::Json(payload): axum::Json<DeployCallbackPayload>,
+) -> Response {
+    let pool = &state.pool;
+
+    let (_, repo_db) = match db::get_repository(pool, &payload.repo_owner, &payload.repo_name).await {
+        Ok(r) => r,
+        Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
+    };
+
+    match db::update_deploy_preview(
+        pool,
+        repo_db.id,
+        &commit_sha,
+        &payload.preview_url,
+        &payload.status,
+    )
+    .await
+    {
+        Ok(_) => (StatusCode::OK, "OK").into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "Deploy preview not found").into_response(),
+    }
+}
+
+#[derive(::serde::Deserialize)]
+pub struct DeployCallbackPayload {
+    pub repo_owner: String,
+    pub repo_name: String,
+    pub status: String,
+    pub preview_url: String,
 }
 
 async fn run_git_service(service: &str, repo_path: &std::path::Path, input: &[u8]) -> Response {

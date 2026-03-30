@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::auth::{hash_password, validate_repo_name, validate_username, verify_password};
 use crate::error::{OxigitError, Result};
-use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, Issue, IssueComment, PullRequest, Repository, SshKey, User, UserSettings};
+use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, DeployPreview, Issue, IssueComment, PullRequest, RepoWebhook, Repository, SshKey, User, UserSettings};
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
@@ -955,4 +955,109 @@ pub async fn upsert_user_settings(
     .fetch_one(pool)
     .await?;
     Ok(row)
+}
+
+// --- Webhook queries ---
+
+pub async fn create_webhook(
+    pool: &SqlitePool,
+    repo_id: i64,
+    url: &str,
+    secret: Option<&str>,
+) -> Result<RepoWebhook> {
+    let hook = sqlx::query_as::<_, RepoWebhook>(
+        "INSERT INTO repo_webhooks (repo_id, url, secret) VALUES (?, ?, ?) RETURNING *",
+    )
+    .bind(repo_id)
+    .bind(url)
+    .bind(secret)
+    .fetch_one(pool)
+    .await?;
+    Ok(hook)
+}
+
+pub async fn list_webhooks(pool: &SqlitePool, repo_id: i64) -> Result<Vec<RepoWebhook>> {
+    let hooks = sqlx::query_as::<_, RepoWebhook>(
+        "SELECT * FROM repo_webhooks WHERE repo_id = ? ORDER BY created_at DESC",
+    )
+    .bind(repo_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(hooks)
+}
+
+pub async fn get_active_webhooks(pool: &SqlitePool, repo_id: i64) -> Result<Vec<RepoWebhook>> {
+    let hooks = sqlx::query_as::<_, RepoWebhook>(
+        "SELECT * FROM repo_webhooks WHERE repo_id = ? AND active = 1",
+    )
+    .bind(repo_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(hooks)
+}
+
+pub async fn delete_webhook(pool: &SqlitePool, webhook_id: i64, repo_id: i64) -> Result<()> {
+    let result = sqlx::query("DELETE FROM repo_webhooks WHERE id = ? AND repo_id = ?")
+        .bind(webhook_id)
+        .bind(repo_id)
+        .execute(pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(OxigitError::NotFound("Webhook not found".into()));
+    }
+    Ok(())
+}
+
+// --- Deploy Preview queries ---
+
+pub async fn create_deploy_preview(
+    pool: &SqlitePool,
+    repo_id: i64,
+    commit_sha: &str,
+    branch: &str,
+) -> Result<DeployPreview> {
+    let preview = sqlx::query_as::<_, DeployPreview>(
+        "INSERT OR REPLACE INTO deploy_previews (repo_id, commit_sha, branch) VALUES (?, ?, ?) RETURNING *",
+    )
+    .bind(repo_id)
+    .bind(commit_sha)
+    .bind(branch)
+    .fetch_one(pool)
+    .await?;
+    Ok(preview)
+}
+
+pub async fn update_deploy_preview(
+    pool: &SqlitePool,
+    repo_id: i64,
+    commit_sha: &str,
+    preview_url: &str,
+    status: &str,
+) -> Result<DeployPreview> {
+    let preview = sqlx::query_as::<_, DeployPreview>(
+        "UPDATE deploy_previews SET preview_url = ?, status = ?, updated_at = datetime('now') \
+         WHERE repo_id = ? AND commit_sha = ? RETURNING *",
+    )
+    .bind(preview_url)
+    .bind(status)
+    .bind(repo_id)
+    .bind(commit_sha)
+    .fetch_one(pool)
+    .await?;
+    Ok(preview)
+}
+
+pub async fn get_deploy_preview(
+    pool: &SqlitePool,
+    repo_id: i64,
+    commit_sha: &str,
+) -> Result<Option<DeployPreview>> {
+    let preview = sqlx::query_as::<_, DeployPreview>(
+        "SELECT * FROM deploy_previews WHERE repo_id = ? AND commit_sha = ?",
+    )
+    .bind(repo_id)
+    .bind(commit_sha)
+    .fetch_optional(pool)
+    .await?;
+    Ok(preview)
 }

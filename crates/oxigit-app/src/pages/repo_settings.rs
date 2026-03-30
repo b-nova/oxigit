@@ -317,6 +317,98 @@ async fn check_installed_hooks(
     Ok(statuses)
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WebhookInfo {
+    pub id: i64,
+    pub url: String,
+    pub active: bool,
+    pub created_at: String,
+}
+
+#[server]
+async fn list_repo_webhooks(
+    owner: String,
+    repo: String,
+) -> Result<Vec<WebhookInfo>, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_pool};
+    use oxigit_core::db;
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    if repo_db.owner_id != user.id {
+        return Err(ServerFnError::new("Not authorized"));
+    }
+
+    let hooks = db::list_webhooks(&pool, repo_db.id)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    Ok(hooks.into_iter().map(|h| WebhookInfo {
+        id: h.id,
+        url: h.url,
+        active: h.active,
+        created_at: h.created_at,
+    }).collect())
+}
+
+#[server]
+async fn add_webhook(
+    owner: String,
+    repo: String,
+    url: String,
+    secret: String,
+) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_pool};
+    use oxigit_core::db;
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    if repo_db.owner_id != user.id {
+        return Err(ServerFnError::new("Not authorized"));
+    }
+
+    let secret = if secret.is_empty() { None } else { Some(secret) };
+    db::create_webhook(&pool, repo_db.id, &url, secret.as_deref())
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    Ok(())
+}
+
+#[server]
+async fn delete_webhook(
+    owner: String,
+    repo: String,
+    webhook_id: i64,
+) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_pool};
+    use oxigit_core::db;
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    if repo_db.owner_id != user.id {
+        return Err(ServerFnError::new("Not authorized"));
+    }
+
+    db::delete_webhook(&pool, webhook_id, repo_db.id)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    Ok(())
+}
+
 #[component]
 pub fn RepoSettingsPage() -> impl IntoView {
     let params = use_params_map();
@@ -331,6 +423,13 @@ pub fn RepoSettingsPage() -> impl IntoView {
     let add_action = ServerAction::<AddCollaborator>::new();
     let remove_action = ServerAction::<RemoveCollaborator>::new();
     let install_hook_action = ServerAction::<InstallAiHook>::new();
+    let add_webhook_action = ServerAction::<AddWebhook>::new();
+    let delete_webhook_action = ServerAction::<DeleteWebhook>::new();
+
+    let webhooks = Resource::new(
+        move || (owner(), repo()),
+        move |(o, r)| list_repo_webhooks(o, r),
+    );
 
     let installed_hooks = Resource::new(
         move || (owner(), repo()),
@@ -346,6 +445,12 @@ pub fn RepoSettingsPage() -> impl IntoView {
     Effect::new(move || {
         install_hook_action.version().get();
         installed_hooks.refetch();
+    });
+
+    Effect::new(move || {
+        add_webhook_action.version().get();
+        delete_webhook_action.version().get();
+        webhooks.refetch();
     });
 
     let error = move || {
@@ -498,6 +603,74 @@ pub fn RepoSettingsPage() -> impl IntoView {
                     </div>
                 }
             }).collect::<Vec<_>>()}
+        </div>
+
+        // Webhooks section
+        <div class="card mt-6">
+            <div class="card-header">"Webhooks"</div>
+            <div style="padding: var(--space-4);">
+                <p class="text-secondary mb-3" style="font-size: 0.8125rem;">
+                    "Configure webhooks to trigger deploy previews on push (e.g., Vercel, Netlify)."
+                </p>
+                <ActionForm action=add_webhook_action>
+                    <input type="hidden" name="owner" value={move || owner()} />
+                    <input type="hidden" name="repo" value={move || repo()} />
+                    <div class="form-group">
+                        <label for="webhook_url">"Webhook URL"</label>
+                        <input type="url" id="webhook_url" name="url" required placeholder="https://api.vercel.com/deploy" />
+                    </div>
+                    <div class="form-group">
+                        <label for="webhook_secret">"Secret (optional)"</label>
+                        <input type="text" id="webhook_secret" name="secret" placeholder="For HMAC signing" />
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">"Add webhook"</button>
+                </ActionForm>
+            </div>
+
+            <Suspense fallback=|| ()>
+                {move || {
+                    let on = owner();
+                    let rn = repo();
+                    Suspend::new(async move {
+                        match webhooks.await {
+                            Ok(hooks) if hooks.is_empty() => view! {
+                                <p class="text-secondary" style="padding: 0 var(--space-4) var(--space-4);">"No webhooks configured."</p>
+                            }.into_any(),
+                            Ok(hooks) => {
+                            let hook_owner = on.clone();
+                            let hook_repo = rn.clone();
+                            view! {
+                                <ul class="list">
+                                    {hooks.into_iter().map(|hook| {
+                                        let url = hook.url.clone();
+                                        let hid = hook.id;
+                                        let ho = hook_owner.clone();
+                                        let hr = hook_repo.clone();
+                                        view! {
+                                            <li class="list-item">
+                                                <div>
+                                                    <code class="font-mono" style="font-size: 0.8125rem;">{url}</code>
+                                                    <div class="list-item-meta">"Added " {hook.created_at.clone()}</div>
+                                                </div>
+                                                <ActionForm action=delete_webhook_action>
+                                                    <input type="hidden" name="owner" value={ho} />
+                                                    <input type="hidden" name="repo" value={hr} />
+                                                    <input type="hidden" name="webhook_id" value={hid.to_string()} />
+                                                    <button type="submit" class="btn btn-danger btn-sm">"Delete"</button>
+                                                </ActionForm>
+                                            </li>
+                                        }
+                                    }).collect::<Vec<_>>()}
+                                </ul>
+                            }.into_any()
+                        }
+                            Err(e) => view! {
+                                <div class="flash flash-error">{e.to_string()}</div>
+                            }.into_any(),
+                        }
+                    })
+                }}
+            </Suspense>
         </div>
     }
 }

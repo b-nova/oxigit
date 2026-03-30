@@ -10,6 +10,8 @@ pub struct CommitDetail {
     pub commit: CommitSummary,
     pub diff_html: String,
     pub ai_metadata: Option<AiMetadataInfo>,
+    pub preview_url: Option<String>,
+    pub preview_status: Option<String>,
 }
 
 #[server]
@@ -56,6 +58,9 @@ async fn fetch_commit_diff(
             }
         });
 
+    // Check for deploy preview
+    let preview = db::get_deploy_preview(&pool, repo_db.id, &sha).await.ok().flatten();
+
     Ok(CommitDetail {
         commit: CommitSummary {
             message: commit_info.message,
@@ -64,6 +69,8 @@ async fn fetch_commit_diff(
         },
         diff_html,
         ai_metadata,
+        preview_url: preview.as_ref().and_then(|p| p.preview_url.clone()),
+        preview_status: preview.map(|p| p.status),
     })
 }
 
@@ -361,6 +368,14 @@ pub fn CommitViewPage() -> impl IntoView {
                                     <div class="commit-meta">
                                         {d.commit.author.clone()} " committed " {d.commit.time.clone()}
                                     </div>
+                                    {d.preview_url.clone().map(|url| view! {
+                                        <a href={url} target="_blank" rel="noopener" class="btn btn-sm btn-preview mt-2">
+                                            "Live Preview"
+                                        </a>
+                                    })}
+                                    {(d.preview_status.as_deref() == Some("pending")).then(|| view! {
+                                        <span class="preview-pending mt-2">"Deploy in progress..."</span>
+                                    })}
                                 </div>
                                 {d.ai_metadata.clone().map(|meta| {
                                     let session_href = meta.ai_session_id.clone().map(|sid| {

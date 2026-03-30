@@ -69,11 +69,12 @@ async fn main() {
         llm_base_url: config.llm_base_url.clone(),
     };
 
-    // Git Smart HTTP routes (must be before Leptos routes)
+    // Git Smart HTTP routes + deploy callback (must be before Leptos routes)
     let git_routes = Router::new()
         .route("/{owner}/{repo}/info/refs", get(git_http::info_refs))
         .route("/{owner}/{repo}/git-upload-pack", post(git_http::upload_pack))
         .route("/{owner}/{repo}/git-receive-pack", post(git_http::receive_pack))
+        .route("/api/deploy-callback/{commit_sha}", post(git_http::deploy_callback))
         .with_state(state.clone());
 
     // Build router — use Shell for SSR, App for hydration

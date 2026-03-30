@@ -6,6 +6,7 @@ use tracing;
 
 use crate::db;
 use crate::git;
+use crate::webhook;
 
 /// Process post-receive hook: detect AI metadata from `.oxigit/context.json` in new commits.
 /// Compares before/after ref snapshots to find new commits, reads context files, and auto-detects changed files.
@@ -15,6 +16,9 @@ pub async fn process_post_receive(
     repo_id: i64,
     before_refs: &HashMap<String, String>,
     after_refs: &HashMap<String, String>,
+    owner: &str,
+    repo_name: &str,
+    callback_base_url: &str,
 ) {
     let zero_sha = "0000000000000000000000000000000000000000";
 
@@ -90,6 +94,26 @@ pub async fn process_post_receive(
             .await
             {
                 tracing::warn!("Failed to insert AI metadata for commit {}: {}", sha, e);
+            }
+        }
+
+        // Fire webhooks for this push
+        if let Ok(webhooks) = db::get_active_webhooks(pool, repo_id).await {
+            if !webhooks.is_empty() {
+                let branch = refname.strip_prefix("refs/heads/").unwrap_or(refname);
+                let commit_msg = git::get_latest_commit(repo_path, new_sha)
+                    .ok()
+                    .flatten()
+                    .map(|c| c.message)
+                    .unwrap_or_default();
+
+                // Create pending deploy preview
+                let _ = db::create_deploy_preview(pool, repo_id, new_sha, branch).await;
+
+                webhook::fire_push_webhooks(
+                    &webhooks, owner, repo_name, branch, new_sha, &commit_msg, callback_base_url,
+                )
+                .await;
             }
         }
     }

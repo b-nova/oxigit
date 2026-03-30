@@ -1855,6 +1855,24 @@ a:hover {
     border-color: var(--text-secondary);
 }
 
+/* Deploy Preview */
+.btn-preview {
+    background: var(--success-muted);
+    color: var(--success);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.btn-preview:hover {
+    background: rgba(63, 185, 80, 0.25);
+}
+
+.preview-pending {
+    display: inline-block;
+    font-size: 0.75rem;
+    color: var(--warning);
+    font-style: italic;
+}
+
 .session-file {
     font-family: var(--font-mono);
     font-size: 0.75rem;

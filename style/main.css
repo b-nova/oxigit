@@ -2037,3 +2037,108 @@ a:hover {
         grid-template-columns: 1fr;
     }
 }
+
+/* ============================================================
+   AI Pair Programming Log — Chat Style
+   ============================================================ */
+
+.chat-log {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-width: 800px;
+}
+
+.chat-message {
+    display: flex;
+    flex-direction: column;
+    max-width: 85%;
+}
+
+.chat-user {
+    align-self: flex-start;
+}
+
+.chat-ai {
+    align-self: flex-end;
+}
+
+.chat-message-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: 2px;
+    font-size: 0.6875rem;
+}
+
+.chat-sender {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.chat-tool {
+    color: var(--text-tertiary);
+}
+
+.chat-time {
+    color: var(--text-tertiary);
+    margin-left: auto;
+    font-size: 0.6875rem;
+}
+
+.chat-bubble {
+    padding: var(--space-3);
+    border-radius: var(--radius-lg);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.chat-bubble-user {
+    background: var(--accent-muted);
+    border: 1px solid rgba(224, 138, 74, 0.2);
+    color: var(--text);
+    border-top-left-radius: var(--radius-sm);
+}
+
+.chat-bubble-ai {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-top-right-radius: var(--radius-sm);
+}
+
+.chat-commit-line {
+    font-size: 0.8125rem;
+}
+
+.chat-commit-line .commit-sha {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+}
+
+.chat-files {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    margin-top: var(--space-1);
+}
+
+.chat-session-break {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: var(--space-4) 0;
+}
+
+.chat-session-break-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border-muted);
+}
+
+.chat-session-break-text {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}

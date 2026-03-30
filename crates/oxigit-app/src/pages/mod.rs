@@ -1,3 +1,4 @@
+pub mod ai_log;
 pub mod ai_timeline;
 pub mod session_list;
 pub mod session_view;

@@ -20,6 +20,7 @@ use leptos_router::{
 
 use components::navbar::Navbar;
 use pages::{
+    ai_log::AiLogPage,
     ai_timeline::AiTimelinePage,
     session_list::SessionListPage,
     session_view::SessionViewPage,
@@ -88,6 +89,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/:owner/:repo/issues") view=IssueListPage />
                     <Route path=path!("/:owner/:repo/issues/new") view=IssueNewPage />
                     <Route path=path!("/:owner/:repo/issues/:number") view=IssueViewPage />
+                    <Route path=path!("/:owner/:repo/ai-log") view=AiLogPage />
                     <Route path=path!("/:owner/:repo/ai-timeline") view=AiTimelinePage />
                     <Route path=path!("/:owner/:repo/remix-guide") view=RemixGuidePage />
                     <Route path=path!("/:owner/:repo/sessions") view=SessionListPage />

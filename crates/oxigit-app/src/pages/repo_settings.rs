@@ -610,14 +610,71 @@ pub fn RepoSettingsPage() -> impl IntoView {
             <div class="card-header">"Webhooks"</div>
             <div style="padding: var(--space-4);">
                 <p class="text-secondary mb-3" style="font-size: 0.8125rem;">
-                    "Configure webhooks to trigger deploy previews on push (e.g., Vercel, Netlify)."
+                    "Configure webhooks to trigger deploy previews on push. Select a provider template or enter a custom URL."
                 </p>
+
+                // Provider templates
+                <div class="form-group">
+                    <label>"Quick setup"</label>
+                    <div class="webhook-templates">
+                        <button
+                            type="button"
+                            class="btn btn-sm"
+                            on:click=move |_| {
+                                if let Some(el) = document().get_element_by_id("webhook_url") {
+                                    let _ = el.set_attribute("value", "https://api.vercel.com/v1/integrations/deploy/");
+                                }
+                                if let Some(el) = document().get_element_by_id("webhook_url_hint") {
+                                    el.set_text_content(Some("Paste your Vercel Deploy Hook URL from Project Settings > Git > Deploy Hooks"));
+                                }
+                            }
+                        >"Vercel"</button>
+                        <button
+                            type="button"
+                            class="btn btn-sm"
+                            on:click=move |_| {
+                                if let Some(el) = document().get_element_by_id("webhook_url") {
+                                    let _ = el.set_attribute("value", "https://api.netlify.com/build_hooks/");
+                                }
+                                if let Some(el) = document().get_element_by_id("webhook_url_hint") {
+                                    el.set_text_content(Some("Paste your Netlify Build Hook URL from Site Settings > Build & Deploy > Build hooks"));
+                                }
+                            }
+                        >"Netlify"</button>
+                        <button
+                            type="button"
+                            class="btn btn-sm"
+                            on:click=move |_| {
+                                if let Some(el) = document().get_element_by_id("webhook_url") {
+                                    let _ = el.set_attribute("value", "https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/");
+                                }
+                                if let Some(el) = document().get_element_by_id("webhook_url_hint") {
+                                    el.set_text_content(Some("Paste your Cloudflare Pages Deploy Hook URL"));
+                                }
+                            }
+                        >"Cloudflare Pages"</button>
+                        <button
+                            type="button"
+                            class="btn btn-sm"
+                            on:click=move |_| {
+                                if let Some(el) = document().get_element_by_id("webhook_url") {
+                                    let _ = el.set_attribute("value", "");
+                                }
+                                if let Some(el) = document().get_element_by_id("webhook_url_hint") {
+                                    el.set_text_content(Some("Enter any URL that accepts POST requests with JSON payload"));
+                                }
+                            }
+                        >"Custom"</button>
+                    </div>
+                </div>
+
                 <ActionForm action=add_webhook_action>
                     <input type="hidden" name="owner" value={move || owner()} />
                     <input type="hidden" name="repo" value={move || repo()} />
                     <div class="form-group">
                         <label for="webhook_url">"Webhook URL"</label>
-                        <input type="url" id="webhook_url" name="url" required placeholder="https://api.vercel.com/deploy" />
+                        <input type="url" id="webhook_url" name="url" required placeholder="https://api.vercel.com/v1/integrations/deploy/..." />
+                        <p id="webhook_url_hint" class="text-tertiary" style="font-size: 0.75rem; margin-top: var(--space-1);"></p>
                     </div>
                     <div class="form-group">
                         <label for="webhook_secret">"Secret (optional)"</label>

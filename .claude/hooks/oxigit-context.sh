@@ -7,8 +7,10 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 MODEL=$(echo "$INPUT" | jq -r '.model // empty')
 TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 PROMPT=""
-if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-  PROMPT=$(jq -r '[.[] | select(.type == "human")] | last | .message.content[]? | select(.type == "text") | .text' "$TRANSCRIPT" 2>/dev/null | head -c 500 || true)
+if [ -f .oxigit/last-prompt.txt ]; then
+  PROMPT=$(head -c 500 .oxigit/last-prompt.txt)
+elif [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+  PROMPT=$(jq -s -r '[.[] | select(.type == "human")] | last | .message.content[]? | select(.type == "text") | .text' "$TRANSCRIPT" 2>/dev/null | head -c 500 || true)
 fi
 mkdir -p .oxigit
 jq -n --arg tool "claude-code" --arg model "$MODEL" --arg session_id "$SESSION_ID" --arg prompt "$PROMPT" \

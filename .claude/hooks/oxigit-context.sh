@@ -8,12 +8,22 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 MODEL=$(echo "$INPUT" | jq -r '.model // empty')
 TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 
-# Extract the last substantive prompt from the transcript (skip "commit", "push", etc.)
+# Extract the last substantive prompt from the transcript
+# Handles: plain string content, /plan command-args extraction, filters out noise
 PROMPT=""
 if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
   PROMPT=$(jq -s -r '
-    [.[] | select(.type == "human") | .message.content[]? | select(.type == "text") | .text]
-    | map(select(test("^\\s*(/?(commit|push|commit and push|c|p)\\s*$)"; "i") | not))
+    [.[] | select(.type == "user") | .message.content |
+     if type == "string" then . else empty end]
+    | map(
+        if test("<command-args>") then
+          (capture("<command-args>(?<p>[^<]+)</command-args>") | .p // empty)
+        elif test("^<") then empty
+        else .
+        end
+      )
+    | map(select(. != null and . != "" and
+        (test("^\\s*(commit|push|commit and push)\\s*$"; "i") | not)))
     | last // empty
   ' "$TRANSCRIPT" 2>/dev/null | head -c 500 || true)
 fi

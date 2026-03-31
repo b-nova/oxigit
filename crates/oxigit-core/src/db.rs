@@ -855,6 +855,16 @@ pub async fn update_has_remix(pool: &SqlitePool, repo_id: i64, has_remix: bool) 
     Ok(())
 }
 
+/// Update the visibility (is_private) flag for a repository.
+pub async fn update_repository_visibility(pool: &SqlitePool, repo_id: i64, is_private: bool) -> Result<()> {
+    sqlx::query("UPDATE repositories SET is_private = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(is_private)
+        .bind(repo_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Search public repositories that have REMIX.md (remixable).
 pub async fn search_remixable_repositories(pool: &SqlitePool, query: &str) -> Result<Vec<(User, Repository)>> {
     let rows = if query.is_empty() {

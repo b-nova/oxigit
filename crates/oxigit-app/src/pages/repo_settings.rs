@@ -424,6 +424,59 @@ async fn add_webhook(
 }
 
 #[server]
+async fn fetch_repo_visibility(
+    owner: String,
+    repo: String,
+) -> Result<bool, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_pool};
+    use oxigit_core::db;
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if repo_db.owner_id != user.id {
+        return Err(ServerFnError::new("Not authorized"));
+    }
+
+    Ok(repo_db.is_private)
+}
+
+#[server]
+async fn update_visibility(
+    owner: String,
+    repo: String,
+    is_private: bool,
+) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_pool};
+    use oxigit_core::db;
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if repo_db.owner_id != user.id {
+        return Err(ServerFnError::new("Only the owner can change visibility"));
+    }
+
+    db::update_repository_visibility(&pool, repo_db.id, is_private)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    Ok(())
+}
+
+#[server]
 async fn delete_webhook(
     owner: String,
     repo: String,
@@ -460,6 +513,12 @@ pub fn RepoSettingsPage() -> impl IntoView {
         move |(o, r)| list_collaborators(o, r),
     );
 
+    let visibility = Resource::new(
+        move || (owner(), repo()),
+        move |(o, r)| fetch_repo_visibility(o, r),
+    );
+    let visibility_action = ServerAction::<UpdateVisibility>::new();
+
     let add_action = ServerAction::<AddCollaborator>::new();
     let remove_action = ServerAction::<RemoveCollaborator>::new();
     let install_hook_action = ServerAction::<InstallAiHook>::new();
@@ -475,6 +534,11 @@ pub fn RepoSettingsPage() -> impl IntoView {
         move || (owner(), repo()),
         move |(o, r)| check_installed_hooks(o, r),
     );
+
+    Effect::new(move || {
+        visibility_action.version().get();
+        visibility.refetch();
+    });
 
     Effect::new(move || {
         add_action.version().get();
@@ -513,6 +577,62 @@ pub fn RepoSettingsPage() -> impl IntoView {
                 <span class="breadcrumb-sep">" / "</span>
                 <span>"Settings"</span>
             </h1>
+        </div>
+
+        <div class="card">
+            <div class="card-header">"Visibility"</div>
+            <p class="text-secondary mb-4" style="font-size: 0.875rem;">
+                "Control who can see this repository. Private repositories are only visible to the owner and collaborators."
+            </p>
+
+            {move || visibility_action.value().get().map(|r| match r {
+                Ok(()) => view! {
+                    <div class="flash flash-success">"Visibility updated."</div>
+                }.into_any(),
+                Err(e) => view! {
+                    <div class="flash flash-error">{e.to_string()}</div>
+                }.into_any(),
+            })}
+
+            <Suspense fallback=|| view! { <p class="text-secondary">"Loading..."</p> }>
+                {move || {
+                    let owner_val = owner();
+                    let repo_val = repo();
+                    Suspend::new(async move {
+                        match visibility.await {
+                            Ok(is_private) => view! {
+                                <ActionForm action=visibility_action>
+                                    <input type="hidden" name="owner" value={owner_val} />
+                                    <input type="hidden" name="repo" value={repo_val} />
+                                    <div class="form-group form-inline">
+                                        <input type="hidden" name="is_private" value="false" />
+                                        <input
+                                            type="checkbox"
+                                            id="is_private"
+                                            name="is_private"
+                                            value="true"
+                                            class="form-checkbox"
+                                            checked=is_private
+                                        />
+                                        <label for="is_private">"Private repository"</label>
+                                    </div>
+                                    <p class="text-secondary" style="font-size: 0.8125rem; margin-bottom: var(--space-3);">
+                                        {if is_private {
+                                            "This repository is currently private. Only you and collaborators can see it."
+                                        } else {
+                                            "This repository is currently public. Anyone can see it."
+                                        }}
+                                    </p>
+                                    <button type="submit" class="btn btn-primary btn-sm">"Save"</button>
+                                </ActionForm>
+                            }.into_any(),
+                            Err(e) => view! {
+                                <div class="flash flash-error">{e.to_string()}</div>
+                            }.into_any(),
+                        }
+                    })
+                }}
+            </Suspense>
         </div>
 
         <div class="card">

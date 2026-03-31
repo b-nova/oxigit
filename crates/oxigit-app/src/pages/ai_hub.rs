@@ -122,35 +122,54 @@ pub fn AiHubPage() -> impl IntoView {
                         Ok(resp) => {
                             let mut parts: Vec<AnyView> = Vec::new();
 
-                            // Sessions
+                            // Sessions grouped by tool
                             if !resp.sessions.is_empty() {
-                                let cards: Vec<AnyView> = resp.sessions.into_iter().map(|s| {
-                                    let href = format!("/{}/{}/ai/{}", owner_name, repo_name, s.session_id);
-                                    let short_id = s.session_id[..8.min(s.session_id.len())].to_string();
-                                    let prompt_preview = s.first_prompt
-                                        .map(|p| if p.len() > 100 { format!("{}...", &p[..100]) } else { p })
-                                        .unwrap_or_default();
-                                    view! {
-                                        <a href={href} class="session-card">
-                                            <div class="session-card-header">
-                                                <span class="ai-badge">{s.ai_tool}</span>
-                                                <span class="session-card-id">{short_id}</span>
-                                                <span class="text-tertiary">
-                                                    {s.commit_count} " commit" {if s.commit_count != 1 { "s" } else { "" }}
-                                                </span>
-                                            </div>
-                                            {(!prompt_preview.is_empty()).then(|| view! {
-                                                <p class="session-card-prompt">{prompt_preview}</p>
-                                            })}
-                                            <div class="session-card-time">
-                                                {s.first_time} " — " {s.last_time}
-                                            </div>
-                                        </a>
-                                    }.into_any()
-                                }).collect();
-                                parts.push(view! {
-                                    <div class="session-list mb-4">{cards}</div>
-                                }.into_any());
+                                // Group sessions by ai_tool, preserving order
+                                let mut tool_order: Vec<String> = Vec::new();
+                                let mut groups: std::collections::HashMap<String, Vec<SessionListItem>> = std::collections::HashMap::new();
+                                for s in resp.sessions {
+                                    if !groups.contains_key(&s.ai_tool) {
+                                        tool_order.push(s.ai_tool.clone());
+                                    }
+                                    groups.entry(s.ai_tool.clone()).or_default().push(s);
+                                }
+
+                                for tool_name in tool_order {
+                                    let sessions = groups.remove(&tool_name).unwrap_or_default();
+                                    let count = sessions.len();
+                                    let cards: Vec<AnyView> = sessions.into_iter().map(|s| {
+                                        let href = format!("/{}/{}/ai/{}", owner_name, repo_name, s.session_id);
+                                        let short_id = s.session_id[..8.min(s.session_id.len())].to_string();
+                                        let prompt_preview = s.first_prompt
+                                            .map(|p| if p.len() > 100 { format!("{}...", &p[..100]) } else { p })
+                                            .unwrap_or_default();
+                                        view! {
+                                            <a href={href} class="session-card">
+                                                <div class="session-card-header">
+                                                    <span class="session-card-id">{short_id}</span>
+                                                    <span class="text-tertiary">
+                                                        {s.commit_count} " commit" {if s.commit_count != 1 { "s" } else { "" }}
+                                                    </span>
+                                                </div>
+                                                {(!prompt_preview.is_empty()).then(|| view! {
+                                                    <p class="session-card-prompt">{prompt_preview}</p>
+                                                })}
+                                                <div class="session-card-time">
+                                                    {s.first_time} " — " {s.last_time}
+                                                </div>
+                                            </a>
+                                        }.into_any()
+                                    }).collect();
+                                    parts.push(view! {
+                                        <div class="tool-group-heading">
+                                            <span class="ai-badge">{tool_name}</span>
+                                            <span class="tool-group-count">
+                                                {count} " session" {if count != 1 { "s" } else { "" }}
+                                            </span>
+                                        </div>
+                                        <div class="session-list mb-4">{cards}</div>
+                                    }.into_any());
+                                }
                             }
 
                             // Unsessioned commits

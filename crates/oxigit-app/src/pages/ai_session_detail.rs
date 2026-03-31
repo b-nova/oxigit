@@ -298,59 +298,57 @@ pub fn AiSessionDetailPage() -> impl IntoView {
                                 }.into_any());
                             }
 
-                            // Chat-style conversation
-                            let chat_items: Vec<AnyView> = d.entries.iter().map(|entry| {
+                            // Conversation: unified prompt → code cards
+                            let turn_items: Vec<AnyView> = d.entries.iter().map(|entry| {
                                 let commit_href = format!("/{}/{}/commit/{}", owner_name, repo_name, entry.commit_sha);
-                                let mut msg_parts: Vec<AnyView> = Vec::new();
-
-                                if let Some(ref prompt) = entry.metadata.ai_prompt {
-                                    msg_parts.push(view! {
-                                        <div class="chat-message chat-user">
-                                            <div class="chat-message-header">
-                                                <span class="chat-sender">"You"</span>
-                                                <span class="chat-tool">" → " {entry.metadata.ai_tool.clone()}</span>
-                                                <span class="chat-time">{entry.commit_time.clone()}</span>
-                                            </div>
-                                            <div class="chat-bubble chat-bubble-user">{prompt.clone()}</div>
-                                        </div>
-                                    }.into_any());
-                                }
-
-                                let files_str = entry.metadata.ai_files_touched.as_ref()
-                                    .map(|f| f.join(", ")).unwrap_or_default();
+                                let files = entry.metadata.ai_files_touched.clone().unwrap_or_default();
+                                let file_count = files.len();
+                                let files_str = files.join(", ");
                                 let entry_diff = entry.diff_html.clone();
-                                msg_parts.push(view! {
-                                    <div class="chat-message chat-ai">
-                                        <div class="chat-message-header">
-                                            <span class="ai-badge">{entry.metadata.ai_tool.clone()}</span>
-                                            <span class="chat-time">{entry.commit_time.clone()}</span>
+
+                                view! {
+                                    <div class="conversation-turn">
+                                        // Prompt section
+                                        <div class="turn-prompt">
+                                            <div class="turn-prompt-label">"Prompt"</div>
+                                            {match &entry.metadata.ai_prompt {
+                                                Some(prompt) => view! { <span>{prompt.clone()}</span> }.into_any(),
+                                                None => view! { <span class="turn-no-prompt">{entry.commit_message.clone()}</span> }.into_any(),
+                                            }}
                                         </div>
-                                        <div class="chat-bubble chat-bubble-ai">
-                                            <div class="chat-commit-line">
+                                        // Response section
+                                        <div class="turn-response">
+                                            <div class="turn-commit-line">
                                                 <a href={commit_href} class="commit-sha">{entry.short_sha.clone()}</a>
-                                                " " {entry.commit_message.clone()}
+                                                <span>{entry.commit_message.clone()}</span>
+                                                <span class="text-tertiary" style="margin-left: auto; font-size: 0.75rem;">{entry.commit_time.clone()}</span>
                                             </div>
                                             {(!files_str.is_empty()).then(|| view! {
-                                                <div class="chat-files">{files_str}</div>
+                                                <div class="turn-files">{files_str}</div>
                                             })}
                                         </div>
-                                        // Inline code diff
-                                        {entry_diff.map(|dh| view! {
-                                            <details class="chat-diff-details">
-                                                <summary class="chat-diff-summary">"Show generated code"</summary>
-                                                <div class="diff-container" inner_html={dh}></div>
-                                            </details>
+                                        // Collapsed code diff
+                                        {entry_diff.map(|dh| {
+                                            let summary_text = if file_count > 0 {
+                                                format!("Show generated code ({} file{})", file_count, if file_count != 1 { "s" } else { "" })
+                                            } else {
+                                                "Show generated code".to_string()
+                                            };
+                                            view! {
+                                                <details class="turn-diff-toggle">
+                                                    <summary>{summary_text}</summary>
+                                                    <div class="diff-container" inner_html={dh}></div>
+                                                </details>
+                                            }
                                         })}
                                     </div>
-                                }.into_any());
-
-                                view! { <div>{msg_parts}</div> }.into_any()
+                                }.into_any()
                             }).collect();
 
                             parts.push(view! {
                                 <div class="card mb-4">
                                     <div class="card-header">"Conversation"</div>
-                                    <div class="chat-log" style="padding: var(--space-4);">{chat_items}</div>
+                                    <div style="padding: var(--space-4);">{turn_items}</div>
                                 </div>
                             }.into_any());
 
@@ -373,15 +371,6 @@ pub fn AiSessionDetailPage() -> impl IntoView {
                                             </span>
                                         </ActionForm>
                                     </div>
-                                }.into_any());
-                            }
-
-                            // Aggregate diff
-                            if !d.diff_html.is_empty() {
-                                let dh = d.diff_html.clone();
-                                parts.push(view! {
-                                    <h3 style="margin-bottom: var(--space-3);">"Aggregate Diff"</h3>
-                                    <div class="diff-container" inner_html={dh}></div>
                                 }.into_any());
                             }
 

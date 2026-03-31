@@ -2166,3 +2166,91 @@ a:hover {
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
+
+/* Conversation turn - unified prompt + code card */
+.conversation-turn {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-3);
+    overflow: hidden;
+}
+
+.turn-prompt {
+    padding: var(--space-3) var(--space-4);
+    background: var(--accent-muted);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9375rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.turn-prompt-label {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-bottom: var(--space-1);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.turn-no-prompt {
+    color: var(--text-tertiary);
+    font-style: italic;
+    font-size: 0.875rem;
+}
+
+.turn-response {
+    padding: var(--space-3) var(--space-4);
+    font-size: 0.875rem;
+}
+
+.turn-commit-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+}
+
+.turn-files {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+}
+
+.turn-diff-toggle {
+    border-top: 1px solid var(--border);
+}
+
+.turn-diff-toggle summary {
+    padding: var(--space-2) var(--space-4);
+    cursor: pointer;
+    color: var(--accent);
+    font-size: 0.8125rem;
+    user-select: none;
+}
+
+.turn-diff-toggle summary:hover {
+    text-decoration: underline;
+}
+
+.turn-diff-toggle[open] .diff-container {
+    max-height: 500px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+}
+
+/* Tool group heading on AI hub */
+.tool-group-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+    margin-top: var(--space-4);
+}
+
+.tool-group-heading:first-child {
+    margin-top: 0;
+}
+
+.tool-group-count {
+    font-size: 0.8125rem;
+    color: var(--text-tertiary);
+}

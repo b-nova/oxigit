@@ -2,7 +2,7 @@
 set -e
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
-if ! echo "$COMMAND" | grep -qE "^git commit"; then exit 0; fi
+if ! echo "$COMMAND" | grep -q "git commit"; then exit 0; fi
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 MODEL=$(echo "$INPUT" | jq -r '.model // empty')
 TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')

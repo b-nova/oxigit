@@ -142,7 +142,7 @@ fn hook_script(tool_name: &str, has_model: bool) -> String {
 set -e
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
-if ! echo "$COMMAND" | grep -qE "^git commit"; then exit 0; fi
+if ! echo "$COMMAND" | grep -q "git commit"; then exit 0; fi
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 {model_line}
 PROMPT=""

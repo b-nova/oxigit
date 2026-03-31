@@ -156,6 +156,7 @@ pub fn RepoViewPage() -> impl IntoView {
     let params = use_params_map();
     let owner = move || params.read().get("owner");
     let repo = move || params.read().get("repo");
+    let path = move || params.read().get("path");
 
     let location = use_location();
     let git_ref = move || {
@@ -172,13 +173,13 @@ pub fn RepoViewPage() -> impl IntoView {
     };
 
     let tree = Resource::new(
-        move || (owner(), repo(), git_ref()),
-        move |(owner, repo, git_ref)| {
+        move || (owner(), repo(), path(), git_ref()),
+        move |(owner, repo, path, git_ref)| {
             fetch_repo_tree(
                 owner.unwrap_or_default(),
                 repo.unwrap_or_default(),
                 git_ref,
-                String::new(),
+                path.unwrap_or_default(),
             )
         },
     );
@@ -260,7 +261,12 @@ pub fn RepoViewPage() -> impl IntoView {
                                             class="branch-select"
                                             on:change=move |ev| {
                                                 let selected = event_target_value(&ev);
-                                                let url = format!("/{}/{}?ref={}", nav_owner, nav_repo, selected);
+                                                let current_path = path().unwrap_or_default();
+                                                let url = if current_path.is_empty() {
+                                                    format!("/{}/{}?ref={}", nav_owner, nav_repo, selected)
+                                                } else {
+                                                    format!("/{}/{}/tree/{}?ref={}", nav_owner, nav_repo, current_path, selected)
+                                                };
                                                 let _ = window().location().set_href(&url);
                                             }
                                         >
@@ -295,6 +301,35 @@ pub fn RepoViewPage() -> impl IntoView {
                                     </div>
                                 }
                             })}
+
+                            // Path breadcrumb
+                            {
+                                let current_path = path().unwrap_or_default();
+                                if current_path.is_empty() {
+                                    None
+                                } else {
+                                    let bc_owner = owner_name.clone();
+                                    let bc_repo = repo_name.clone();
+                                    let bc_ref = {
+                                        let r = git_ref();
+                                        if r.is_empty() { String::new() } else { format!("?ref={}", r) }
+                                    };
+                                    let segments: Vec<&str> = current_path.split('/').filter(|s| !s.is_empty()).collect();
+                                    Some(view! {
+                                        <nav class="breadcrumb-path mb-2" style="font-size: 0.875rem;">
+                                            <a href={format!("/{}/{}{}", bc_owner, bc_repo, bc_ref)}>{bc_repo.clone()}</a>
+                                            {segments.iter().enumerate().map(|(i, seg)| {
+                                                let seg_path = segments[..=i].join("/");
+                                                let href = format!("/{}/{}/tree/{}{}", bc_owner, bc_repo, seg_path, bc_ref);
+                                                view! {
+                                                    <span class="breadcrumb-sep">" / "</span>
+                                                    <a href={href}>{seg.to_string()}</a>
+                                                }
+                                            }).collect::<Vec<_>>()}
+                                        </nav>
+                                    })
+                                }
+                            }
 
                             // File tree
                             {if resp.entries.is_empty() {
@@ -332,6 +367,12 @@ git push -u origin main", existing_repo_url)}</pre>
                             } else {
                                 let owner_for_list = owner_name.clone();
                                 let repo_for_list = repo_name.clone();
+                                let current_path = path().unwrap_or_default();
+                                let base_path = if current_path.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!("{}/", current_path)
+                                };
                                 let ref_query = {
                                     let r = git_ref();
                                     if r.is_empty() { String::new() } else { format!("?ref={}", r) }
@@ -342,9 +383,9 @@ git push -u origin main", existing_repo_url)}</pre>
                                             {resp.entries.into_iter().map(|entry| {
                                                 let name = entry.name.clone();
                                                 let href = if entry.is_dir {
-                                                    format!("/{}/{}/tree/{}{}", owner_for_list, repo_for_list, name, ref_query)
+                                                    format!("/{}/{}/tree/{}{}{}", owner_for_list, repo_for_list, base_path, name, ref_query)
                                                 } else {
-                                                    format!("/{}/{}/blob/{}{}", owner_for_list, repo_for_list, name, ref_query)
+                                                    format!("/{}/{}/blob/{}{}{}", owner_for_list, repo_for_list, base_path, name, ref_query)
                                                 };
                                                 let size_str = if entry.is_dir {
                                                     String::new()

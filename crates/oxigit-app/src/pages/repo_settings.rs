@@ -119,7 +119,24 @@ async fn remove_collaborator(
 }
 
 #[cfg(feature = "ssr")]
-fn hook_script(tool_name: &str, extra_session: &str) -> String {
+fn save_prompt_script() -> &'static str {
+    r#"#!/bin/bash
+set -e
+INPUT=$(cat)
+PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty')
+if [ -n "$PROMPT" ]; then
+  mkdir -p .oxigit
+  printf '%s' "$PROMPT" > .oxigit/last-prompt.txt
+fi"#
+}
+
+#[cfg(feature = "ssr")]
+fn hook_script(tool_name: &str, has_model: bool) -> String {
+    let model_line = if has_model {
+        r#"MODEL=$(echo "$INPUT" | jq -r '.model // empty')"#
+    } else {
+        r#"MODEL="""#
+    };
     format!(
         r#"#!/bin/bash
 set -e
@@ -127,11 +144,15 @@ INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 if ! echo "$COMMAND" | grep -qE "^git commit"; then exit 0; fi
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
-{extra_session}MODEL=$(echo "$INPUT" | jq -r '.model // empty')
-TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
+{model_line}
 PROMPT=""
-if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-  PROMPT=$(jq -r '[.[] | select(.type == "human")] | last | .message.content[]? | select(.type == "text") | .text' "$TRANSCRIPT" 2>/dev/null | head -c 500 || true)
+if [ -f .oxigit/last-prompt.txt ]; then
+  PROMPT=$(head -c 500 .oxigit/last-prompt.txt)
+else
+  TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
+  if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+    PROMPT=$(jq -s -r '[.[] | select(.type == "human")] | last | .message.content[]? | select(.type == "text") | .text' "$TRANSCRIPT" 2>/dev/null | head -c 500 || true)
+  fi
 fi
 mkdir -p .oxigit
 jq -n --arg tool "{tool_name}" --arg model "$MODEL" --arg session_id "$SESSION_ID" --arg prompt "$PROMPT" \
@@ -142,7 +163,7 @@ jq -n --arg tool "{tool_name}" --arg model "$MODEL" --arg session_id "$SESSION_I
   > .oxigit/context.json
 git add .oxigit/context.json"#,
         tool_name = tool_name,
-        extra_session = extra_session,
+        model_line = model_line,
     )
 }
 
@@ -152,8 +173,48 @@ struct AiToolConfig {
     display_name: &'static str,
     hook_dir: &'static str,
     config_path: &'static str,
-    config_content: &'static str,
-    extra_session: &'static str,
+    has_model: bool,
+    prompt_event: &'static str,
+    tool_event: &'static str,
+    tool_matcher: &'static str,
+}
+
+#[cfg(feature = "ssr")]
+fn config_json(tool: &AiToolConfig) -> String {
+    format!(
+        r#"{{
+  "hooks": {{
+    "{prompt_event}": [
+      {{
+        "matcher": "",
+        "hooks": [
+          {{
+            "type": "command",
+            "command": "{hook_dir}/save-prompt.sh",
+            "timeout": 5
+          }}
+        ]
+      }}
+    ],
+    "{tool_event}": [
+      {{
+        "matcher": "{tool_matcher}",
+        "hooks": [
+          {{
+            "type": "command",
+            "command": "{hook_dir}/oxigit-context.sh",
+            "timeout": 10
+          }}
+        ]
+      }}
+    ]
+  }}
+}}"#,
+        prompt_event = tool.prompt_event,
+        tool_event = tool.tool_event,
+        tool_matcher = tool.tool_matcher,
+        hook_dir = tool.hook_dir,
+    )
 }
 
 const AI_TOOLS: &[AiToolConfig] = &[
@@ -162,69 +223,30 @@ const AI_TOOLS: &[AiToolConfig] = &[
         display_name: "Claude Code",
         hook_dir: ".claude/hooks",
         config_path: ".claude/settings.json",
-        config_content: r#"{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/oxigit-context.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}"#,
-        extra_session: "",
+        has_model: true,
+        prompt_event: "UserPromptSubmit",
+        tool_event: "PreToolUse",
+        tool_matcher: "Bash",
     },
     AiToolConfig {
         tool_id: "codex",
         display_name: "Codex CLI",
         hook_dir: ".codex/hooks",
         config_path: ".codex/hooks.json",
-        config_content: r#"{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".codex/hooks/oxigit-context.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}"#,
-        extra_session: "",
+        has_model: true,
+        prompt_event: "UserPromptSubmit",
+        tool_event: "PreToolUse",
+        tool_matcher: "Bash",
     },
     AiToolConfig {
         tool_id: "gemini-cli",
         display_name: "Gemini CLI",
         hook_dir: ".gemini/hooks",
         config_path: ".gemini/settings.json",
-        config_content: r#"{
-  "hooks": {
-    "BeforeTool": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".gemini/hooks/oxigit-context.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}"#,
-        extra_session: "if [ -z \"$SESSION_ID\" ] && [ -n \"$GEMINI_SESSION_ID\" ]; then\n  SESSION_ID=\"$GEMINI_SESSION_ID\"\nfi\n",
+        has_model: false,
+        prompt_event: "BeforeAgent",
+        tool_event: "BeforeTool",
+        tool_matcher: "run_shell_command",
     },
 ];
 
@@ -265,12 +287,16 @@ async fn install_ai_hook(
         .map_err(|e| ServerFnError::new(e.to_string()))?
         .ok_or_else(|| ServerFnError::new("Repository has no branches"))?;
 
-    let script_content = hook_script(tool.tool_id, tool.extra_session);
-    let script_path = format!("{}/oxigit-context.sh", tool.hook_dir);
+    let save_prompt = save_prompt_script().to_string();
+    let context_script = hook_script(tool.tool_id, tool.has_model);
+    let config = config_json(tool);
+    let save_prompt_path = format!("{}/save-prompt.sh", tool.hook_dir);
+    let context_path = format!("{}/oxigit-context.sh", tool.hook_dir);
 
     let files: Vec<(&str, &str, bool)> = vec![
-        (&script_path, &script_content, true),
-        (tool.config_path, tool.config_content, false),
+        (&save_prompt_path, &save_prompt, true),
+        (&context_path, &context_script, true),
+        (tool.config_path, &config, false),
     ];
 
     git::add_files_to_branch(
@@ -304,13 +330,27 @@ async fn check_installed_hooks(
 
     let mut statuses = Vec::new();
     for tool in AI_TOOLS {
-        let script_path = format!("{}/oxigit-context.sh", tool.hook_dir);
-        if let Ok(installed_content) = git::read_blob(&repo_path, &branch, &script_path) {
-            let expected = hook_script(tool.tool_id, tool.extra_session);
-            let up_to_date = String::from_utf8_lossy(&installed_content).as_ref() == expected;
+        let context_path = format!("{}/oxigit-context.sh", tool.hook_dir);
+        let prompt_path = format!("{}/save-prompt.sh", tool.hook_dir);
+
+        let context_installed = git::read_blob(&repo_path, &branch, &context_path).ok();
+        let prompt_installed = git::read_blob(&repo_path, &branch, &prompt_path).ok();
+
+        // Consider installed if either script exists
+        if context_installed.is_some() || prompt_installed.is_some() {
+            let context_ok = context_installed
+                .map(|b| String::from_utf8_lossy(&b).as_ref() == hook_script(tool.tool_id, tool.has_model))
+                .unwrap_or(false);
+            let prompt_ok = prompt_installed
+                .map(|b| String::from_utf8_lossy(&b).as_ref() == save_prompt_script())
+                .unwrap_or(false);
+            let config_ok = git::read_blob(&repo_path, &branch, tool.config_path)
+                .map(|b| String::from_utf8_lossy(&b).as_ref() == config_json(tool))
+                .unwrap_or(false);
+
             statuses.push(HookStatus {
                 tool_id: tool.tool_id.to_string(),
-                up_to_date,
+                up_to_date: context_ok && prompt_ok && config_ok,
             });
         }
     }
@@ -580,7 +620,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                         <div>
                             <span class="font-semibold">{display_name}</span>
                             <span class="text-secondary" style="font-size: 0.8125rem; margin-left: 0.5rem;">
-                                {format!("{}/oxigit-context.sh + {}", hook_dir, config_path)}
+                                {format!("{dir}/save-prompt.sh + {dir}/oxigit-context.sh + {cfg}", dir = hook_dir, cfg = config_path)}
                             </span>
                         </div>
                         <ActionForm action=install_hook_action>

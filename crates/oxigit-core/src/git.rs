@@ -553,6 +553,45 @@ pub fn read_oxigit_context(repo_path: &Path, sha: &str) -> Result<Option<OxigitC
     }
 }
 
+/// Read AI metadata from git trailers in a commit message.
+/// Returns `Ok(None)` if no `Oxigit-Tool` trailer is found.
+pub fn read_oxigit_trailers(repo_path: &Path, sha: &str) -> Result<Option<OxigitContext>> {
+    let output = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["log", "-1", "--format=%B", sha])
+        .output()?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let body = String::from_utf8_lossy(&output.stdout);
+
+    fn trailer_value<'a>(body: &'a str, key: &str) -> Option<String> {
+        for line in body.lines().rev() {
+            if let Some(val) = line.strip_prefix(key) {
+                let val = val.trim();
+                if !val.is_empty() {
+                    return Some(val.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    let tool = match trailer_value(&body, "Oxigit-Tool:") {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+
+    Ok(Some(OxigitContext {
+        tool,
+        model: trailer_value(&body, "Oxigit-Model:"),
+        session_id: trailer_value(&body, "Oxigit-Session:"),
+        prompt: trailer_value(&body, "Oxigit-Prompt:"),
+    }))
+}
+
 /// List files changed by a commit (auto-detected via diff-tree).
 /// Excludes files under `.oxigit/`.
 pub fn list_changed_files(repo_path: &Path, sha: &str) -> Result<Vec<String>> {

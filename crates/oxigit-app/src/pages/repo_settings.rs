@@ -119,18 +119,6 @@ async fn remove_collaborator(
 }
 
 #[cfg(feature = "ssr")]
-fn save_prompt_script() -> &'static str {
-    r#"#!/bin/bash
-set -e
-INPUT=$(cat)
-PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty')
-if [ -n "$PROMPT" ]; then
-  mkdir -p .oxigit
-  printf '%s' "$PROMPT" > .oxigit/last-prompt.txt
-fi"#
-}
-
-#[cfg(feature = "ssr")]
 fn hook_script(tool_name: &str, has_model: bool) -> String {
     let model_line = if has_model {
         r#"MODEL=$(echo "$INPUT" | jq -r '.model // empty')"#
@@ -143,25 +131,55 @@ set -e
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 if ! echo "$COMMAND" | grep -q "git commit"; then exit 0; fi
+
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 {model_line}
+TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
+
+# Extract last substantive prompt from transcript (skip commit/push commands)
 PROMPT=""
-if [ -f .oxigit/last-prompt.txt ]; then
-  PROMPT=$(head -c 500 .oxigit/last-prompt.txt)
-else
-  TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
-  if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-    PROMPT=$(jq -s -r '[.[] | select(.type == "human")] | last | .message.content[]? | select(.type == "text") | .text' "$TRANSCRIPT" 2>/dev/null | head -c 500 || true)
-  fi
+if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+  PROMPT=$(jq -s -r '
+    [.[] | select(.type == "human") | .message.content[]? | select(.type == "text") | .text]
+    | map(select(test("^\\s*(/?(commit|push|commit and push|c|p)\\s*$)"; "i") | not))
+    | last // empty
+  ' "$TRANSCRIPT" 2>/dev/null | head -c 500 || true)
 fi
-mkdir -p .oxigit
-jq -n --arg tool "{tool_name}" --arg model "$MODEL" --arg session_id "$SESSION_ID" --arg prompt "$PROMPT" \
-  '{{ tool: $tool,
-     model: (if $model == "" then null else $model end),
-     session_id: (if $session_id == "" then null else $session_id end),
-     prompt: (if $prompt == "" then null else $prompt end) }}' \
-  > .oxigit/context.json
-git add .oxigit/context.json"#,
+
+# Write pending metadata to .git/ (not tracked)
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || echo ".git")
+mkdir -p "$GIT_DIR"
+jq -n \
+  --arg tool "{tool_name}" \
+  --arg model "$MODEL" \
+  --arg session_id "$SESSION_ID" \
+  --arg prompt "$PROMPT" \
+  '{{ tool: $tool, model: $model, session_id: $session_id, prompt: $prompt }}' \
+  > "$GIT_DIR/oxigit-pending.json"
+
+# Install prepare-commit-msg hook to inject trailers
+mkdir -p "$GIT_DIR/hooks"
+cat > "$GIT_DIR/hooks/prepare-commit-msg" << 'HOOKEOF'
+#!/bin/bash
+MSG_FILE="$1"
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || echo ".git")
+PENDING="$GIT_DIR/oxigit-pending.json"
+if [ ! -f "$PENDING" ]; then exit 0; fi
+TOOL=$(jq -r '.tool // empty' "$PENDING")
+MODEL=$(jq -r '.model // empty' "$PENDING")
+SESSION=$(jq -r '.session_id // empty' "$PENDING")
+PROMPT=$(jq -r '.prompt // empty' "$PENDING")
+ARGS=()
+[ -n "$TOOL" ] && ARGS+=(--trailer "Oxigit-Tool: $TOOL")
+[ -n "$MODEL" ] && ARGS+=(--trailer "Oxigit-Model: $MODEL")
+[ -n "$SESSION" ] && ARGS+=(--trailer "Oxigit-Session: $SESSION")
+[ -n "$PROMPT" ] && ARGS+=(--trailer "Oxigit-Prompt: $PROMPT")
+if [ ${{#ARGS[@]}} -gt 0 ]; then
+  git interpret-trailers --in-place "${{ARGS[@]}}" "$MSG_FILE"
+fi
+rm -f "$PENDING"
+HOOKEOF
+chmod +x "$GIT_DIR/hooks/prepare-commit-msg""#,
         tool_name = tool_name,
         model_line = model_line,
     )
@@ -174,7 +192,6 @@ struct AiToolConfig {
     hook_dir: &'static str,
     config_path: &'static str,
     has_model: bool,
-    prompt_event: &'static str,
     tool_event: &'static str,
     tool_matcher: &'static str,
 }
@@ -184,18 +201,6 @@ fn config_json(tool: &AiToolConfig) -> String {
     format!(
         r#"{{
   "hooks": {{
-    "{prompt_event}": [
-      {{
-        "matcher": "",
-        "hooks": [
-          {{
-            "type": "command",
-            "command": "{hook_dir}/save-prompt.sh",
-            "timeout": 5
-          }}
-        ]
-      }}
-    ],
     "{tool_event}": [
       {{
         "matcher": "{tool_matcher}",
@@ -210,7 +215,6 @@ fn config_json(tool: &AiToolConfig) -> String {
     ]
   }}
 }}"#,
-        prompt_event = tool.prompt_event,
         tool_event = tool.tool_event,
         tool_matcher = tool.tool_matcher,
         hook_dir = tool.hook_dir,
@@ -224,7 +228,6 @@ const AI_TOOLS: &[AiToolConfig] = &[
         hook_dir: ".claude/hooks",
         config_path: ".claude/settings.json",
         has_model: true,
-        prompt_event: "UserPromptSubmit",
         tool_event: "PreToolUse",
         tool_matcher: "Bash",
     },
@@ -234,7 +237,6 @@ const AI_TOOLS: &[AiToolConfig] = &[
         hook_dir: ".codex/hooks",
         config_path: ".codex/hooks.json",
         has_model: true,
-        prompt_event: "UserPromptSubmit",
         tool_event: "PreToolUse",
         tool_matcher: "Bash",
     },
@@ -244,7 +246,6 @@ const AI_TOOLS: &[AiToolConfig] = &[
         hook_dir: ".gemini/hooks",
         config_path: ".gemini/settings.json",
         has_model: false,
-        prompt_event: "BeforeAgent",
         tool_event: "BeforeTool",
         tool_matcher: "run_shell_command",
     },
@@ -287,14 +288,11 @@ async fn install_ai_hook(
         .map_err(|e| ServerFnError::new(e.to_string()))?
         .ok_or_else(|| ServerFnError::new("Repository has no branches"))?;
 
-    let save_prompt = save_prompt_script().to_string();
     let context_script = hook_script(tool.tool_id, tool.has_model);
     let config = config_json(tool);
-    let save_prompt_path = format!("{}/save-prompt.sh", tool.hook_dir);
     let context_path = format!("{}/oxigit-context.sh", tool.hook_dir);
 
     let files: Vec<(&str, &str, bool)> = vec![
-        (&save_prompt_path, &save_prompt, true),
         (&context_path, &context_script, true),
         (tool.config_path, &config, false),
     ];
@@ -331,18 +329,12 @@ async fn check_installed_hooks(
     let mut statuses = Vec::new();
     for tool in AI_TOOLS {
         let context_path = format!("{}/oxigit-context.sh", tool.hook_dir);
-        let prompt_path = format!("{}/save-prompt.sh", tool.hook_dir);
 
         let context_installed = git::read_blob(&repo_path, &branch, &context_path).ok();
-        let prompt_installed = git::read_blob(&repo_path, &branch, &prompt_path).ok();
 
-        // Consider installed if either script exists
-        if context_installed.is_some() || prompt_installed.is_some() {
+        if context_installed.is_some() {
             let context_ok = context_installed
                 .map(|b| String::from_utf8_lossy(&b).as_ref() == hook_script(tool.tool_id, tool.has_model))
-                .unwrap_or(false);
-            let prompt_ok = prompt_installed
-                .map(|b| String::from_utf8_lossy(&b).as_ref() == save_prompt_script())
                 .unwrap_or(false);
             let config_ok = git::read_blob(&repo_path, &branch, tool.config_path)
                 .map(|b| String::from_utf8_lossy(&b).as_ref() == config_json(tool))
@@ -350,7 +342,7 @@ async fn check_installed_hooks(
 
             statuses.push(HookStatus {
                 tool_id: tool.tool_id.to_string(),
-                up_to_date: context_ok && prompt_ok && config_ok,
+                up_to_date: context_ok && config_ok,
             });
         }
     }
@@ -740,7 +732,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                         <div>
                             <span class="font-semibold">{display_name}</span>
                             <span class="text-secondary" style="font-size: 0.8125rem; margin-left: 0.5rem;">
-                                {format!("{dir}/save-prompt.sh + {dir}/oxigit-context.sh + {cfg}", dir = hook_dir, cfg = config_path)}
+                                {format!("{dir}/oxigit-context.sh + {cfg}", dir = hook_dir, cfg = config_path)}
                             </span>
                         </div>
                         <ActionForm action=install_hook_action>

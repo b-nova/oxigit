@@ -65,13 +65,17 @@ pub async fn process_post_receive(
         }
 
         for sha in &shas {
-            let context = match git::read_oxigit_context(repo_path, sha) {
+            // Try trailers first (new approach), fall back to context.json (legacy)
+            let context = match git::read_oxigit_trailers(repo_path, sha) {
                 Ok(Some(ctx)) => ctx,
-                Ok(None) => continue,
-                Err(e) => {
-                    tracing::warn!("Failed to read .oxigit/context.json for {}: {}", sha, e);
-                    continue;
-                }
+                _ => match git::read_oxigit_context(repo_path, sha) {
+                    Ok(Some(ctx)) => ctx,
+                    Ok(None) => continue,
+                    Err(e) => {
+                        tracing::warn!("Failed to read AI metadata for {}: {}", sha, e);
+                        continue;
+                    }
+                },
             };
 
             let files = git::list_changed_files(repo_path, sha).unwrap_or_default();

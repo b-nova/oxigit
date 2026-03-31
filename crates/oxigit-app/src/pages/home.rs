@@ -1,5 +1,4 @@
 use leptos::prelude::*;
-use serde::{Deserialize, Serialize};
 
 use crate::components::icons::{IconBranch, IconPlus, IconRepo, IconRust, IconSearch, IconServer};
 

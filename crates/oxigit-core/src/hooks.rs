@@ -94,6 +94,7 @@ pub async fn process_post_receive(
                 context.prompt.as_deref(),
                 context.session_id.as_deref(),
                 files_json.as_deref(),
+                context.prompt_index,
             )
             .await
             {

@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::auth::{hash_password, validate_repo_name, validate_username, verify_password};
 use crate::error::{OxigitError, Result};
-use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, DeployPreview, Issue, IssueComment, PullRequest, RepoWebhook, Repository, SshKey, User, UserSettings};
+use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, DeployPreview, Issue, IssueComment, MergeConflict, MergeConflictFile, PullRequest, RepoWebhook, Repository, SshKey, User, UserSettings};
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
@@ -707,10 +707,11 @@ pub async fn insert_ai_metadata(
     ai_prompt: Option<&str>,
     ai_session_id: Option<&str>,
     ai_files_touched: Option<&str>,
+    ai_prompt_index: Option<i64>,
 ) -> Result<AiCommitMetadata> {
     let meta = sqlx::query_as::<_, AiCommitMetadata>(
-        "INSERT OR REPLACE INTO ai_commit_metadata (repo_id, commit_sha, ai_tool, ai_model, ai_prompt, ai_session_id, ai_files_touched) \
-         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
+        "INSERT OR REPLACE INTO ai_commit_metadata (repo_id, commit_sha, ai_tool, ai_model, ai_prompt, ai_session_id, ai_files_touched, ai_prompt_index) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
     )
     .bind(repo_id)
     .bind(commit_sha)
@@ -719,6 +720,7 @@ pub async fn insert_ai_metadata(
     .bind(ai_prompt)
     .bind(ai_session_id)
     .bind(ai_files_touched)
+    .bind(ai_prompt_index)
     .fetch_one(pool)
     .await?;
     Ok(meta)
@@ -780,13 +782,25 @@ pub async fn list_ai_sessions(
 pub async fn get_unsessioned_ai_commits(
     pool: &SqlitePool,
     repo_id: i64,
+    query: &str,
 ) -> Result<Vec<AiCommitMetadata>> {
-    let metas = sqlx::query_as::<_, AiCommitMetadata>(
-        "SELECT * FROM ai_commit_metadata WHERE repo_id = ? AND ai_session_id IS NULL ORDER BY created_at DESC",
-    )
-    .bind(repo_id)
-    .fetch_all(pool)
-    .await?;
+    let metas = if query.is_empty() {
+        sqlx::query_as::<_, AiCommitMetadata>(
+            "SELECT * FROM ai_commit_metadata WHERE repo_id = ? AND ai_session_id IS NULL ORDER BY created_at DESC",
+        )
+        .bind(repo_id)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, AiCommitMetadata>(
+            "SELECT * FROM ai_commit_metadata WHERE repo_id = ? AND ai_session_id IS NULL \
+             AND ai_prompt LIKE '%' || ? || '%' ORDER BY created_at DESC",
+        )
+        .bind(repo_id)
+        .bind(query)
+        .fetch_all(pool)
+        .await?
+    };
     Ok(metas)
 }
 
@@ -913,17 +927,36 @@ pub struct SessionSummaryRow {
 }
 
 /// List session summaries for a repo (efficient GROUP BY query).
-pub async fn list_session_summaries(pool: &SqlitePool, repo_id: i64) -> Result<Vec<SessionSummaryRow>> {
-    let rows: Vec<(String, String, String, String, i64, Option<String>)> = sqlx::query_as(
-        "SELECT ai_session_id, ai_tool, MIN(created_at), MAX(created_at), COUNT(*), MIN(ai_prompt) \
-         FROM ai_commit_metadata \
-         WHERE repo_id = ? AND ai_session_id IS NOT NULL \
-         GROUP BY ai_session_id \
-         ORDER BY MAX(created_at) DESC",
-    )
-    .bind(repo_id)
-    .fetch_all(pool)
-    .await?;
+pub async fn list_session_summaries(pool: &SqlitePool, repo_id: i64, query: &str) -> Result<Vec<SessionSummaryRow>> {
+    let rows: Vec<(String, String, String, String, i64, Option<String>)> = if query.is_empty() {
+        sqlx::query_as(
+            "SELECT ai_session_id, ai_tool, MIN(created_at), MAX(created_at), COUNT(*), MIN(ai_prompt) \
+             FROM ai_commit_metadata \
+             WHERE repo_id = ? AND ai_session_id IS NOT NULL \
+             GROUP BY ai_session_id \
+             ORDER BY MAX(created_at) DESC",
+        )
+        .bind(repo_id)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as(
+            "SELECT ai_session_id, ai_tool, MIN(created_at), MAX(created_at), COUNT(*), MIN(ai_prompt) \
+             FROM ai_commit_metadata \
+             WHERE repo_id = ? AND ai_session_id IS NOT NULL \
+             AND ai_session_id IN ( \
+                 SELECT ai_session_id FROM ai_commit_metadata \
+                 WHERE repo_id = ? AND ai_prompt LIKE '%' || ? || '%' \
+             ) \
+             GROUP BY ai_session_id \
+             ORDER BY MAX(created_at) DESC",
+        )
+        .bind(repo_id)
+        .bind(repo_id)
+        .bind(query)
+        .fetch_all(pool)
+        .await?
+    };
 
     Ok(rows
         .into_iter()
@@ -938,6 +971,137 @@ pub async fn list_session_summaries(pool: &SqlitePool, repo_id: i64) -> Result<V
             }
         })
         .collect())
+}
+
+/// Prompt group row from GROUP BY query — groups commits by prompt within sessions.
+pub struct PromptGroupRow {
+    pub ai_session_id: Option<String>,
+    pub ai_prompt_index: Option<i64>,
+    pub ai_prompt: Option<String>,
+    pub ai_tool: String,
+    pub ai_model: Option<String>,
+    pub commit_count: i64,
+    pub first_time: String,
+    pub last_time: String,
+    pub commit_shas: Vec<String>,
+}
+
+/// List prompt groups for a repo: each row represents one developer prompt and the commits it produced.
+/// Groups by (ai_session_id, ai_prompt_index), falling back to (ai_session_id, ai_prompt) for legacy data.
+pub async fn list_prompt_groups(
+    pool: &SqlitePool,
+    repo_id: i64,
+    query: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<PromptGroupRow>> {
+    // We use a two-level grouping key: session_id + COALESCE(prompt_index, prompt text, commit_sha)
+    // This ensures: with prompt_index → group by index; without → group by prompt text; solo → own group
+    let group_key = "ai_session_id, COALESCE(CAST(ai_prompt_index AS TEXT), ai_prompt, commit_sha)";
+
+    let (sql, needs_query_bind) = if query.is_empty() {
+        (format!(
+            "SELECT ai_session_id, ai_prompt_index, MIN(ai_prompt), ai_tool, MIN(ai_model), \
+             COUNT(*), MIN(created_at), MAX(created_at), GROUP_CONCAT(commit_sha, ',') \
+             FROM ai_commit_metadata \
+             WHERE repo_id = ? \
+             GROUP BY {} \
+             ORDER BY MAX(created_at) DESC \
+             LIMIT ? OFFSET ?",
+            group_key
+        ), false)
+    } else {
+        (format!(
+            "SELECT ai_session_id, ai_prompt_index, MIN(ai_prompt), ai_tool, MIN(ai_model), \
+             COUNT(*), MIN(created_at), MAX(created_at), GROUP_CONCAT(commit_sha, ',') \
+             FROM ai_commit_metadata \
+             WHERE repo_id = ? AND ai_prompt LIKE '%' || ? || '%' \
+             GROUP BY {} \
+             ORDER BY MAX(created_at) DESC \
+             LIMIT ? OFFSET ?",
+            group_key
+        ), true)
+    };
+
+    let rows: Vec<(Option<String>, Option<i64>, Option<String>, String, Option<String>, i64, String, String, String)> = {
+        let mut q = sqlx::query_as(&sql).bind(repo_id);
+        if needs_query_bind {
+            q = q.bind(query);
+        }
+        q = q.bind(limit).bind(offset);
+        q.fetch_all(pool).await?
+    };
+
+    Ok(rows
+        .into_iter()
+        .map(|(session_id, prompt_index, prompt, tool, model, count, first, last, shas_csv)| {
+            PromptGroupRow {
+                ai_session_id: session_id,
+                ai_prompt_index: prompt_index,
+                ai_prompt: prompt,
+                ai_tool: tool,
+                ai_model: model,
+                commit_count: count,
+                first_time: first,
+                last_time: last,
+                commit_shas: shas_csv.split(',').map(|s| s.to_string()).collect(),
+            }
+        })
+        .collect())
+}
+
+/// Batch-fetch AI metadata as a HashMap keyed by commit SHA for O(1) lookup.
+pub async fn get_ai_metadata_for_commits_map(
+    pool: &SqlitePool,
+    repo_id: i64,
+    shas: &[String],
+) -> Result<std::collections::HashMap<String, AiCommitMetadata>> {
+    let metas = get_ai_metadata_for_commits(pool, repo_id, shas).await?;
+    Ok(metas.into_iter().map(|m| (m.commit_sha.clone(), m)).collect())
+}
+
+/// Get all commits for a specific prompt within a session.
+pub async fn get_commits_for_prompt_group(
+    pool: &SqlitePool,
+    repo_id: i64,
+    session_id: &str,
+    prompt_index: i64,
+) -> Result<Vec<AiCommitMetadata>> {
+    let metas = sqlx::query_as::<_, AiCommitMetadata>(
+        "SELECT * FROM ai_commit_metadata \
+         WHERE repo_id = ? AND ai_session_id = ? AND ai_prompt_index = ? \
+         ORDER BY created_at ASC",
+    )
+    .bind(repo_id)
+    .bind(session_id)
+    .bind(prompt_index)
+    .fetch_all(pool)
+    .await?;
+    Ok(metas)
+}
+
+/// Count total prompt groups for pagination.
+pub async fn count_prompt_groups(pool: &SqlitePool, repo_id: i64, query: &str) -> Result<i64> {
+    let group_key = "ai_session_id, COALESCE(CAST(ai_prompt_index AS TEXT), ai_prompt, commit_sha)";
+    let count: (i64,) = if query.is_empty() {
+        sqlx::query_as(&format!(
+            "SELECT COUNT(*) FROM (SELECT 1 FROM ai_commit_metadata WHERE repo_id = ? GROUP BY {})",
+            group_key
+        ))
+        .bind(repo_id)
+        .fetch_one(pool)
+        .await?
+    } else {
+        sqlx::query_as(&format!(
+            "SELECT COUNT(*) FROM (SELECT 1 FROM ai_commit_metadata WHERE repo_id = ? AND ai_prompt LIKE '%' || ? || '%' GROUP BY {})",
+            group_key
+        ))
+        .bind(repo_id)
+        .bind(query)
+        .fetch_one(pool)
+        .await?
+    };
+    Ok(count.0)
 }
 
 // --- User Settings queries ---
@@ -1161,4 +1325,109 @@ pub async fn get_user_risk_summaries(pool: &SqlitePool, user_id: i64) -> Result<
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+// --- Merge Conflict Resolution queries ---
+
+pub async fn create_merge_conflict(
+    pool: &SqlitePool,
+    repo_id: i64,
+    user_id: i64,
+    operation_type: &str,
+    target_ref: &str,
+    source_ref: &str,
+    merge_base: &str,
+    auto_tree: Option<&str>,
+    context_json: Option<&str>,
+) -> Result<MergeConflict> {
+    let row = sqlx::query_as::<_, MergeConflict>(
+        "INSERT INTO merge_conflicts (repo_id, user_id, operation_type, target_ref, source_ref, merge_base, auto_tree, context_json) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+    )
+    .bind(repo_id)
+    .bind(user_id)
+    .bind(operation_type)
+    .bind(target_ref)
+    .bind(source_ref)
+    .bind(merge_base)
+    .bind(auto_tree)
+    .bind(context_json)
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn create_conflict_file(
+    pool: &SqlitePool,
+    conflict_id: i64,
+    file_path: &str,
+    conflict_type: &str,
+) -> Result<MergeConflictFile> {
+    let row = sqlx::query_as::<_, MergeConflictFile>(
+        "INSERT INTO merge_conflict_files (merge_conflict_id, file_path, conflict_type) \
+         VALUES (?, ?, ?) RETURNING *",
+    )
+    .bind(conflict_id)
+    .bind(file_path)
+    .bind(conflict_type)
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn get_merge_conflict(pool: &SqlitePool, id: i64) -> Result<Option<MergeConflict>> {
+    let row = sqlx::query_as::<_, MergeConflict>(
+        "SELECT * FROM merge_conflicts WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn get_conflict_files(pool: &SqlitePool, conflict_id: i64) -> Result<Vec<MergeConflictFile>> {
+    let rows = sqlx::query_as::<_, MergeConflictFile>(
+        "SELECT * FROM merge_conflict_files WHERE merge_conflict_id = ? ORDER BY file_path",
+    )
+    .bind(conflict_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn resolve_conflict_file(
+    pool: &SqlitePool,
+    file_id: i64,
+    resolution: &str,
+    resolved_content: Option<&str>,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE merge_conflict_files SET resolution = ?, resolved_content = ?, resolved_at = datetime('now') WHERE id = ?",
+    )
+    .bind(resolution)
+    .bind(resolved_content)
+    .bind(file_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn complete_merge_conflict(pool: &SqlitePool, id: i64) -> Result<()> {
+    sqlx::query(
+        "UPDATE merge_conflicts SET status = 'resolved', updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn cancel_merge_conflict(pool: &SqlitePool, id: i64) -> Result<()> {
+    sqlx::query(
+        "UPDATE merge_conflicts SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }

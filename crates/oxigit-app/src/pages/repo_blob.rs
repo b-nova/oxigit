@@ -144,6 +144,10 @@ pub fn RepoBlobPage() -> impl IntoView {
                 Suspend::new(async move {
                     match blob.await {
                         Ok(resp) => {
+                            let blame_href = {
+                                let ref_param = if git_ref().is_empty() { String::new() } else { format!("?ref={}", git_ref()) };
+                                format!("/{}/{}/blame/{}{}", owner_name, repo_name, resp.file_path, ref_param)
+                            };
                             view! {
                                 <div class="page-header">
                                     <h1 class="breadcrumb">
@@ -153,6 +157,9 @@ pub fn RepoBlobPage() -> impl IntoView {
                                         <span class="breadcrumb-sep">" / "</span>
                                         <span class="text-secondary">{resp.file_path.clone()}</span>
                                     </h1>
+                                    {(!resp.is_binary).then(|| view! {
+                                        <a href={blame_href} class="btn btn-sm">"Blame"</a>
+                                    })}
                                 </div>
                                 <div class="card-flush">
                                     <div class="blob-header">

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: oxigit
+    runtime: docker
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: OXIGIT_DATA_DIR
+        value: /app/data
+      - key: OXIGIT_HTTP_ADDR
+        value: 0.0.0.0:9100
+      - key: OXIGIT_SSH_ADDR
+        value: 0.0.0.0:2222
+      - key: RUST_LOG
+        value: info
+      - key: OXIGIT_SECRET_KEY
+        generateValue: true
+    disk:
+      name: oxigit-data
+      mountPath: /app/data
+      sizeGB: 10

@@ -194,6 +194,92 @@ chmod +x "$GIT_DIR/hooks/prepare-commit-msg""#,
     )
 }
 
+#[cfg(feature = "ssr")]
+fn session_capture_script(tool_name: &str, has_model: bool) -> String {
+    let model_line = if has_model {
+        r#"MODEL=$(echo "$INPUT" | jq -r '.model // empty')"#
+    } else {
+        r#"MODEL="""#
+    };
+    format!(
+        r#"#!/bin/bash
+set -e
+INPUT=$(cat)
+SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
+{model_line}
+PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty')
+if [ -z "$PROMPT" ]; then
+  PROMPT=$(echo "$INPUT" | jq -r '.user_prompt // empty')
+fi
+mkdir -p .oxigit
+jq -n \
+  --arg tool "{tool_name}" \
+  --arg model "$MODEL" \
+  --arg session_id "$SESSION_ID" \
+  --arg prompt "$PROMPT" \
+  '{{ tool: $tool, model: $model, session_id: $session_id, prompt: $prompt }}' \
+  > .oxigit/last-ai-session.json"#,
+        tool_name = tool_name,
+        model_line = model_line,
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn universal_hook_script() -> &'static str {
+    r#"#!/bin/bash
+# Oxigit universal prepare-commit-msg hook
+# Reads AI session metadata from .oxigit/last-ai-session.json
+# and adds Oxigit trailers to commit messages.
+#
+# Setup: git config core.hooksPath .githooks
+
+MSG_FILE="$1"
+
+# Skip if Claude Code (it has its own richer hook system via PreToolUse)
+[ -n "$CLAUDECODE" ] && exit 0
+
+# Check for Claude Code pending file first
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || echo ".git")
+PENDING="$GIT_DIR/oxigit-pending.json"
+if [ -f "$PENDING" ]; then
+  TOOL=$(jq -r '.tool // empty' "$PENDING")
+  MODEL=$(jq -r '.model // empty' "$PENDING")
+  SESSION=$(jq -r '.session_id // empty' "$PENDING")
+  PROMPT=$(jq -r '.prompt // empty' "$PENDING")
+  ARGS=()
+  [ -n "$TOOL" ] && ARGS+=(--trailer "Oxigit-Tool: $TOOL")
+  [ -n "$MODEL" ] && ARGS+=(--trailer "Oxigit-Model: $MODEL")
+  [ -n "$SESSION" ] && ARGS+=(--trailer "Oxigit-Session: $SESSION")
+  [ -n "$PROMPT" ] && ARGS+=(--trailer "Oxigit-Prompt: $PROMPT")
+  if [ ${#ARGS[@]} -gt 0 ]; then
+    git interpret-trailers --in-place "${ARGS[@]}" "$MSG_FILE"
+  fi
+  rm -f "$PENDING"
+  exit 0
+fi
+
+# Check for session metadata from Codex/Gemini/other tools
+SESSION_FILE=".oxigit/last-ai-session.json"
+if [ -f "$SESSION_FILE" ]; then
+  # Only use if written recently (within last 30 minutes)
+  if [ "$(find "$SESSION_FILE" -mmin -30 2>/dev/null)" ]; then
+    TOOL=$(jq -r '.tool // empty' "$SESSION_FILE")
+    MODEL=$(jq -r '.model // empty' "$SESSION_FILE")
+    SESSION=$(jq -r '.session_id // empty' "$SESSION_FILE")
+    PROMPT=$(jq -r '.prompt // empty' "$SESSION_FILE")
+    ARGS=()
+    [ -n "$TOOL" ] && ARGS+=(--trailer "Oxigit-Tool: $TOOL")
+    [ -n "$MODEL" ] && ARGS+=(--trailer "Oxigit-Model: $MODEL")
+    [ -n "$SESSION" ] && ARGS+=(--trailer "Oxigit-Session: $SESSION")
+    [ -n "$PROMPT" ] && ARGS+=(--trailer "Oxigit-Prompt: $PROMPT")
+    if [ ${#ARGS[@]} -gt 0 ]; then
+      git interpret-trailers --in-place "${ARGS[@]}" "$MSG_FILE"
+    fi
+  fi
+fi
+"#
+}
+
 #[cfg_attr(not(feature = "ssr"), allow(dead_code))]
 struct AiToolConfig {
     tool_id: &'static str,
@@ -201,14 +287,20 @@ struct AiToolConfig {
     hook_dir: &'static str,
     config_path: &'static str,
     has_model: bool,
+    /// If true, uses PreToolUse on git commit (Claude Code).
+    /// If false, uses UserPromptSubmit to capture session + .githooks for trailers (Codex/Gemini).
+    uses_pre_tool: bool,
     tool_event: &'static str,
     tool_matcher: &'static str,
+    prompt_event: &'static str,
 }
 
 #[cfg(feature = "ssr")]
 fn config_json(tool: &AiToolConfig) -> String {
-    format!(
-        r#"{{
+    if tool.uses_pre_tool {
+        // Claude Code: PreToolUse hook on git commit
+        format!(
+            r#"{{
   "hooks": {{
     "{tool_event}": [
       {{
@@ -224,10 +316,33 @@ fn config_json(tool: &AiToolConfig) -> String {
     ]
   }}
 }}"#,
-        tool_event = tool.tool_event,
-        tool_matcher = tool.tool_matcher,
-        hook_dir = tool.hook_dir,
-    )
+            tool_event = tool.tool_event,
+            tool_matcher = tool.tool_matcher,
+            hook_dir = tool.hook_dir,
+        )
+    } else {
+        // Codex/Gemini: capture session on prompt submit
+        format!(
+            r#"{{
+  "hooks": {{
+    "{prompt_event}": [
+      {{
+        "matcher": "",
+        "hooks": [
+          {{
+            "type": "command",
+            "command": "{hook_dir}/oxigit-session.sh",
+            "timeout": 5
+          }}
+        ]
+      }}
+    ]
+  }}
+}}"#,
+            prompt_event = tool.prompt_event,
+            hook_dir = tool.hook_dir,
+        )
+    }
 }
 
 const AI_TOOLS: &[AiToolConfig] = &[
@@ -237,8 +352,10 @@ const AI_TOOLS: &[AiToolConfig] = &[
         hook_dir: ".claude/hooks",
         config_path: ".claude/settings.json",
         has_model: true,
+        uses_pre_tool: true,
         tool_event: "PreToolUse",
         tool_matcher: "Bash",
+        prompt_event: "",
     },
     AiToolConfig {
         tool_id: "codex",
@@ -246,8 +363,10 @@ const AI_TOOLS: &[AiToolConfig] = &[
         hook_dir: ".codex/hooks",
         config_path: ".codex/hooks.json",
         has_model: true,
-        tool_event: "PreToolUse",
-        tool_matcher: "Bash",
+        uses_pre_tool: false,
+        tool_event: "",
+        tool_matcher: "",
+        prompt_event: "UserPromptSubmit",
     },
     AiToolConfig {
         tool_id: "gemini-cli",
@@ -255,8 +374,10 @@ const AI_TOOLS: &[AiToolConfig] = &[
         hook_dir: ".gemini/hooks",
         config_path: ".gemini/settings.json",
         has_model: false,
-        tool_event: "BeforeTool",
-        tool_matcher: "run_shell_command",
+        uses_pre_tool: false,
+        tool_event: "",
+        tool_matcher: "",
+        prompt_event: "BeforeAgent",
     },
 ];
 
@@ -297,20 +418,83 @@ async fn install_ai_hook(
         .map_err(|e| ServerFnError::new(e.to_string()))?
         .ok_or_else(|| ServerFnError::new("Repository has no branches"))?;
 
-    let context_script = hook_script(tool.tool_id, tool.has_model);
     let config = config_json(tool);
-    let context_path = format!("{}/oxigit-context.sh", tool.hook_dir);
 
+    let files = if tool.uses_pre_tool {
+        // Claude Code: PreToolUse hook on git commit
+        let context_script = hook_script(tool.tool_id, tool.has_model);
+        let context_path = format!("{}/oxigit-context.sh", tool.hook_dir);
+        vec![
+            (context_path, context_script, true),
+            (tool.config_path.to_string(), config, false),
+        ]
+    } else {
+        // Codex/Gemini: session capture + universal prepare-commit-msg
+        let session_script = session_capture_script(tool.tool_id, tool.has_model);
+        let session_path = format!("{}/oxigit-session.sh", tool.hook_dir);
+        let universal = universal_hook_script().to_string();
+        vec![
+            (session_path, session_script, true),
+            (tool.config_path.to_string(), config, false),
+            (".githooks/prepare-commit-msg".to_string(), universal, true),
+        ]
+    };
+
+    let files_refs: Vec<(&str, &str, bool)> = files.iter()
+        .map(|(p, c, e)| (p.as_str(), c.as_str(), *e))
+        .collect();
+
+    git::add_files_to_branch(
+        &repo_path,
+        &branch,
+        &files_refs,
+        &format!("chore: install {} AI hook for Oxigit", tool.display_name),
+        &user.username,
+        &format!("{}@oxigit", user.username),
+    )
+    .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    Ok(())
+}
+
+#[server]
+async fn install_universal_hook(
+    owner: String,
+    repo: String,
+) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use oxigit_core::{db, git};
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let data_dir = get_data_dir().await?;
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if repo_db.owner_id != user.id {
+        return Err(ServerFnError::new("Only the owner can install AI hooks"));
+    }
+
+    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+
+    let branch = git::default_branch(&repo_path)
+        .map_err(|e| ServerFnError::new(e.to_string()))?
+        .ok_or_else(|| ServerFnError::new("Repository has no branches"))?;
+
+    let script = universal_hook_script().to_string();
     let files: Vec<(&str, &str, bool)> = vec![
-        (&context_path, &context_script, true),
-        (tool.config_path, &config, false),
+        (".githooks/prepare-commit-msg", &script, true),
     ];
 
     git::add_files_to_branch(
         &repo_path,
         &branch,
         &files,
-        &format!("chore: install {} AI hook for Oxigit", tool.display_name),
+        "chore: install universal Oxigit AI hook",
         &user.username,
         &format!("{}@oxigit", user.username),
     )
@@ -337,13 +521,22 @@ async fn check_installed_hooks(
 
     let mut statuses = Vec::new();
     for tool in AI_TOOLS {
-        let context_path = format!("{}/oxigit-context.sh", tool.hook_dir);
+        let script_path = if tool.uses_pre_tool {
+            format!("{}/oxigit-context.sh", tool.hook_dir)
+        } else {
+            format!("{}/oxigit-session.sh", tool.hook_dir)
+        };
 
-        let context_installed = git::read_blob(&repo_path, &branch, &context_path).ok();
+        let script_installed = git::read_blob(&repo_path, &branch, &script_path).ok();
 
-        if context_installed.is_some() {
-            let context_ok = context_installed
-                .map(|b| String::from_utf8_lossy(&b).as_ref() == hook_script(tool.tool_id, tool.has_model))
+        if script_installed.is_some() {
+            let expected_script = if tool.uses_pre_tool {
+                hook_script(tool.tool_id, tool.has_model)
+            } else {
+                session_capture_script(tool.tool_id, tool.has_model)
+            };
+            let script_ok = script_installed
+                .map(|b| String::from_utf8_lossy(&b).as_ref() == expected_script)
                 .unwrap_or(false);
             let config_ok = git::read_blob(&repo_path, &branch, tool.config_path)
                 .map(|b| String::from_utf8_lossy(&b).as_ref() == config_json(tool))
@@ -351,10 +544,20 @@ async fn check_installed_hooks(
 
             statuses.push(HookStatus {
                 tool_id: tool.tool_id.to_string(),
-                up_to_date: context_ok && config_ok,
+                up_to_date: script_ok && config_ok,
             });
         }
     }
+
+    // Check universal hook
+    if let Ok(blob) = git::read_blob(&repo_path, &branch, ".githooks/prepare-commit-msg") {
+        let up_to_date = String::from_utf8_lossy(&blob).as_ref() == universal_hook_script();
+        statuses.push(HookStatus {
+            tool_id: "universal".to_string(),
+            up_to_date,
+        });
+    }
+
     Ok(statuses)
 }
 
@@ -523,6 +726,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
     let add_action = ServerAction::<AddCollaborator>::new();
     let remove_action = ServerAction::<RemoveCollaborator>::new();
     let install_hook_action = ServerAction::<InstallAiHook>::new();
+    let install_universal_action = ServerAction::<InstallUniversalHook>::new();
     let add_webhook_action = ServerAction::<AddWebhook>::new();
     let delete_webhook_action = ServerAction::<DeleteWebhook>::new();
 
@@ -549,6 +753,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
 
     Effect::new(move || {
         install_hook_action.version().get();
+        install_universal_action.version().get();
         installed_hooks.refetch();
     });
 
@@ -564,9 +769,13 @@ pub fn RepoSettingsPage() -> impl IntoView {
 
     let hook_error = move || {
         install_hook_action.value().get().and_then(|r| r.err().map(|e| e.to_string()))
+            .or_else(|| install_universal_action.value().get().and_then(|r| r.err().map(|e| e.to_string())))
     };
     let hook_success = move || {
         install_hook_action.value().get().and_then(|r| r.ok()).is_some()
+    };
+    let universal_success = move || {
+        install_universal_action.value().get().and_then(|r| r.ok()).is_some()
     };
 
     view! {
@@ -718,15 +927,34 @@ pub fn RepoSettingsPage() -> impl IntoView {
                 <div class="flash flash-error">{e}</div>
             })}
             {move || hook_success().then(|| view! {
-                <div class="flash flash-success">"AI hook installed successfully. Pull to get the new files."</div>
+                <div class="flash flash-success">
+                    <p>"Hook installed. Pull to get the new files."</p>
+                    <p style="margin-top: var(--space-2); font-size: 0.8125rem;">
+                        "For Codex CLI, also add to " <code>"~/.codex/config.toml"</code> ":"
+                    </p>
+                    <pre style="margin-top: var(--space-1); font-size: 0.8125rem; background: var(--bg); padding: var(--space-2); border-radius: var(--radius);">"[features]\ncodex_hooks = true"</pre>
+                    <p style="margin-top: var(--space-2); font-size: 0.8125rem;">
+                        "For Codex/Gemini, also run after pulling: "
+                        <code>"git config core.hooksPath .githooks"</code>
+                    </p>
+                </div>
             })}
+            {move || universal_success().then(|| view! {
+                <div class="flash flash-success">
+                    <p>"Universal hook installed. Pull, then run: "
+                        <code>"git config core.hooksPath .githooks"</code>
+                    </p>
+                </div>
+            })}
+
+            // Claude Code (native hook)
             {AI_TOOLS.iter().map(|tool| {
                 let tool_id = tool.tool_id.to_string();
                 let tool_id_check = tool.tool_id.to_string();
                 let display_name = tool.display_name.to_string();
+                let script_name = if tool.uses_pre_tool { "oxigit-context.sh" } else { "oxigit-session.sh" };
                 let hook_dir = tool.hook_dir.to_string();
                 let config_path = tool.config_path.to_string();
-                // None = not installed, Some(true) = up to date, Some(false) = outdated
                 let hook_status = Memo::new(move |_| {
                     installed_hooks.get()
                         .and_then(|r| r.ok())
@@ -741,7 +969,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                         <div>
                             <span class="font-semibold">{display_name}</span>
                             <span class="text-secondary" style="font-size: 0.8125rem; margin-left: 0.5rem;">
-                                {format!("{dir}/oxigit-context.sh + {cfg}", dir = hook_dir, cfg = config_path)}
+                                {format!("{dir}/{script} + {cfg}", dir = hook_dir, script = script_name, cfg = config_path)}
                             </span>
                         </div>
                         <ActionForm action=install_hook_action>
@@ -764,6 +992,48 @@ pub fn RepoSettingsPage() -> impl IntoView {
                     </div>
                 }
             }).collect::<Vec<_>>()}
+
+            // Universal hook (Codex CLI, Gemini CLI, Aider, etc.)
+            {
+                let universal_status = Memo::new(move |_| {
+                    installed_hooks.get()
+                        .and_then(|r| r.ok())
+                        .and_then(|statuses| {
+                            statuses.iter()
+                                .find(|s| s.tool_id == "universal")
+                                .map(|s| s.up_to_date)
+                        })
+                });
+                view! {
+                    <div class="list-item">
+                        <div>
+                            <span class="font-semibold">"Universal (Codex, Gemini, Aider, ...)"</span>
+                            <span class="text-secondary" style="font-size: 0.8125rem; margin-left: 0.5rem;">
+                                ".githooks/prepare-commit-msg"
+                            </span>
+                        </div>
+                        <ActionForm action=install_universal_action>
+                            <input type="hidden" name="owner" value={move || owner()} />
+                            <input type="hidden" name="repo" value={move || repo()} />
+                            <button
+                                type="submit"
+                                class="btn btn-sm"
+                                class:btn-primary=move || !matches!(universal_status.get(), Some(true))
+                                disabled=move || universal_status.get() == Some(true)
+                            >
+                                {move || match universal_status.get() {
+                                    None => "Install",
+                                    Some(true) => "Installed",
+                                    Some(false) => "Update",
+                                }}
+                            </button>
+                        </ActionForm>
+                    </div>
+                    <p class="text-tertiary" style="font-size: 0.75rem; padding: 0 var(--space-4) var(--space-3);">
+                        "After pulling, run: " <code>"git config core.hooksPath .githooks"</code>
+                    </p>
+                }
+            }
         </div>
 
         // Webhooks section

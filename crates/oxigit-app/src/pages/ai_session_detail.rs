@@ -122,10 +122,14 @@ async fn fetch_session_detail(
     };
 
     let can_revert = current_user.as_ref().map(|u| u.id == repo_db.owner_id).unwrap_or(false);
+    let branches = git::list_branches(&repo_path).unwrap_or_default();
+    let default_branch = git::default_branch(&repo_path)
+        .unwrap_or(None).unwrap_or_else(|| "main".to_string());
 
     Ok(SessionDetailResponse {
         session_id, ai_tool, ai_model, entries, diff_html,
         files_changed: all_files, first_time, last_time, summary, can_revert,
+        branches, default_branch,
     })
 }
 
@@ -177,6 +181,100 @@ async fn revert_session(
     Ok(())
 }
 
+#[server]
+async fn squash_session_action(
+    owner: String,
+    repo: String,
+    session_id: String,
+    message: String,
+) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use oxigit_core::{db, git};
+
+    let user = extract_session_user().await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let data_dir = get_data_dir().await?;
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let can_push = db::can_push_repo(&pool, &repo_db, user.id)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    if !can_push {
+        return Err(ServerFnError::new("Access denied"));
+    }
+
+    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let metas = db::get_ai_metadata_by_session(&pool, repo_db.id, &session_id)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if metas.is_empty() {
+        return Err(ServerFnError::new("Session not found"));
+    }
+
+    // Metas are DESC — reverse for oldest-first
+    let mut shas: Vec<String> = metas.iter().map(|m| m.commit_sha.clone()).collect();
+    shas.reverse();
+
+    let default_branch = git::default_branch(&repo_path)
+        .unwrap_or(None).unwrap_or_else(|| "main".to_string());
+
+    git::squash_session(&repo_path, &default_branch, &shas, &message)
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    leptos_axum::redirect(&format!("/{}/{}/ai/{}", owner, repo, session_id));
+    Ok(())
+}
+
+#[server]
+async fn cherry_pick_session_action(
+    owner: String,
+    repo: String,
+    session_id: String,
+    target_branch: String,
+) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use oxigit_core::{db, git};
+
+    let user = extract_session_user().await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let data_dir = get_data_dir().await?;
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let can_push = db::can_push_repo(&pool, &repo_db, user.id)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    if !can_push {
+        return Err(ServerFnError::new("Access denied"));
+    }
+
+    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let metas = db::get_ai_metadata_by_session(&pool, repo_db.id, &session_id)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if metas.is_empty() {
+        return Err(ServerFnError::new("Session not found"));
+    }
+
+    // Metas are DESC — reverse for oldest-first
+    let mut shas: Vec<String> = metas.iter().map(|m| m.commit_sha.clone()).collect();
+    shas.reverse();
+
+    git::cherry_pick_range(&repo_path, &target_branch, &shas)
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    leptos_axum::redirect(&format!("/{}/{}/ai/{}", owner, repo, session_id));
+    Ok(())
+}
+
+#[cfg(feature = "ssr")]
+pub fn render_diff_public(diff: &str) -> String {
+    render_diff(diff)
+}
+
 #[cfg(feature = "ssr")]
 fn render_diff(diff: &str) -> String {
     use std::fmt::Write;
@@ -226,6 +324,8 @@ pub fn AiSessionDetailPage() -> impl IntoView {
     );
 
     let revert_action = ServerAction::<RevertSession>::new();
+    let squash_action = ServerAction::<SquashSessionAction>::new();
+    let cherry_pick_action = ServerAction::<CherryPickSessionAction>::new();
 
     view! {
         <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
@@ -352,24 +452,88 @@ pub fn AiSessionDetailPage() -> impl IntoView {
                                 </div>
                             }.into_any());
 
-                            // Revert
+                            // Session operations
                             if d.can_revert {
-                                let on = owner_name.clone();
-                                let rn = repo_name.clone();
-                                let s = sid.clone();
+                                let on1 = owner_name.clone();
+                                let rn1 = repo_name.clone();
+                                let s1 = sid.clone();
+                                let on2 = owner_name.clone();
+                                let rn2 = repo_name.clone();
+                                let s2 = sid.clone();
+                                let on3 = owner_name.clone();
+                                let rn3 = repo_name.clone();
+                                let s3 = sid.clone();
+
+                                let first_prompt = d.entries.iter()
+                                    .rev()
+                                    .find_map(|e| e.metadata.ai_prompt.clone())
+                                    .unwrap_or_else(|| "Squash AI session".to_string());
+
+                                let branch_options: Vec<AnyView> = d.branches.iter()
+                                    .filter(|b| **b != d.default_branch)
+                                    .map(|b| {
+                                        view! { <option value={b.clone()}>{b.clone()}</option> }.into_any()
+                                    })
+                                    .collect();
+
                                 parts.push(view! {
                                     <div class="card mb-4">
-                                        <ActionForm action=revert_action>
-                                            <input type="hidden" name="owner" value={on} />
-                                            <input type="hidden" name="repo" value={rn} />
-                                            <input type="hidden" name="session_id" value={s} />
-                                            <button type="submit" class="btn btn-danger">
-                                                "Revert Session"
-                                            </button>
-                                            <span class="text-secondary" style="margin-left: var(--space-3); font-size: 0.8125rem;">
-                                                "Creates a single revert commit undoing all session changes."
-                                            </span>
-                                        </ActionForm>
+                                        <div class="card-header">"Session Operations"</div>
+                                        <div class="session-ops">
+                                            // Revert
+                                            <div class="session-op">
+                                                <ActionForm action=revert_action>
+                                                    <input type="hidden" name="owner" value={on1} />
+                                                    <input type="hidden" name="repo" value={rn1} />
+                                                    <input type="hidden" name="session_id" value={s1} />
+                                                    <button type="submit" class="btn btn-danger btn-sm">
+                                                        "Revert Session"
+                                                    </button>
+                                                    <span class="session-op-desc">
+                                                        "Undo all session changes with a revert commit."
+                                                    </span>
+                                                </ActionForm>
+                                            </div>
+                                            // Squash
+                                            <div class="session-op">
+                                                <ActionForm action=squash_action>
+                                                    <input type="hidden" name="owner" value={on2} />
+                                                    <input type="hidden" name="repo" value={rn2} />
+                                                    <input type="hidden" name="session_id" value={s2} />
+                                                    <div class="session-op-row">
+                                                        <button type="submit" class="btn btn-primary btn-sm">
+                                                            "Squash Session"
+                                                        </button>
+                                                        <input type="text" name="message" class="form-input form-input-sm"
+                                                            value={first_prompt}
+                                                            placeholder="Squash commit message"
+                                                            style="flex: 1;" />
+                                                    </div>
+                                                    <span class="session-op-desc">
+                                                        "Collapse all session commits into a single commit."
+                                                    </span>
+                                                </ActionForm>
+                                            </div>
+                                            // Cherry-pick
+                                            <div class="session-op">
+                                                <ActionForm action=cherry_pick_action>
+                                                    <input type="hidden" name="owner" value={on3} />
+                                                    <input type="hidden" name="repo" value={rn3} />
+                                                    <input type="hidden" name="session_id" value={s3} />
+                                                    <div class="session-op-row">
+                                                        <button type="submit" class="btn btn-sm">
+                                                            "Cherry-pick to"
+                                                        </button>
+                                                        <select name="target_branch" class="form-input form-input-sm">
+                                                            {branch_options}
+                                                        </select>
+                                                    </div>
+                                                    <span class="session-op-desc">
+                                                        "Apply this session's changes to another branch."
+                                                    </span>
+                                                </ActionForm>
+                                            </div>
+                                        </div>
                                     </div>
                                 }.into_any());
                             }

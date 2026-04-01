@@ -106,6 +106,7 @@ pub struct AiCommitMetadata {
     pub ai_prompt: Option<String>,
     pub ai_session_id: Option<String>,
     pub ai_files_touched: Option<String>,
+    pub ai_prompt_index: Option<i64>,
     pub created_at: String,
 }
 
@@ -140,6 +141,33 @@ pub struct RepoWebhook {
     pub events: String,
     pub active: bool,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct MergeConflict {
+    pub id: i64,
+    pub repo_id: i64,
+    pub user_id: i64,
+    pub operation_type: String,
+    pub target_ref: String,
+    pub source_ref: String,
+    pub merge_base: String,
+    pub auto_tree: Option<String>,
+    pub context_json: Option<String>,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct MergeConflictFile {
+    pub id: i64,
+    pub merge_conflict_id: i64,
+    pub file_path: String,
+    pub conflict_type: String,
+    pub resolution: Option<String>,
+    pub resolved_content: Option<String>,
+    pub resolved_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

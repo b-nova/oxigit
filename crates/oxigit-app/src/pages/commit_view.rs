@@ -120,6 +120,7 @@ async fn attach_ai_metadata(
         ai_prompt.as_deref(),
         ai_session_id.as_deref(),
         files_json.as_deref(),
+        None, // ai_prompt_index not available from manual annotation
     )
     .await
     .map_err(|e| ServerFnError::new(e.to_string()))?;

@@ -1,0 +1,41 @@
+app = "oxigit"
+primary_region = "fra"
+
+[build]
+
+[env]
+  OXIGIT_DATA_DIR = "/app/data"
+  OXIGIT_HTTP_ADDR = "0.0.0.0:9100"
+  OXIGIT_SSH_ADDR = "0.0.0.0:2222"
+  RUST_LOG = "info"
+
+[mounts]
+  source = "oxigit_data"
+  destination = "/app/data"
+
+[[services]]
+  internal_port = 9100
+  protocol = "tcp"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+[[services]]
+  internal_port = 2222
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 2222
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 9100
+    path = "/"
+    interval = "30s"
+    timeout = "5s"

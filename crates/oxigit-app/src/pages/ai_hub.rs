@@ -2,6 +2,8 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
+use crate::components::icons::IconSearch;
+
 #[allow(unused_imports)]
 use super::{AiMetadataInfo, AiTimelineEntry, SessionListItem, SessionListResponse};
 
@@ -15,6 +17,7 @@ pub struct AiHubResponse {
 async fn fetch_ai_hub(
     owner: String,
     repo: String,
+    query: String,
 ) -> Result<AiHubResponse, ServerFnError> {
     use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
     use oxigit_core::{db, git};
@@ -34,7 +37,7 @@ async fn fetch_ai_hub(
     let repo_path = git::repo_path(&data_dir, &owner, &repo);
 
     // Sessions
-    let summaries = db::list_session_summaries(&pool, repo_db.id)
+    let summaries = db::list_session_summaries(&pool, repo_db.id, &query)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -51,7 +54,7 @@ async fn fetch_ai_hub(
         .collect();
 
     // Unsessioned commits
-    let unsessioned_metas = db::get_unsessioned_ai_commits(&pool, repo_db.id)
+    let unsessioned_metas = db::get_unsessioned_ai_commits(&pool, repo_db.id, &query)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -90,9 +93,11 @@ pub fn AiHubPage() -> impl IntoView {
     let owner = move || params.read().get("owner").unwrap_or_default();
     let repo = move || params.read().get("repo").unwrap_or_default();
 
+    let (query, set_query) = signal(String::new());
+
     let hub = Resource::new(
-        move || (owner(), repo()),
-        move |(owner, repo)| fetch_ai_hub(owner, repo),
+        move || (owner(), repo(), query.get()),
+        move |(owner, repo, query)| fetch_ai_hub(owner, repo, query),
     );
 
     view! {
@@ -105,18 +110,34 @@ pub fn AiHubPage() -> impl IntoView {
                 <span>"AI"</span>
             </h1>
         </div>
+        <div class="search-wrapper">
+            <IconSearch />
+            <input
+                type="text"
+                class="search-input"
+                placeholder="Search prompts..."
+                on:input=move |ev| {
+                    set_query.set(event_target_value(&ev));
+                }
+            />
+        </div>
         <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
             {move || {
                 let owner_name = owner();
                 let repo_name = repo();
+                let has_query = !query.get().is_empty();
                 Suspend::new(async move {
                     match hub.await {
                         Ok(resp) if resp.sessions.is_empty() && resp.unsessioned.is_empty() => view! {
                             <div class="empty-state card">
-                                <p class="empty-state-title">"No AI activity yet."</p>
-                                <p class="empty-state-text">
-                                    "Push commits with AI metadata to see sessions and conversation history here."
+                                <p class="empty-state-title">
+                                    {if has_query { "No matching sessions." } else { "No AI activity yet." }}
                                 </p>
+                                {(!has_query).then(|| view! {
+                                    <p class="empty-state-text">
+                                        "Push commits with AI metadata to see sessions and conversation history here."
+                                    </p>
+                                })}
                             </div>
                         }.into_any(),
                         Ok(resp) => {

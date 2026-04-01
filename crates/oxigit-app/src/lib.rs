@@ -22,7 +22,9 @@ use components::navbar::Navbar;
 use pages::{
     ai_hub::AiHubPage,
     ai_session_detail::AiSessionDetailPage,
+    blame::BlamePage,
     commit_view::CommitViewPage,
+    conflict_resolve::ConflictResolvePage,
     commits::CommitsPage,
     explore::ExplorePage,
     home::HomePage,
@@ -33,6 +35,8 @@ use pages::{
     pr_list::PrListPage,
     pr_new::PrNewPage,
     pr_view::PrViewPage,
+    prompt_detail::PromptDetailPage,
+    prompt_history::PromptHistoryPage,
     register::RegisterPage,
     remix_guide::RemixGuidePage,
     repo_blob::RepoBlobPage,
@@ -87,7 +91,10 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/:owner/:repo/issues") view=IssueListPage />
                     <Route path=path!("/:owner/:repo/issues/new") view=IssueNewPage />
                     <Route path=path!("/:owner/:repo/issues/:number") view=IssueViewPage />
+                    <Route path=path!("/:owner/:repo/conflicts/:conflict_id") view=ConflictResolvePage />
+                    <Route path=path!("/:owner/:repo/prompts") view=PromptHistoryPage />
                     <Route path=path!("/:owner/:repo/ai") view=AiHubPage />
+                    <Route path=path!("/:owner/:repo/ai/:session_id/prompt/:prompt_index") view=PromptDetailPage />
                     <Route path=path!("/:owner/:repo/ai/:session_id") view=AiSessionDetailPage />
                     <Route path=path!("/:owner/:repo/remix-guide") view=RemixGuidePage />
                     <Route path=path!("/:owner/:repo/commits") view=CommitsPage />
@@ -96,6 +103,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/:owner/:repo/pulls") view=PrListPage />
                     <Route path=path!("/:owner/:repo/pulls/new") view=PrNewPage />
                     <Route path=path!("/:owner/:repo/pulls/:number") view=PrViewPage />
+                    <Route path=path!("/:owner/:repo/blame/*path") view=BlamePage />
                     <Route path=path!("/:owner/:repo/blob/*path") view=RepoBlobPage />
                     <Route path=path!("/:owner/:repo/tree/*path") view=RepoViewPage />
                     <Route path=path!("/:owner/:repo") view=RepoViewPage />

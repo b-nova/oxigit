@@ -1,0 +1,21 @@
+spec:
+  name: oxigit
+  services:
+    - name: oxigit
+      github:
+        repo: b-nova/oxigit
+        branch: main
+        deploy_on_push: true
+      dockerfile_path: Dockerfile
+      http_port: 9100
+      instance_count: 1
+      instance_size_slug: basic-s
+      envs:
+        - key: OXIGIT_DATA_DIR
+          value: /app/data
+        - key: OXIGIT_HTTP_ADDR
+          value: 0.0.0.0:9100
+        - key: OXIGIT_SSH_ADDR
+          value: 0.0.0.0:2222
+        - key: RUST_LOG
+          value: info

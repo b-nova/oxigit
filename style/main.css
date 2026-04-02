@@ -187,19 +187,20 @@ a:hover {
 }
 
 .navbar-brand {
-    font-size: 1.25rem;
-    font-weight: 700;
+    display: flex;
+    align-items: center;
     color: var(--text);
-    letter-spacing: -0.01em;
+}
+
+.navbar-brand-logo {
+    flex-shrink: 0;
+    height: 34px;
+    width: auto;
 }
 
 .navbar-brand:hover {
     color: var(--text);
     text-decoration: none;
-}
-
-.navbar-brand-accent {
-    color: var(--accent);
 }
 
 .navbar-nav {

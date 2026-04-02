@@ -65,6 +65,14 @@ pub fn Shell(options: LeptosOptions) -> impl IntoView {
                 <link rel="preconnect" href="https://fonts.googleapis.com" />
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
                 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+                <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+                <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+                <link rel="manifest" href="/site.webmanifest" />
+                <meta name="theme-color" content="#0c0f14" />
+                <meta property="og:title" content="Oxigit" />
+                <meta property="og:description" content="The AI-native Git platform for vibecoders." />
+                <meta property="og:image" content="/og-image.png" />
+                <meta name="twitter:card" content="summary_large_image" />
                 <Stylesheet href="/pkg/oxigit.css" />
                 <Title text="Oxigit" />
                 <HydrationScripts options />

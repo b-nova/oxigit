@@ -97,6 +97,13 @@ async fn main() {
                 .with_state(leptos_options),
         )
         .nest_service("/pkg", ServeDir::new("target/site/pkg"))
+        .nest_service("/brand", ServeDir::new("target/site/brand"))
+        .route_service("/favicon.svg", tower_http::services::ServeFile::new("target/site/favicon.svg"))
+        .route_service("/favicon-16x16.png", tower_http::services::ServeFile::new("target/site/favicon-16x16.png"))
+        .route_service("/favicon-32x32.png", tower_http::services::ServeFile::new("target/site/favicon-32x32.png"))
+        .route_service("/apple-touch-icon.png", tower_http::services::ServeFile::new("target/site/apple-touch-icon.png"))
+        .route_service("/site.webmanifest", tower_http::services::ServeFile::new("target/site/site.webmanifest"))
+        .route_service("/og-image.png", tower_http::services::ServeFile::new("target/site/og-image.png"))
         .layer(Extension(state));
 
     // Start SSH server in background

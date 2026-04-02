@@ -1,0 +1,16 @@
+{
+  "name": "Oxigit",
+  "short_name": "Oxigit",
+  "description": "The AI-native Git platform for vibecoders.",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "theme_color": "#0c0f14",
+  "background_color": "#0c0f14",
+  "display": "standalone",
+  "start_url": "/"
+}

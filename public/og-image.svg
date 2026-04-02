@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0c0f14"/>
+      <stop offset="100%" stop-color="#141820"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="600" cy="280" r="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="rgba(224, 138, 74, 0.12)"/>
+      <stop offset="100%" stop-color="rgba(224, 138, 74, 0)"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!--
+    Same proportions as wordmark SVG (scale 1.0667 at 22px), scaled to 80px.
+    Ratio: 80/22 = 3.636. Combined scale: 1.0667 * 3.636 = 3.879.
+    Text x offset: 27 * 3.636 = 98.
+    Wordmark total width: 84 * 3.636 = 305.
+    Center: originX = 600 - 305/2 = 447.
+    Text at: 447 + 98 = 545.
+    No Y translate in wordmark → circle center at 16*3.879=62 from origin.
+    Baseline at y=23*3.636=83.6 from origin → absolute baseline = 447+... no, Y is independent.
+    Baseline at 304. In wordmark: baseline at y=23, scale 3.636 → 83.6.
+    Origin Y = 304 - 83.6 = 220.
+  -->
+  <g transform="translate(447, 220) scale(3.879)">
+    <path d="m10.3 10.3-4.8-4.8" stroke="#e08a4a" stroke-linecap="round" stroke-width="2.5"/>
+    <path d="m21.7 21.7 4.8 4.8" stroke="#e08a4a" stroke-linecap="round" stroke-width="2.5"/>
+    <g fill="#e08a4a">
+      <circle cx="4.5" cy="4.5" r="2.5"/>
+      <circle cx="27.5" cy="27.5" r="2.5"/>
+      <circle cx="16" cy="16" r="7.5"/>
+    </g>
+    <circle cx="16" cy="16" fill="#0c0f14" r="4.5"/>
+  </g>
+  <text x="545" y="304" font-family="Inter, -apple-system, sans-serif" font-weight="700" font-size="80" letter-spacing="-0.02em" fill="#e6edf3">xigit</text>
+
+  <!-- Tagline -->
+  <text x="600" y="380" text-anchor="middle" font-family="Inter, -apple-system, sans-serif" font-weight="400" font-size="26" fill="#8b949e">
+    The AI-native Git platform for vibecoders.
+  </text>
+
+  <!-- URL -->
+  <text x="600" y="480" text-anchor="middle" font-family="Inter, -apple-system, sans-serif" font-weight="500" font-size="22" fill="#6e7681">
+    github.com/b-nova/oxigit
+  </text>
+
+  <rect x="1" y="1" width="1198" height="628" rx="8" stroke="#2a3040" stroke-width="1" fill="none"/>
+</svg>

@@ -223,13 +223,37 @@ async fn run_git_over_channel(
 
     // Strip "git-" prefix: "git-upload-pack" -> "upload-pack" as git subcommand
     let subcmd = service.strip_prefix("git-").unwrap_or(service);
-    let mut child = Command::new("git")
-        .arg(subcmd)
+    let mut cmd = Command::new("git");
+    cmd.arg(subcmd)
         .arg(repo_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
+        .stderr(std::process::Stdio::piped());
+
+    // Pass guardrail env vars for pre-receive hook (if receive-pack)
+    if is_receive {
+        if let Some(rid) = repo_db_id {
+            // Read HTTP addr from server's env to derive port
+            if let Ok(http_addr) = std::env::var("OXIGIT_HTTP_ADDR") {
+                let port = http_addr.rsplit(':').next().unwrap_or("9100");
+                cmd.env("OXIGIT_PORT", port);
+            }
+            if let Ok(secret) = std::env::var("OXIGIT_SECRET_KEY") {
+                cmd.env("OXIGIT_SECRET", secret);
+            } else {
+                // Try reading hex-encoded secret from data dir
+                let secret_path = repo_path.parent().and_then(|p| p.parent()).map(|p| p.join("secret_key"));
+                if let Some(path) = secret_path {
+                    if let Ok(key) = std::fs::read(&path) {
+                        cmd.env("OXIGIT_SECRET", hex::encode(&key));
+                    }
+                }
+            }
+            cmd.env("REPO_ID", rid.to_string());
+        }
+    }
+
+    let mut child = cmd.spawn()?;
 
     let mut child_stdin = child.stdin.take().unwrap();
     let mut child_stdout = child.stdout.take().unwrap();

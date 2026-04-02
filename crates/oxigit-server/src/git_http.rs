@@ -7,7 +7,7 @@ use axum::{
 use tokio::process::Command;
 use tracing;
 
-use oxigit_core::db;
+use oxigit_core::{db, guardrail};
 use oxigit_core::git::repo_path;
 
 use crate::AppState;
@@ -184,7 +184,16 @@ pub async fn receive_pack(
     // Capture refs before push for AI metadata processing
     let before_refs = oxigit_core::git::capture_refs(&path).unwrap_or_default();
 
-    let response = run_git_service("git-receive-pack", &path, &body).await;
+    // Pass environment for pre-receive hook (guardrail blocking)
+    let http_addr = state.leptos_options.site_addr.to_string();
+    let port = http_addr.rsplit(':').next().unwrap_or("9100").to_string();
+    let secret_hex = hex::encode(&state.secret_key);
+    let env_vars = vec![
+        ("OXIGIT_PORT".to_string(), port),
+        ("OXIGIT_SECRET".to_string(), secret_hex),
+        ("REPO_ID".to_string(), repo_db_id.to_string()),
+    ];
+    let response = run_git_service_with_env("git-receive-pack", &path, &body, &env_vars).await;
 
     // After push: capture refs again and process AI trailers + webhooks in background
     let pool_clone = pool.clone();
@@ -246,18 +255,25 @@ pub struct DeployCallbackPayload {
 }
 
 async fn run_git_service(service: &str, repo_path: &std::path::Path, input: &[u8]) -> Response {
+    run_git_service_with_env(service, repo_path, input, &[]).await
+}
+
+async fn run_git_service_with_env(service: &str, repo_path: &std::path::Path, input: &[u8], env_vars: &[(String, String)]) -> Response {
     use tokio::io::AsyncWriteExt;
 
     // Strip "git-" prefix: "git-upload-pack" -> "upload-pack" as git subcommand
     let subcmd = service.strip_prefix("git-").unwrap_or(service);
-    let mut child = match Command::new("git")
-        .arg(subcmd)
+    let mut cmd = Command::new("git");
+    cmd.arg(subcmd)
         .arg("--stateless-rpc")
         .arg(repo_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+        .stderr(std::process::Stdio::piped());
+    for (key, val) in env_vars {
+        cmd.env(key, val);
+    }
+    let mut child = match cmd.spawn()
     {
         Ok(c) => c,
         Err(e) => {
@@ -300,4 +316,96 @@ async fn run_git_service(service: &str, repo_path: &std::path::Path, input: &[u8
         .header("Cache-Control", "no-cache")
         .body(Body::from(output.stdout))
         .unwrap()
+}
+
+/// POST /internal/guardrail-check — Called by pre-receive hook to validate push.
+pub async fn guardrail_check(
+    headers: HeaderMap,
+    axum::extract::State(state): axum::extract::State<AppState>,
+    body: String,
+) -> Response {
+    // Validate internal secret
+    let expected_secret = hex::encode(&state.secret_key);
+    let provided_secret = headers
+        .get("X-Internal-Secret")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if provided_secret != expected_secret {
+        return (StatusCode::FORBIDDEN, "Invalid secret").into_response();
+    }
+
+    // Parse form-urlencoded body
+    let params: std::collections::HashMap<String, String> = body
+        .split('&')
+        .filter_map(|pair| {
+            let (k, v) = pair.split_once('=')?;
+            Some((percent_decode(k), percent_decode(v)))
+        })
+        .collect();
+
+    let repo_id: i64 = match params.get("repo_id").and_then(|v| v.parse().ok()) {
+        Some(id) => id,
+        None => return (StatusCode::BAD_REQUEST, "Missing repo_id").into_response(),
+    };
+
+    let diff = params.get("diff").cloned().unwrap_or_default();
+    let file_count: usize = params.get("file_count").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    let commit_ref = params.get("ref").cloned().unwrap_or_default();
+    let new_sha = params.get("new").cloned().unwrap_or_default();
+
+    let pool = &state.pool;
+
+    // Load block rules only
+    let rules = match db::get_guardrail_rules(pool, repo_id).await {
+        Ok(r) => r,
+        Err(_) => return (StatusCode::OK, "OK").into_response(),
+    };
+    let block_rules: Vec<_> = rules.into_iter().filter(|r| r.action == "block").collect();
+
+    if block_rules.is_empty() {
+        return (StatusCode::OK, "OK").into_response();
+    }
+
+    let config = db::get_guardrail_config(pool, repo_id).await.ok().flatten();
+
+    let violations = guardrail::evaluate_diff(&block_rules, &config, &diff, file_count);
+    let blocking = violations.iter().filter(|v| v.action == "block").collect::<Vec<_>>();
+
+    if blocking.is_empty() {
+        return (StatusCode::OK, "OK").into_response();
+    }
+
+    // Log violations
+    for v in &blocking {
+        let _ = db::insert_guardrail_violation(
+            pool, repo_id, &new_sha, Some(&commit_ref),
+            &v.category, "blocked", &v.severity, &v.message,
+            v.file_path.as_deref(), None,
+        ).await;
+    }
+
+    let message = guardrail::format_block_message(&violations);
+    (StatusCode::OK, format!("BLOCKED\n{}", message)).into_response()
+}
+
+/// Simple percent-decoding for form data.
+fn percent_decode(s: &str) -> String {
+    let s = s.replace('+', " ");
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            let hex: String = chars.by_ref().take(2).collect();
+            if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                result.push(byte as char);
+            } else {
+                result.push('%');
+                result.push_str(&hex);
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }

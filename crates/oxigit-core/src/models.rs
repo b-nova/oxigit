@@ -171,6 +171,87 @@ pub struct MergeConflictFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct GuardrailRule {
+    pub id: i64,
+    pub repo_id: i64,
+    pub category: String,
+    pub action: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct GuardrailConfig {
+    pub id: i64,
+    pub repo_id: i64,
+    pub min_vibe_score: Option<i64>,
+    pub max_files_per_push: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct GuardrailViolation {
+    pub id: i64,
+    pub repo_id: i64,
+    pub commit_sha: String,
+    pub ref_name: Option<String>,
+    pub rule_category: String,
+    pub action_taken: String,
+    pub severity: String,
+    pub message: String,
+    pub file_path: Option<String>,
+    pub pushed_by: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Recipe {
+    pub id: i64,
+    pub repo_id: i64,
+    pub session_id: String,
+    pub author_id: i64,
+    pub title: String,
+    pub description: String,
+    pub ai_tool: String,
+    pub ai_model: Option<String>,
+    pub tags: Option<String>,
+    pub prompt_count: i64,
+    pub file_count: i64,
+    pub vibe_score: Option<i64>,
+    pub replay_count: i64,
+    pub is_public: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct RecipeStep {
+    pub id: i64,
+    pub recipe_id: i64,
+    pub step_order: i64,
+    pub prompt_text: Option<String>,
+    pub prompt_index: Option<i64>,
+    pub commit_message: String,
+    pub files_json: Option<String>,
+    pub diff_text: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct RecipeReplay {
+    pub id: i64,
+    pub recipe_id: i64,
+    pub user_id: i64,
+    pub target_repo_id: i64,
+    pub target_branch: String,
+    pub mode: String,
+    pub status: String,
+    pub steps_applied: i64,
+    pub error_message: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct DeployPreview {
     pub id: i64,
     pub repo_id: i64,

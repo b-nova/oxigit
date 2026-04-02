@@ -46,6 +46,7 @@ const API_LIST_COLLABORATORS: &str = "/api/list_collaborators2543744637116902123
 // AI Timeline
 const API_FETCH_AI_TIMELINE: &str = "/api/fetch_ai_timeline4144953925164700098";
 const API_ATTACH_AI_METADATA: &str = "/api/attach_ai_metadata7316923189440040834";
+const API_INSTALL_AI_HOOK: &str = "/api/install_ai_hook2543744637116902123";
 
 /// A running server instance with its own data directory and ports.
 pub struct TestServer {
@@ -605,6 +606,21 @@ impl TestClient {
             .expect("GET request failed")
     }
 
+    pub async fn install_ai_hook(&self, owner: &str, repo: &str, tool_id: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_INSTALL_AI_HOOK))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&tool_id={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                urlencoded(tool_id)
+            ))
+            .send()
+            .await
+            .expect("install_ai_hook request failed")
+    }
+
     pub async fn fetch_ai_timeline(&self, owner: &str, repo: &str) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_FETCH_AI_TIMELINE))
@@ -838,6 +854,73 @@ pub fn create_commit_with_oxigit_context(
         "git commit with oxigit context failed: {}",
         String::from_utf8_lossy(&status.stderr)
     );
+}
+
+/// Create a file, add, and commit with AI trailers in the commit message (new approach).
+/// Supports prompt_index for prompt-level grouping.
+pub fn create_commit_with_trailers(
+    repo_dir: &Path,
+    filename: &str,
+    content: &str,
+    subject: &str,
+    ai_tool: &str,
+    ai_model: Option<&str>,
+    ai_prompt: Option<&str>,
+    ai_session: Option<&str>,
+    ai_prompt_index: Option<i64>,
+) {
+    let file_path = repo_dir.join(filename);
+    if let Some(parent) = file_path.parent() {
+        std::fs::create_dir_all(parent).expect("failed to create parent dirs");
+    }
+    std::fs::write(&file_path, content).expect("failed to write file");
+
+    let status = Command::new("git")
+        .args(["add", filename])
+        .current_dir(repo_dir)
+        .output()
+        .expect("git add failed");
+    assert!(status.status.success(), "git add failed");
+
+    // Build commit message with trailers
+    let mut message = format!("{}\n\nOxigit-Tool: {}", subject, ai_tool);
+    if let Some(model) = ai_model {
+        message.push_str(&format!("\nOxigit-Model: {}", model));
+    }
+    if let Some(session) = ai_session {
+        message.push_str(&format!("\nOxigit-Session: {}", session));
+    }
+    if let Some(prompt) = ai_prompt {
+        message.push_str(&format!("\nOxigit-Prompt: {}", prompt));
+    }
+    if let Some(idx) = ai_prompt_index {
+        message.push_str(&format!("\nOxigit-Prompt-Index: {}", idx));
+    }
+
+    let status = Command::new("git")
+        .args(["commit", "-m", &message])
+        .current_dir(repo_dir)
+        .env("GIT_AUTHOR_NAME", "Test User")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test User")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .output()
+        .expect("git commit failed");
+    assert!(
+        status.status.success(),
+        "git commit with trailers failed: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+}
+
+/// Create a git branch from current HEAD.
+pub fn create_branch(repo_dir: &Path, branch_name: &str) {
+    let status = Command::new("git")
+        .args(["branch", branch_name])
+        .current_dir(repo_dir)
+        .output()
+        .expect("git branch failed");
+    assert!(status.status.success(), "git branch failed");
 }
 
 /// Get the HEAD commit SHA from a repo directory.

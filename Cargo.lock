@@ -3467,6 +3467,7 @@ dependencies = [
 name = "oxigit-ssh"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "oxigit-core",
  "rand_core 0.6.4",
  "russh",

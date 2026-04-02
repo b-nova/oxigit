@@ -1136,6 +1136,71 @@ pub fn session_aggregate_diff(repo_path: &Path, shas: &[String]) -> Result<Strin
     Ok(diff)
 }
 
+/// Get diff stats (lines added, lines deleted) for a session's commits.
+/// `shas` must be ordered oldest-first. Same range logic as `session_aggregate_diff`.
+pub fn session_diff_stats(repo_path: &Path, shas: &[String]) -> Result<(usize, usize)> {
+    if shas.is_empty() {
+        return Ok((0, 0));
+    }
+
+    let earliest = &shas[0];
+    let latest = &shas[shas.len() - 1];
+
+    let parent_output = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["rev-parse", &format!("{}^", earliest)])
+        .output()?;
+
+    let numstat_output = if parent_output.status.success() {
+        let parent = String::from_utf8_lossy(&parent_output.stdout).trim().to_string();
+        Command::new("git")
+            .env("GIT_DIR", repo_path)
+            .args(["diff", "--numstat", &parent, latest])
+            .output()?
+    } else {
+        // Root commit
+        Command::new("git")
+            .env("GIT_DIR", repo_path)
+            .args(["diff-tree", "--numstat", "--root", latest])
+            .output()?
+    };
+
+    let stdout = String::from_utf8_lossy(&numstat_output.stdout);
+    let mut added = 0usize;
+    let mut deleted = 0usize;
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() >= 2 {
+            // Binary files show "-" instead of numbers
+            if let Ok(a) = parts[0].parse::<usize>() {
+                added += a;
+            }
+            if let Ok(d) = parts[1].parse::<usize>() {
+                deleted += d;
+            }
+        }
+    }
+
+    Ok((added, deleted))
+}
+
+/// Check if a session has been reverted by searching for revert commits.
+pub fn is_session_reverted(repo_path: &Path, session_id: &str) -> bool {
+    let short_id = &session_id[..8.min(session_id.len())];
+    let grep_pattern = format!("Revert AI session {}", short_id);
+
+    let output = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["log", "--all", "--oneline", "--grep", &grep_pattern])
+        .output();
+
+    match output {
+        Ok(o) => !String::from_utf8_lossy(&o.stdout).trim().is_empty(),
+        Err(_) => false,
+    }
+}
+
 /// Revert a sequence of commits on a bare repo, creating a single revert commit.
 /// `shas` should be ordered oldest-first; they are reverted newest-first.
 pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: &str) -> Result<()> {

@@ -1,6 +1,12 @@
 # Oxigit
 
+[![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fb--nova%2Foxigit-blue)](https://ghcr.io/b-nova/oxigit)
+[![Built with Rust](https://img.shields.io/badge/Built_with-Rust-orange.svg)](https://www.rust-lang.org/)
+
 **The AI-native Git platform for vibecoders.**
+
+> GitHub tracks what you push. Oxigit tracks how your AI builds it.
 
 Oxigit is a self-hosted Git hosting platform that treats AI-assisted development as a first-class concept. Track what your AI builds, review it with smart summaries, browse coding sessions, remix projects, and deploy previews -- all from a single platform built with Rust.
 
@@ -20,6 +26,15 @@ Repos with a `REMIX.md` become remixable -- one-click remix that forks the proje
 
 ### Deploy Previews
 Webhook-based live previews for every push. Built-in templates for Vercel, Netlify, Cloudflare Pages, DigitalOcean, and Fly.io. External services call back with the preview URL.
+
+### Vibe Scores
+Every AI session gets a quality score (0-100, A-F grade) based on efficiency, risk density, churn ratio, and focus. Know at a glance whether a session produced clean code or needs review.
+
+### Guardrails
+Rule-based push validation that blocks or warns on security issues, quality problems, or policy violations. Enforce standards on AI-generated code before it lands in your repo.
+
+### Recipe Marketplace
+Share successful AI coding sessions as replayable recipes. Browse, search, and replay proven AI workflows in your own repos.
 
 ### Full Git Platform
 Issues, pull requests, collaborators, SSH keys, public/private repos, forking, HTTP and SSH git protocol. Everything you need, self-hosted.
@@ -41,23 +56,29 @@ fly deploy
 
 ## Quick Start
 
-### Docker Compose (Recommended)
+### Docker Run (Fastest)
+
+```bash
+docker run -d --name oxigit \
+  -p 9100:9100 -p 2222:2222 \
+  -v oxigit-data:/app/data \
+  ghcr.io/b-nova/oxigit:main
+```
+
+Visit `http://localhost:9100` to register your first user.
+
+### Docker Compose
 
 ```yaml
 # docker-compose.yml
 services:
   oxigit:
-    image: oxigit
-    build: .
+    image: ghcr.io/b-nova/oxigit:main
     ports:
       - "9100:9100"
       - "2222:2222"
     volumes:
-      - oxigit-data:/data
-    environment:
-      - OXIGIT_DATA_DIR=/data
-      - OXIGIT_HTTP_ADDR=0.0.0.0:9100
-      - OXIGIT_SSH_ADDR=0.0.0.0:2222
+      - oxigit-data:/app/data
 
 volumes:
   oxigit-data:
@@ -66,8 +87,6 @@ volumes:
 ```bash
 docker compose up -d
 ```
-
-Visit `http://localhost:9100` to register your first user.
 
 ### From Source
 
@@ -122,6 +141,11 @@ Oxigit automatically detects these trailers on push and stores the metadata for 
 - **Git protocol**: HTTP Smart Protocol + SSH via russh (pure Rust)
 - **Database**: SQLite with sqlx (compile-time checked queries)
 
+## Community
+
+- [GitHub Discussions](https://github.com/b-nova/oxigit/discussions) -- questions, ideas, show & tell
+- [Issue Tracker](https://github.com/b-nova/oxigit/issues) -- bug reports and feature requests
+
 ## License
 
-MIT
+[BSL 1.1](LICENSE) — free to self-host; converts to Apache 2.0 after 3 years. See [LICENSING.md](LICENSING.md) for details.

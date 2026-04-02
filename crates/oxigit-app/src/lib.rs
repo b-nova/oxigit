@@ -37,7 +37,11 @@ use pages::{
     pr_view::PrViewPage,
     prompt_detail::PromptDetailPage,
     prompt_history::PromptHistoryPage,
+    recipe_detail::RecipeDetailPage,
+    recipe_marketplace::RecipeMarketplacePage,
+    recipe_share::ShareRecipePage,
     register::RegisterPage,
+    repo_metrics::RepoMetricsPage,
     remix_guide::RemixGuidePage,
     repo_blob::RepoBlobPage,
     repo_list::RepoListPage,
@@ -51,6 +55,7 @@ use pages::{
 /// HTML shell — rendered server-side only. Wraps the App component.
 #[component]
 pub fn Shell(options: LeptosOptions) -> impl IntoView {
+    provide_meta_context();
     view! {
         <!DOCTYPE html>
         <html lang="en">
@@ -88,12 +93,16 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/repos") view=RepoListPage />
                     <Route path=path!("/repos/new") view=NewRepoPage />
                     <Route path=path!("/settings") view=SettingsPage />
+                    <Route path=path!("/recipes") view=RecipeMarketplacePage />
+                    <Route path=path!("/recipes/:recipe_id") view=RecipeDetailPage />
                     <Route path=path!("/:owner/:repo/issues") view=IssueListPage />
                     <Route path=path!("/:owner/:repo/issues/new") view=IssueNewPage />
                     <Route path=path!("/:owner/:repo/issues/:number") view=IssueViewPage />
                     <Route path=path!("/:owner/:repo/conflicts/:conflict_id") view=ConflictResolvePage />
+                    <Route path=path!("/:owner/:repo/metrics") view=RepoMetricsPage />
                     <Route path=path!("/:owner/:repo/prompts") view=PromptHistoryPage />
                     <Route path=path!("/:owner/:repo/ai") view=AiHubPage />
+                    <Route path=path!("/:owner/:repo/ai/:session_id/share") view=ShareRecipePage />
                     <Route path=path!("/:owner/:repo/ai/:session_id/prompt/:prompt_index") view=PromptDetailPage />
                     <Route path=path!("/:owner/:repo/ai/:session_id") view=AiSessionDetailPage />
                     <Route path=path!("/:owner/:repo/remix-guide") view=RemixGuidePage />

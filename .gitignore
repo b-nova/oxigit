@@ -15,6 +15,7 @@
 .env
 .env.*
 secret_key
+scripts/social/config.env
 
 # OS files
 .DS_Store

@@ -2658,3 +2658,260 @@ a:hover {
     font-size: inherit;
     line-height: inherit;
 }
+
+/* ============================================================
+   Vibe Score
+   ============================================================ */
+
+.vibe-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: var(--radius-full, 9999px);
+    white-space: nowrap;
+}
+
+.vibe-A {
+    background: var(--success-muted);
+    color: var(--success);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.vibe-B {
+    background: var(--accent-muted);
+    color: var(--accent);
+    border: 1px solid rgba(224, 138, 74, 0.3);
+}
+
+.vibe-C {
+    background: var(--warning-muted);
+    color: var(--warning);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.vibe-D {
+    background: var(--danger-muted);
+    color: var(--danger);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.vibe-F {
+    background: var(--danger-muted);
+    color: var(--danger);
+    border: 1px solid rgba(248, 81, 73, 0.5);
+    font-weight: 800;
+}
+
+.vibe-score-large {
+    font-size: 2.5rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.vibe-score-large.vibe-A { color: var(--success); }
+.vibe-score-large.vibe-B { color: var(--accent); }
+.vibe-score-large.vibe-C { color: var(--warning); }
+.vibe-score-large.vibe-D,
+.vibe-score-large.vibe-F { color: var(--danger); }
+
+/* Session score table */
+.session-score-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+
+.session-score-table th {
+    text-align: left;
+    padding: var(--space-2) var(--space-3);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+}
+
+.session-score-table td {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-muted);
+}
+
+.session-score-table tr:hover {
+    background: var(--bg-tertiary);
+}
+
+/* ============================================================
+   Guardrails
+   ============================================================ */
+
+.guardrail-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.guardrail-row {
+    display: grid;
+    grid-template-columns: 100px 1fr 120px;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
+}
+
+.guardrail-label {
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.violation-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    border-radius: var(--radius-full, 9999px);
+}
+
+.violation-blocked {
+    background: var(--danger-muted);
+    color: var(--danger);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.violation-warned {
+    background: var(--warning-muted);
+    color: var(--warning);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.violation-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-muted);
+    font-size: 0.8125rem;
+}
+
+.violation-item-msg {
+    flex: 1;
+}
+
+.violation-item-file {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+/* ============================================================
+   Recipes / Marketplace
+   ============================================================ */
+
+.marketplace-filters {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.marketplace-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.recipe-card {
+    display: block;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color var(--transition-base);
+}
+
+.recipe-card:hover {
+    border-color: var(--accent);
+}
+
+.recipe-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+}
+
+.recipe-card-title {
+    font-weight: 600;
+    font-size: 1rem;
+    flex: 1;
+}
+
+.recipe-card-desc {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-2);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.recipe-card-meta {
+    display: flex;
+    gap: var(--space-3);
+    font-size: 0.75rem;
+}
+
+.recipe-card-tags {
+    display: flex;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+    margin-top: var(--space-2);
+}
+
+.recipe-tag {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    border-radius: var(--radius-full, 9999px);
+    background: var(--accent-muted);
+    color: var(--accent);
+}
+
+.recipe-step {
+    margin-bottom: var(--space-3);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-muted);
+}
+
+.recipe-step:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.recipe-step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.recipe-step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}

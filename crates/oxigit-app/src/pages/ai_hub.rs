@@ -5,12 +5,13 @@ use serde::{Deserialize, Serialize};
 use crate::components::icons::IconSearch;
 
 #[allow(unused_imports)]
-use super::{AiMetadataInfo, AiTimelineEntry, SessionListItem, SessionListResponse};
+use super::{AiMetadataInfo, AiTimelineEntry, SessionListItem, SessionListResponse, ViolationInfo};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AiHubResponse {
     pub sessions: Vec<SessionListItem>,
     pub unsessioned: Vec<AiTimelineEntry>,
+    pub violations: Vec<ViolationInfo>,
 }
 
 #[server]
@@ -50,6 +51,8 @@ async fn fetch_ai_hub(
             first_prompt: s.first_prompt,
             first_time: s.first_time,
             last_time: s.last_time,
+            vibe_score: None,
+            vibe_grade: None,
         })
         .collect();
 
@@ -84,7 +87,26 @@ async fn fetch_ai_hub(
         })
         .collect();
 
-    Ok(AiHubResponse { sessions, unsessioned })
+    // Fetch recent guardrail violations
+    let violation_records = db::list_guardrail_violations(&pool, repo_db.id, 10)
+        .await
+        .unwrap_or_default();
+    let violations: Vec<ViolationInfo> = violation_records.into_iter().map(|v| {
+        let short_sha = v.commit_sha[..7.min(v.commit_sha.len())].to_string();
+        ViolationInfo {
+            id: v.id,
+            commit_sha: v.commit_sha,
+            short_sha,
+            category: v.rule_category,
+            action_taken: v.action_taken,
+            severity: v.severity,
+            message: v.message,
+            file_path: v.file_path,
+            created_at: v.created_at,
+        }
+    }).collect();
+
+    Ok(AiHubResponse { sessions, unsessioned, violations })
 }
 
 #[component]
@@ -217,6 +239,33 @@ pub fn AiHubPage() -> impl IntoView {
                                     <div class="card-flush">
                                         <div class="card-header">"Individual AI commits"</div>
                                         <ul class="list">{items}</ul>
+                                    </div>
+                                }.into_any());
+                            }
+
+                            // Guardrail violations
+                            if !resp.violations.is_empty() {
+                                let violation_items: Vec<AnyView> = resp.violations.into_iter().map(|v| {
+                                    let badge_class = if v.action_taken == "blocked" {
+                                        "violation-badge violation-blocked"
+                                    } else {
+                                        "violation-badge violation-warned"
+                                    };
+                                    let commit_href = format!("/{}/{}/commit/{}", owner_name, repo_name, v.commit_sha);
+                                    view! {
+                                        <div class="violation-item">
+                                            <span class={badge_class}>{v.action_taken}</span>
+                                            <span class="violation-badge" style="background: var(--bg-tertiary);">{v.category}</span>
+                                            <span class="violation-item-msg">{v.message}</span>
+                                            <a href={commit_href} class="commit-sha">{v.short_sha}</a>
+                                            {v.file_path.map(|f| view! { <span class="violation-item-file">{f}</span> })}
+                                        </div>
+                                    }.into_any()
+                                }).collect();
+                                parts.push(view! {
+                                    <div class="card-flush mt-4">
+                                        <div class="card-header">"Guardrail Violations"</div>
+                                        <div>{violation_items}</div>
                                     </div>
                                 }.into_any());
                             }

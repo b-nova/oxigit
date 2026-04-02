@@ -126,10 +126,49 @@ async fn fetch_session_detail(
     let default_branch = git::default_branch(&repo_path)
         .unwrap_or(None).unwrap_or_else(|| "main".to_string());
 
+    // Compute vibe score
+    let vibe_score = {
+        use oxigit_core::vibe;
+
+        let (lines_added, lines_deleted) = git::session_diff_stats(&repo_path, &shas_asc).unwrap_or((0, 0));
+        let prompt_count = entries.iter()
+            .filter_map(|e| e.metadata.ai_prompt.as_ref())
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            .max(1);
+        let risk_count = summary.as_ref()
+            .map(|s| s.risk_flags.len())
+            .unwrap_or(0);
+        let was_reverted = git::is_session_reverted(&repo_path, &session_id);
+
+        let metrics = vibe::SessionMetrics {
+            commit_count: entries.len(),
+            prompt_count,
+            risk_flag_count: risk_count,
+            files_touched: all_files.len(),
+            lines_added,
+            lines_deleted,
+            was_reverted,
+        };
+        let vs = vibe::compute_vibe_score(&metrics);
+        Some(super::VibeScoreInfo {
+            score: vs.score,
+            grade: vs.grade.to_string(),
+            commits_per_prompt: vs.factors.commits_per_prompt,
+            risk_density: vs.factors.risk_density,
+            churn_ratio: vs.factors.churn_ratio,
+            file_scope: vs.factors.file_scope,
+            was_reverted,
+        })
+    };
+
+    let recipe_id = db::get_recipe_for_session(&pool, repo_db.id, &session_id)
+        .await.ok().flatten().map(|r| r.id);
+
     Ok(SessionDetailResponse {
         session_id, ai_tool, ai_model, entries, diff_html,
         files_changed: all_files, first_time, last_time, summary, can_revert,
-        branches, default_branch,
+        branches, default_branch, vibe_score, recipe_id,
     })
 }
 
@@ -360,6 +399,14 @@ pub fn AiSessionDetailPage() -> impl IntoView {
                             parts.push(view! {
                                 <div class="session-header card mb-4">
                                     <div class="session-header-row">
+                                        {d.vibe_score.as_ref().map(|vs| {
+                                            let grade_class = format!("vibe-badge vibe-{}", vs.grade);
+                                            view! {
+                                                <span class={grade_class}>
+                                                    {vs.score.to_string()} " " {vs.grade.clone()}
+                                                </span>
+                                            }
+                                        })}
                                         <span class="ai-badge">{d.ai_tool.clone()}</span>
                                         {d.ai_model.clone().map(|m| view! { <span class="ai-model-tag">{m}</span> })}
                                         <span class="text-secondary">
@@ -475,6 +522,22 @@ pub fn AiSessionDetailPage() -> impl IntoView {
                                         view! { <option value={b.clone()}>{b.clone()}</option> }.into_any()
                                     })
                                     .collect();
+
+                                // Share / View Recipe button
+                                if let Some(rid) = d.recipe_id {
+                                    parts.push(view! {
+                                        <a href={format!("/recipes/{}", rid)} class="btn btn-sm mb-4">
+                                            "View Recipe"
+                                        </a>
+                                    }.into_any());
+                                } else {
+                                    let share_href = format!("/{}/{}/ai/{}/share", owner_name, repo_name, sid);
+                                    parts.push(view! {
+                                        <a href={share_href} class="btn btn-primary btn-sm mb-4">
+                                            "Share as Recipe"
+                                        </a>
+                                    }.into_any());
+                                }
 
                                 parts.push(view! {
                                     <div class="card mb-4">

@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::auth::{hash_password, validate_repo_name, validate_username, verify_password};
 use crate::error::{OxigitError, Result};
-use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, DeployPreview, Issue, IssueComment, MergeConflict, MergeConflictFile, PullRequest, RepoWebhook, Repository, SshKey, User, UserSettings};
+use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, DeployPreview, GuardrailConfig, GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile, PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, User, UserSettings};
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
@@ -1327,6 +1327,80 @@ pub async fn get_user_risk_summaries(pool: &SqlitePool, user_id: i64) -> Result<
     Ok(rows)
 }
 
+// --- Vibe Score session data queries ---
+
+/// Session data row for vibe score computation.
+pub struct SessionDataRow {
+    pub session_id: String,
+    pub ai_tool: String,
+    pub commit_count: i64,
+    pub prompt_count: i64,
+    pub first_time: String,
+    pub last_time: String,
+    pub commit_shas: Vec<String>,
+    pub first_prompt: Option<String>,
+}
+
+/// Get session data for all sessions in a repo (for vibe scoring).
+pub async fn get_repo_session_data(pool: &SqlitePool, repo_id: i64) -> Result<Vec<SessionDataRow>> {
+    let group_key = "COALESCE(CAST(ai_prompt_index AS TEXT), ai_prompt, commit_sha)";
+    let rows: Vec<(String, String, i64, i64, String, String, String, Option<String>)> = sqlx::query_as(&format!(
+        "SELECT ai_session_id, ai_tool, COUNT(*), \
+         COUNT(DISTINCT {}), \
+         MIN(created_at), MAX(created_at), GROUP_CONCAT(commit_sha, ','), MIN(ai_prompt) \
+         FROM ai_commit_metadata \
+         WHERE repo_id = ? AND ai_session_id IS NOT NULL \
+         GROUP BY ai_session_id \
+         ORDER BY MAX(created_at) DESC \
+         LIMIT 50",
+        group_key
+    ))
+    .bind(repo_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(|(sid, tool, cc, pc, ft, lt, shas, fp)| SessionDataRow {
+        session_id: sid,
+        ai_tool: tool,
+        commit_count: cc,
+        prompt_count: pc,
+        first_time: ft,
+        last_time: lt,
+        commit_shas: shas.split(',').map(|s| s.to_string()).collect(),
+        first_prompt: fp,
+    }).collect())
+}
+
+/// Get session data across all repos owned by a user (for user-level vibe scoring).
+pub async fn get_user_session_data(pool: &SqlitePool, user_id: i64) -> Result<Vec<SessionDataRow>> {
+    let group_key = "COALESCE(CAST(m.ai_prompt_index AS TEXT), m.ai_prompt, m.commit_sha)";
+    let rows: Vec<(String, String, i64, i64, String, String, String, Option<String>)> = sqlx::query_as(&format!(
+        "SELECT m.ai_session_id, m.ai_tool, COUNT(*), \
+         COUNT(DISTINCT {}), \
+         MIN(m.created_at), MAX(m.created_at), GROUP_CONCAT(m.commit_sha, ','), MIN(m.ai_prompt) \
+         FROM ai_commit_metadata m JOIN repositories r ON m.repo_id = r.id \
+         WHERE r.owner_id = ? AND m.ai_session_id IS NOT NULL \
+         GROUP BY m.ai_session_id \
+         ORDER BY MAX(m.created_at) DESC \
+         LIMIT 50",
+        group_key
+    ))
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(|(sid, tool, cc, pc, ft, lt, shas, fp)| SessionDataRow {
+        session_id: sid,
+        ai_tool: tool,
+        commit_count: cc,
+        prompt_count: pc,
+        first_time: ft,
+        last_time: lt,
+        commit_shas: shas.split(',').map(|s| s.to_string()).collect(),
+        first_prompt: fp,
+    }).collect())
+}
+
 // --- Merge Conflict Resolution queries ---
 
 pub async fn create_merge_conflict(
@@ -1429,5 +1503,308 @@ pub async fn cancel_merge_conflict(pool: &SqlitePool, id: i64) -> Result<()> {
     .bind(id)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+// --- Guardrail queries ---
+
+pub async fn upsert_guardrail_rule(
+    pool: &SqlitePool,
+    repo_id: i64,
+    category: &str,
+    action: &str,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO guardrail_rules (repo_id, category, action) VALUES (?, ?, ?) \
+         ON CONFLICT(repo_id, category) DO UPDATE SET action = excluded.action, updated_at = datetime('now')",
+    )
+    .bind(repo_id)
+    .bind(category)
+    .bind(action)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_guardrail_rules(pool: &SqlitePool, repo_id: i64) -> Result<Vec<GuardrailRule>> {
+    let rules = sqlx::query_as::<_, GuardrailRule>(
+        "SELECT * FROM guardrail_rules WHERE repo_id = ?",
+    )
+    .bind(repo_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rules)
+}
+
+pub async fn upsert_guardrail_config(
+    pool: &SqlitePool,
+    repo_id: i64,
+    min_vibe_score: Option<i64>,
+    max_files_per_push: Option<i64>,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO guardrail_config (repo_id, min_vibe_score, max_files_per_push) VALUES (?, ?, ?) \
+         ON CONFLICT(repo_id) DO UPDATE SET min_vibe_score = excluded.min_vibe_score, \
+         max_files_per_push = excluded.max_files_per_push, updated_at = datetime('now')",
+    )
+    .bind(repo_id)
+    .bind(min_vibe_score)
+    .bind(max_files_per_push)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_guardrail_config(pool: &SqlitePool, repo_id: i64) -> Result<Option<GuardrailConfig>> {
+    let config = sqlx::query_as::<_, GuardrailConfig>(
+        "SELECT * FROM guardrail_config WHERE repo_id = ?",
+    )
+    .bind(repo_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(config)
+}
+
+pub async fn insert_guardrail_violation(
+    pool: &SqlitePool,
+    repo_id: i64,
+    commit_sha: &str,
+    ref_name: Option<&str>,
+    rule_category: &str,
+    action_taken: &str,
+    severity: &str,
+    message: &str,
+    file_path: Option<&str>,
+    pushed_by: Option<&str>,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO guardrail_violations \
+         (repo_id, commit_sha, ref_name, rule_category, action_taken, severity, message, file_path, pushed_by) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(repo_id)
+    .bind(commit_sha)
+    .bind(ref_name)
+    .bind(rule_category)
+    .bind(action_taken)
+    .bind(severity)
+    .bind(message)
+    .bind(file_path)
+    .bind(pushed_by)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn list_guardrail_violations(
+    pool: &SqlitePool,
+    repo_id: i64,
+    limit: i64,
+) -> Result<Vec<GuardrailViolation>> {
+    let rows = sqlx::query_as::<_, GuardrailViolation>(
+        "SELECT * FROM guardrail_violations WHERE repo_id = ? ORDER BY created_at DESC LIMIT ?",
+    )
+    .bind(repo_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn get_violations_for_commit(
+    pool: &SqlitePool,
+    repo_id: i64,
+    commit_sha: &str,
+) -> Result<Vec<GuardrailViolation>> {
+    let rows = sqlx::query_as::<_, GuardrailViolation>(
+        "SELECT * FROM guardrail_violations WHERE repo_id = ? AND commit_sha = ?",
+    )
+    .bind(repo_id)
+    .bind(commit_sha)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+// --- Recipe queries ---
+
+pub async fn create_recipe(
+    pool: &SqlitePool,
+    repo_id: i64,
+    session_id: &str,
+    author_id: i64,
+    title: &str,
+    description: &str,
+    ai_tool: &str,
+    ai_model: Option<&str>,
+    tags: Option<&str>,
+    prompt_count: i64,
+    file_count: i64,
+    vibe_score: Option<i64>,
+) -> Result<Recipe> {
+    let recipe = sqlx::query_as::<_, Recipe>(
+        "INSERT INTO recipes (repo_id, session_id, author_id, title, description, ai_tool, ai_model, tags, prompt_count, file_count, vibe_score) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+    )
+    .bind(repo_id).bind(session_id).bind(author_id)
+    .bind(title).bind(description).bind(ai_tool).bind(ai_model)
+    .bind(tags).bind(prompt_count).bind(file_count).bind(vibe_score)
+    .fetch_one(pool)
+    .await?;
+    Ok(recipe)
+}
+
+pub async fn create_recipe_step(
+    pool: &SqlitePool,
+    recipe_id: i64,
+    step_order: i64,
+    prompt_text: Option<&str>,
+    prompt_index: Option<i64>,
+    commit_message: &str,
+    files_json: Option<&str>,
+    diff_text: Option<&str>,
+) -> Result<RecipeStep> {
+    let step = sqlx::query_as::<_, RecipeStep>(
+        "INSERT INTO recipe_steps (recipe_id, step_order, prompt_text, prompt_index, commit_message, files_json, diff_text) \
+         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
+    )
+    .bind(recipe_id).bind(step_order).bind(prompt_text).bind(prompt_index)
+    .bind(commit_message).bind(files_json).bind(diff_text)
+    .fetch_one(pool)
+    .await?;
+    Ok(step)
+}
+
+pub async fn get_recipe_by_id(pool: &SqlitePool, id: i64) -> Result<Option<Recipe>> {
+    let recipe = sqlx::query_as::<_, Recipe>("SELECT * FROM recipes WHERE id = ?")
+        .bind(id).fetch_optional(pool).await?;
+    Ok(recipe)
+}
+
+pub async fn get_recipe_steps(pool: &SqlitePool, recipe_id: i64) -> Result<Vec<RecipeStep>> {
+    let steps = sqlx::query_as::<_, RecipeStep>(
+        "SELECT * FROM recipe_steps WHERE recipe_id = ? ORDER BY step_order ASC",
+    )
+    .bind(recipe_id).fetch_all(pool).await?;
+    Ok(steps)
+}
+
+pub async fn get_recipe_for_session(pool: &SqlitePool, repo_id: i64, session_id: &str) -> Result<Option<Recipe>> {
+    let recipe = sqlx::query_as::<_, Recipe>(
+        "SELECT * FROM recipes WHERE repo_id = ? AND session_id = ?",
+    )
+    .bind(repo_id).bind(session_id).fetch_optional(pool).await?;
+    Ok(recipe)
+}
+
+/// Recipe with joined author/repo info for listing.
+pub struct RecipeWithContext {
+    pub recipe: Recipe,
+    pub author_username: String,
+    pub repo_name: String,
+    pub repo_owner: String,
+}
+
+pub async fn search_public_recipes(
+    pool: &SqlitePool,
+    query: &str,
+    sort: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<RecipeWithContext>> {
+    let order_clause = match sort {
+        "top_vibe" => "r.vibe_score DESC NULLS LAST",
+        "most_replayed" => "r.replay_count DESC",
+        _ => "r.created_at DESC",
+    };
+
+    // Fetch recipes, then enrich with author/repo info
+    let recipes: Vec<Recipe> = if query.is_empty() {
+        sqlx::query_as(&format!(
+            "SELECT r.* FROM recipes r JOIN repositories rep ON r.repo_id = rep.id \
+             WHERE r.is_public = 1 AND rep.is_private = 0 \
+             ORDER BY {} LIMIT ? OFFSET ?",
+            order_clause
+        ))
+        .bind(limit).bind(offset).fetch_all(pool).await?
+    } else {
+        sqlx::query_as(&format!(
+            "SELECT r.* FROM recipes r JOIN repositories rep ON r.repo_id = rep.id \
+             WHERE r.is_public = 1 AND rep.is_private = 0 \
+             AND (r.title LIKE '%' || ? || '%' OR r.description LIKE '%' || ? || '%' OR r.tags LIKE '%' || ? || '%') \
+             ORDER BY {} LIMIT ? OFFSET ?",
+            order_clause
+        ))
+        .bind(query).bind(query).bind(query)
+        .bind(limit).bind(offset).fetch_all(pool).await?
+    };
+
+    let mut results = Vec::new();
+    for recipe in recipes {
+        let author: Option<(String,)> = sqlx::query_as("SELECT username FROM users WHERE id = ?")
+            .bind(recipe.author_id).fetch_optional(pool).await?;
+        let repo_info: Option<(String, i64)> = sqlx::query_as("SELECT name, owner_id FROM repositories WHERE id = ?")
+            .bind(recipe.repo_id).fetch_optional(pool).await?;
+        let (repo_name, owner_id) = repo_info.unwrap_or(("unknown".into(), 0));
+        let owner: Option<(String,)> = sqlx::query_as("SELECT username FROM users WHERE id = ?")
+            .bind(owner_id).fetch_optional(pool).await?;
+
+        results.push(RecipeWithContext {
+            author_username: author.map(|a| a.0).unwrap_or("unknown".into()),
+            repo_name,
+            repo_owner: owner.map(|o| o.0).unwrap_or("unknown".into()),
+            recipe,
+        });
+    }
+    Ok(results)
+}
+
+pub async fn count_public_recipes(pool: &SqlitePool, query: &str) -> Result<i64> {
+    let count: (i64,) = if query.is_empty() {
+        sqlx::query_as(
+            "SELECT COUNT(*) FROM recipes r JOIN repositories rep ON r.repo_id = rep.id \
+             WHERE r.is_public = 1 AND rep.is_private = 0",
+        ).fetch_one(pool).await?
+    } else {
+        sqlx::query_as(
+            "SELECT COUNT(*) FROM recipes r JOIN repositories rep ON r.repo_id = rep.id \
+             WHERE r.is_public = 1 AND rep.is_private = 0 \
+             AND (r.title LIKE '%' || ? || '%' OR r.description LIKE '%' || ? || '%' OR r.tags LIKE '%' || ? || '%')",
+        ).bind(query).bind(query).bind(query).fetch_one(pool).await?
+    };
+    Ok(count.0)
+}
+
+pub async fn increment_replay_count(pool: &SqlitePool, recipe_id: i64) -> Result<()> {
+    sqlx::query("UPDATE recipes SET replay_count = replay_count + 1 WHERE id = ?")
+        .bind(recipe_id).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn create_recipe_replay(
+    pool: &SqlitePool,
+    recipe_id: i64,
+    user_id: i64,
+    target_repo_id: i64,
+    target_branch: &str,
+    mode: &str,
+    status: &str,
+    steps_applied: i64,
+    error_message: Option<&str>,
+) -> Result<RecipeReplay> {
+    let replay = sqlx::query_as::<_, RecipeReplay>(
+        "INSERT INTO recipe_replays (recipe_id, user_id, target_repo_id, target_branch, mode, status, steps_applied, error_message) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+    )
+    .bind(recipe_id).bind(user_id).bind(target_repo_id).bind(target_branch)
+    .bind(mode).bind(status).bind(steps_applied).bind(error_message)
+    .fetch_one(pool)
+    .await?;
+    Ok(replay)
+}
+
+pub async fn delete_recipe(pool: &SqlitePool, recipe_id: i64, author_id: i64) -> Result<()> {
+    sqlx::query("DELETE FROM recipes WHERE id = ? AND author_id = ?")
+        .bind(recipe_id).bind(author_id).execute(pool).await?;
     Ok(())
 }

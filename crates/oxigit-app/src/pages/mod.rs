@@ -15,6 +15,10 @@ pub mod pr_view;
 pub mod login;
 pub mod prompt_detail;
 pub mod prompt_history;
+pub mod recipe_detail;
+pub mod recipe_marketplace;
+pub mod recipe_share;
+pub mod repo_metrics;
 pub mod register;
 pub mod remix_guide;
 pub mod repo_blob;
@@ -141,6 +145,8 @@ pub struct SessionDetailResponse {
     pub can_revert: bool,
     pub branches: Vec<String>,
     pub default_branch: String,
+    pub vibe_score: Option<VibeScoreInfo>,
+    pub recipe_id: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -151,6 +157,8 @@ pub struct SessionListItem {
     pub first_prompt: Option<String>,
     pub first_time: String,
     pub last_time: String,
+    pub vibe_score: Option<u8>,
+    pub vibe_grade: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -166,6 +174,7 @@ pub struct DashboardData {
     pub tool_usage: Vec<ToolUsageInfo>,
     pub recent_sessions: Vec<RecentSessionInfo>,
     pub risk_counts: Vec<RiskCountInfo>,
+    pub user_vibe_score: Option<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -232,6 +241,141 @@ pub struct PromptDetailResponse {
     pub can_operate: bool,
     pub branches: Vec<String>,
     pub default_branch: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VibeScoreInfo {
+    pub score: u8,
+    pub grade: String,
+    pub commits_per_prompt: f64,
+    pub risk_density: f64,
+    pub churn_ratio: f64,
+    pub file_scope: f64,
+    pub was_reverted: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionScoreItem {
+    pub session_id: String,
+    pub ai_tool: String,
+    pub score: u8,
+    pub grade: String,
+    pub commit_count: i64,
+    pub prompt_count: i64,
+    pub first_time: String,
+    pub last_time: String,
+    pub first_prompt: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ToolScoreInfo {
+    pub ai_tool: String,
+    pub session_count: i64,
+    pub average_score: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RepoMetricsResponse {
+    pub owner: String,
+    pub repo: String,
+    pub average_score: f64,
+    pub total_sessions: i64,
+    pub total_prompts: i64,
+    pub session_scores: Vec<SessionScoreItem>,
+    pub tool_comparison: Vec<ToolScoreInfo>,
+    pub risk_distribution: Vec<RiskCountInfo>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecipeListItem {
+    pub id: i64,
+    pub title: String,
+    pub description: String,
+    pub ai_tool: String,
+    pub ai_model: Option<String>,
+    pub tags: Vec<String>,
+    pub prompt_count: i64,
+    pub file_count: i64,
+    pub vibe_score: Option<i64>,
+    pub replay_count: i64,
+    pub author: String,
+    pub repo_owner: String,
+    pub repo_name: String,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecipeFileInfo {
+    pub path: String,
+    pub content: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecipeStepInfo {
+    pub step_order: i64,
+    pub prompt_text: Option<String>,
+    pub commit_message: String,
+    pub files: Vec<RecipeFileInfo>,
+    pub diff_html: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReplayTargetRepo {
+    pub owner: String,
+    pub name: String,
+    pub branches: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecipeDetailResponse {
+    pub id: i64,
+    pub title: String,
+    pub description: String,
+    pub ai_tool: String,
+    pub ai_model: Option<String>,
+    pub tags: Vec<String>,
+    pub vibe_score: Option<i64>,
+    pub replay_count: i64,
+    pub author: String,
+    pub repo_owner: String,
+    pub repo_name: String,
+    pub steps: Vec<RecipeStepInfo>,
+    pub can_replay: bool,
+    pub user_repos: Vec<ReplayTargetRepo>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecipeMarketplaceResponse {
+    pub recipes: Vec<RecipeListItem>,
+    pub total: i64,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GuardrailRuleInfo {
+    pub category: String,
+    pub action: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GuardrailSettingsInfo {
+    pub rules: Vec<GuardrailRuleInfo>,
+    pub min_vibe_score: Option<i64>,
+    pub max_files_per_push: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ViolationInfo {
+    pub id: i64,
+    pub commit_sha: String,
+    pub short_sha: String,
+    pub category: String,
+    pub action_taken: String,
+    pub severity: String,
+    pub message: String,
+    pub file_path: Option<String>,
+    pub created_at: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

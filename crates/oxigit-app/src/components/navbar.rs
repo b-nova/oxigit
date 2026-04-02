@@ -23,6 +23,7 @@ pub fn Navbar() -> impl IntoView {
                     </a>
                     <span class="navbar-divider"></span>
                     <a href="/explore" class="navbar-link">"Explore"</a>
+                    <a href="/recipes" class="navbar-link">"Recipes"</a>
                     <Suspense fallback=|| ()>
                         {move || Suspend::new(async move {
                             match user.await {

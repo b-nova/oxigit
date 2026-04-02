@@ -2,6 +2,8 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
+use super::GuardrailSettingsInfo;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct HookStatus {
     tool_id: String,
@@ -211,6 +213,14 @@ PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty')
 if [ -z "$PROMPT" ]; then
   PROMPT=$(echo "$INPUT" | jq -r '.user_prompt // empty')
 fi
+# Keep the first prompt per session (don't overwrite with follow-ups)
+if [ -f .oxigit/last-ai-session.json ]; then
+  EXISTING_SESSION=$(jq -r '.session_id // empty' .oxigit/last-ai-session.json)
+  if [ "$EXISTING_SESSION" = "$SESSION_ID" ]; then
+    echo '{{"decision":"allow"}}' 2>/dev/null
+    exit 0
+  fi
+fi
 mkdir -p .oxigit
 jq -n \
   --arg tool "{tool_name}" \
@@ -218,7 +228,19 @@ jq -n \
   --arg session_id "$SESSION_ID" \
   --arg prompt "$PROMPT" \
   '{{ tool: $tool, model: $model, session_id: $session_id, prompt: $prompt }}' \
-  > .oxigit/last-ai-session.json"#,
+  > .oxigit/last-ai-session.json
+
+# Auto-install prepare-commit-msg hook if not present
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || echo ".git")
+if [ ! -f "$GIT_DIR/hooks/prepare-commit-msg" ] && [ -f ".githooks/prepare-commit-msg" ]; then
+  mkdir -p "$GIT_DIR/hooks"
+  cp .githooks/prepare-commit-msg "$GIT_DIR/hooks/prepare-commit-msg"
+  chmod +x "$GIT_DIR/hooks/prepare-commit-msg"
+fi
+
+# Gemini CLI requires valid JSON on stdout
+echo '{{"decision":"allow"}}'
+"#,
         tool_name = tool_name,
         model_line = model_line,
     )
@@ -332,7 +354,7 @@ fn config_json(tool: &AiToolConfig) -> String {
           {{
             "type": "command",
             "command": "{hook_dir}/oxigit-session.sh",
-            "timeout": 5
+            "timeout": 5000
           }}
         ]
       }}
@@ -458,52 +480,6 @@ async fn install_ai_hook(
 }
 
 #[server]
-async fn install_universal_hook(
-    owner: String,
-    repo: String,
-) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
-    use oxigit_core::{db, git};
-
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
-    let data_dir = get_data_dir().await?;
-
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-
-    if repo_db.owner_id != user.id {
-        return Err(ServerFnError::new("Only the owner can install AI hooks"));
-    }
-
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
-
-    let branch = git::default_branch(&repo_path)
-        .map_err(|e| ServerFnError::new(e.to_string()))?
-        .ok_or_else(|| ServerFnError::new("Repository has no branches"))?;
-
-    let script = universal_hook_script().to_string();
-    let files: Vec<(&str, &str, bool)> = vec![
-        (".githooks/prepare-commit-msg", &script, true),
-    ];
-
-    git::add_files_to_branch(
-        &repo_path,
-        &branch,
-        &files,
-        "chore: install universal Oxigit AI hook",
-        &user.username,
-        &format!("{}@oxigit", user.username),
-    )
-    .map_err(|e| ServerFnError::new(e.to_string()))?;
-
-    Ok(())
-}
-
-#[server]
 async fn check_installed_hooks(
     owner: String,
     repo: String,
@@ -547,15 +523,6 @@ async fn check_installed_hooks(
                 up_to_date: script_ok && config_ok,
             });
         }
-    }
-
-    // Check universal hook
-    if let Ok(blob) = git::read_blob(&repo_path, &branch, ".githooks/prepare-commit-msg") {
-        let up_to_date = String::from_utf8_lossy(&blob).as_ref() == universal_hook_script();
-        statuses.push(HookStatus {
-            tool_id: "universal".to_string(),
-            up_to_date,
-        });
     }
 
     Ok(statuses)
@@ -706,6 +673,137 @@ async fn delete_webhook(
     Ok(())
 }
 
+#[server]
+async fn get_guardrail_settings(
+    owner: String,
+    repo: String,
+) -> Result<GuardrailSettingsInfo, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_pool};
+    use oxigit_core::db;
+    use super::GuardrailRuleInfo;
+
+    let user = extract_session_user().await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if repo_db.owner_id != user.id {
+        return Err(ServerFnError::new("Only the owner can manage guardrails"));
+    }
+
+    let rules = db::get_guardrail_rules(&pool, repo_db.id)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    let config = db::get_guardrail_config(&pool, repo_db.id)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let categories = ["security", "breaking", "performance", "quality"];
+    let rule_infos: Vec<GuardrailRuleInfo> = categories.iter().map(|cat| {
+        let action = rules.iter()
+            .find(|r| r.category == *cat)
+            .map(|r| r.action.clone())
+            .unwrap_or_else(|| "off".to_string());
+        GuardrailRuleInfo { category: cat.to_string(), action }
+    }).collect();
+
+    Ok(GuardrailSettingsInfo {
+        rules: rule_infos,
+        min_vibe_score: config.as_ref().and_then(|c| c.min_vibe_score),
+        max_files_per_push: config.as_ref().and_then(|c| c.max_files_per_push),
+    })
+}
+
+#[server]
+async fn save_guardrail_settings(
+    owner: String,
+    repo: String,
+    security: String,
+    breaking: String,
+    performance: String,
+    quality: String,
+    min_vibe_score: Option<i64>,
+    max_files_per_push: Option<i64>,
+) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use oxigit_core::{db, git};
+
+    let user = extract_session_user().await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    let data_dir = get_data_dir().await?;
+
+    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    if repo_db.owner_id != user.id {
+        return Err(ServerFnError::new("Only the owner can manage guardrails"));
+    }
+
+    // Save rules
+    for (cat, action) in [("security", &security), ("breaking", &breaking), ("performance", &performance), ("quality", &quality)] {
+        db::upsert_guardrail_rule(&pool, repo_db.id, cat, action)
+            .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    }
+
+    // Save config
+    db::upsert_guardrail_config(&pool, repo_db.id, min_vibe_score, max_files_per_push)
+        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    // Manage pre-receive hook based on whether any block rules exist
+    let has_block = [&security, &breaking, &performance, &quality].iter().any(|a| a.as_str() == "block");
+    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let hook_path = repo_path.join("hooks").join("pre-receive");
+
+    if has_block {
+        // Write pre-receive hook
+        let _ = std::fs::create_dir_all(repo_path.join("hooks"));
+        let script = generate_pre_receive_hook(repo_db.id);
+        let _ = std::fs::write(&hook_path, script);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&hook_path, std::fs::Permissions::from_mode(0o755));
+        }
+    } else {
+        // Remove pre-receive hook if it exists
+        let _ = std::fs::remove_file(&hook_path);
+    }
+
+    leptos_axum::redirect(&format!("/{}/{}/settings", owner, repo));
+    Ok(())
+}
+
+#[cfg(feature = "ssr")]
+fn generate_pre_receive_hook(repo_id: i64) -> String {
+    format!(r#"#!/bin/bash
+# Oxigit AI Guardrail pre-receive hook
+while read old new ref; do
+  if [ "$old" = "0000000000000000000000000000000000000000" ]; then
+    DIFF=$(git diff-tree -p --root "$new" 2>/dev/null)
+  else
+    DIFF=$(git diff "$old" "$new" 2>/dev/null)
+  fi
+  FILES=$(git diff-tree --no-commit-id --name-only -r "$old" "$new" 2>/dev/null | wc -l)
+  RESULT=$(curl -sf -X POST "http://127.0.0.1:${{OXIGIT_PORT}}/internal/guardrail-check" \
+    -H "X-Internal-Secret: ${{OXIGIT_SECRET}}" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    --data-urlencode "repo_id={repo_id}" \
+    --data-urlencode "old=$old" \
+    --data-urlencode "new=$new" \
+    --data-urlencode "ref=$ref" \
+    --data-urlencode "file_count=$FILES" \
+    --data-urlencode "diff=$DIFF" 2>/dev/null)
+  if [ $? -ne 0 ] || echo "$RESULT" | head -1 | grep -q "^BLOCKED"; then
+    echo "" >&2
+    echo "$RESULT" >&2
+    echo "" >&2
+    exit 1
+  fi
+done
+"#)
+}
+
 #[component]
 pub fn RepoSettingsPage() -> impl IntoView {
     let params = use_params_map();
@@ -726,9 +824,9 @@ pub fn RepoSettingsPage() -> impl IntoView {
     let add_action = ServerAction::<AddCollaborator>::new();
     let remove_action = ServerAction::<RemoveCollaborator>::new();
     let install_hook_action = ServerAction::<InstallAiHook>::new();
-    let install_universal_action = ServerAction::<InstallUniversalHook>::new();
     let add_webhook_action = ServerAction::<AddWebhook>::new();
     let delete_webhook_action = ServerAction::<DeleteWebhook>::new();
+    let save_guardrails_action = ServerAction::<SaveGuardrailSettings>::new();
 
     let webhooks = Resource::new(
         move || (owner(), repo()),
@@ -753,7 +851,6 @@ pub fn RepoSettingsPage() -> impl IntoView {
 
     Effect::new(move || {
         install_hook_action.version().get();
-        install_universal_action.version().get();
         installed_hooks.refetch();
     });
 
@@ -769,13 +866,9 @@ pub fn RepoSettingsPage() -> impl IntoView {
 
     let hook_error = move || {
         install_hook_action.value().get().and_then(|r| r.err().map(|e| e.to_string()))
-            .or_else(|| install_universal_action.value().get().and_then(|r| r.err().map(|e| e.to_string())))
     };
     let hook_success = move || {
         install_hook_action.value().get().and_then(|r| r.ok()).is_some()
-    };
-    let universal_success = move || {
-        install_universal_action.value().get().and_then(|r| r.ok()).is_some()
     };
 
     view! {
@@ -927,24 +1020,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                 <div class="flash flash-error">{e}</div>
             })}
             {move || hook_success().then(|| view! {
-                <div class="flash flash-success">
-                    <p>"Hook installed. Pull to get the new files."</p>
-                    <p style="margin-top: var(--space-2); font-size: 0.8125rem;">
-                        "For Codex CLI, also add to " <code>"~/.codex/config.toml"</code> ":"
-                    </p>
-                    <pre style="margin-top: var(--space-1); font-size: 0.8125rem; background: var(--bg); padding: var(--space-2); border-radius: var(--radius);">"[features]\ncodex_hooks = true"</pre>
-                    <p style="margin-top: var(--space-2); font-size: 0.8125rem;">
-                        "For Codex/Gemini, also run after pulling: "
-                        <code>"git config core.hooksPath .githooks"</code>
-                    </p>
-                </div>
-            })}
-            {move || universal_success().then(|| view! {
-                <div class="flash flash-success">
-                    <p>"Universal hook installed. Pull, then run: "
-                        <code>"git config core.hooksPath .githooks"</code>
-                    </p>
-                </div>
+                <div class="flash flash-success">"Hook installed. Pull to get the new files."</div>
             })}
 
             // Claude Code (native hook)
@@ -955,12 +1031,12 @@ pub fn RepoSettingsPage() -> impl IntoView {
                 let script_name = if tool.uses_pre_tool { "oxigit-context.sh" } else { "oxigit-session.sh" };
                 let hook_dir = tool.hook_dir.to_string();
                 let config_path = tool.config_path.to_string();
-                let hook_status = Memo::new(move |_| {
+                let hook_status = Signal::derive(move || {
                     installed_hooks.get()
                         .and_then(|r| r.ok())
                         .and_then(|statuses| {
                             statuses.iter()
-                                .find(|s| s.tool_id == tool_id_check)
+                                .find(|s| s.tool_id == tool_id_check.clone())
                                 .map(|s| s.up_to_date)
                         })
                 });
@@ -993,47 +1069,10 @@ pub fn RepoSettingsPage() -> impl IntoView {
                 }
             }).collect::<Vec<_>>()}
 
-            // Universal hook (Codex CLI, Gemini CLI, Aider, etc.)
-            {
-                let universal_status = Memo::new(move |_| {
-                    installed_hooks.get()
-                        .and_then(|r| r.ok())
-                        .and_then(|statuses| {
-                            statuses.iter()
-                                .find(|s| s.tool_id == "universal")
-                                .map(|s| s.up_to_date)
-                        })
-                });
-                view! {
-                    <div class="list-item">
-                        <div>
-                            <span class="font-semibold">"Universal (Codex, Gemini, Aider, ...)"</span>
-                            <span class="text-secondary" style="font-size: 0.8125rem; margin-left: 0.5rem;">
-                                ".githooks/prepare-commit-msg"
-                            </span>
-                        </div>
-                        <ActionForm action=install_universal_action>
-                            <input type="hidden" name="owner" value={move || owner()} />
-                            <input type="hidden" name="repo" value={move || repo()} />
-                            <button
-                                type="submit"
-                                class="btn btn-sm"
-                                class:btn-primary=move || !matches!(universal_status.get(), Some(true))
-                                disabled=move || universal_status.get() == Some(true)
-                            >
-                                {move || match universal_status.get() {
-                                    None => "Install",
-                                    Some(true) => "Installed",
-                                    Some(false) => "Update",
-                                }}
-                            </button>
-                        </ActionForm>
-                    </div>
-                    <p class="text-tertiary" style="font-size: 0.75rem; padding: 0 var(--space-4) var(--space-3);">
-                        "After pulling, run: " <code>"git config core.hooksPath .githooks"</code>
-                    </p>
-                }
-            }
+            <p class="text-tertiary" style="font-size: 0.75rem; padding: var(--space-2) var(--space-4) var(--space-3);">
+                "Codex CLI requires " <code>"codex_hooks = true"</code> " in "
+                <code>"~/.codex/config.toml"</code> " under " <code>"[features]"</code> "."
+            </p>
         </div>
 
         // Webhooks section
@@ -1183,6 +1222,93 @@ pub fn RepoSettingsPage() -> impl IntoView {
                     })
                 }}
             </Suspense>
+        </div>
+
+        // --- AI Guardrails Section ---
+        <div class="card mb-4">
+            <div class="card-header">"AI Guardrails"</div>
+            <div style="padding: var(--space-4);">
+                <p class="text-secondary mb-3" style="font-size: 0.8125rem;">
+                    "Configure rules to scan AI-generated code on push. "
+                    <strong>"Warn"</strong> " logs violations. "
+                    <strong>"Block"</strong> " rejects the push."
+                </p>
+                <Suspense fallback=|| view! { <p class="text-tertiary">"Loading..."</p> }>
+                    {move || {
+                        let on = owner();
+                        let rn = repo();
+                        Suspend::new(async move {
+                            match get_guardrail_settings(on.clone(), rn.clone()).await {
+                                Ok(settings) => {
+                                    let sec = settings.rules.iter().find(|r| r.category == "security").map(|r| r.action.clone()).unwrap_or("off".into());
+                                    let brk = settings.rules.iter().find(|r| r.category == "breaking").map(|r| r.action.clone()).unwrap_or("off".into());
+                                    let perf = settings.rules.iter().find(|r| r.category == "performance").map(|r| r.action.clone()).unwrap_or("off".into());
+                                    let qual = settings.rules.iter().find(|r| r.category == "quality").map(|r| r.action.clone()).unwrap_or("off".into());
+
+                                    view! {
+                                        <ActionForm action=save_guardrails_action>
+                                            <input type="hidden" name="owner" value={on} />
+                                            <input type="hidden" name="repo" value={rn} />
+
+                                            <div class="guardrail-grid">
+                                                <div class="guardrail-row">
+                                                    <label class="guardrail-label">"Security"</label>
+                                                    <span class="text-tertiary" style="font-size: 0.75rem;">"Secrets, SQL injection, eval"</span>
+                                                    <select name="security" class="form-input form-input-sm">
+                                                        <option value="off" selected={sec == "off"}>"Off"</option>
+                                                        <option value="warn" selected={sec == "warn"}>"Warn"</option>
+                                                        <option value="block" selected={sec == "block"}>"Block"</option>
+                                                    </select>
+                                                </div>
+                                                <div class="guardrail-row">
+                                                    <label class="guardrail-label">"Breaking"</label>
+                                                    <span class="text-tertiary" style="font-size: 0.75rem;">"Removed public APIs"</span>
+                                                    <select name="breaking" class="form-input form-input-sm">
+                                                        <option value="off" selected={brk == "off"}>"Off"</option>
+                                                        <option value="warn" selected={brk == "warn"}>"Warn"</option>
+                                                        <option value="block" selected={brk == "block"}>"Block"</option>
+                                                    </select>
+                                                </div>
+                                                <div class="guardrail-row">
+                                                    <label class="guardrail-label">"Performance"</label>
+                                                    <span class="text-tertiary" style="font-size: 0.75rem;">"Binary files"</span>
+                                                    <select name="performance" class="form-input form-input-sm">
+                                                        <option value="off" selected={perf == "off"}>"Off"</option>
+                                                        <option value="warn" selected={perf == "warn"}>"Warn"</option>
+                                                        <option value="block" selected={perf == "block"}>"Block"</option>
+                                                    </select>
+                                                </div>
+                                                <div class="guardrail-row">
+                                                    <label class="guardrail-label">"Quality"</label>
+                                                    <span class="text-tertiary" style="font-size: 0.75rem;">"TODO/FIXME/HACK"</span>
+                                                    <select name="quality" class="form-input form-input-sm">
+                                                        <option value="off" selected={qual == "off"}>"Off"</option>
+                                                        <option value="warn" selected={qual == "warn"}>"Warn"</option>
+                                                        <option value="block" selected={qual == "block"}>"Block"</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group mt-3">
+                                                <label>"Max files per push"</label>
+                                                <input type="number" name="max_files_per_push" class="form-input form-input-sm"
+                                                    style="width: 100px;"
+                                                    placeholder="No limit"
+                                                    value={settings.max_files_per_push.map(|v| v.to_string()).unwrap_or_default()} />
+                                            </div>
+
+                                            <button type="submit" class="btn btn-primary btn-sm mt-3">"Save Guardrails"</button>
+                                        </ActionForm>
+                                    }.into_any()
+                                }
+                                Err(e) => view! {
+                                    <div class="flash flash-error">{e.to_string()}</div>
+                                }.into_any(),
+                            }
+                        })
+                    }}
+                </Suspense>
+            </div>
         </div>
     }
 }

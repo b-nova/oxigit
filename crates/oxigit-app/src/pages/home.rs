@@ -8,7 +8,7 @@ use super::{get_current_user, DashboardData, RecentSessionInfo, RiskCountInfo, T
 #[server]
 async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
     use crate::server_fns::{extract_session_user, get_pool};
-    use oxigit_core::db;
+    use oxigit_core::{db, vibe};
     use std::collections::HashMap;
 
     let user = match extract_session_user().await {
@@ -62,6 +62,34 @@ async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
         .map(|(category, count)| RiskCountInfo { category, count })
         .collect();
 
+    // Compute user-level vibe score from recent sessions
+    let user_vibe_score = {
+        let session_data = db::get_user_session_data(&pool, user.id)
+            .await.unwrap_or_default();
+        if session_data.is_empty() {
+            None
+        } else {
+            let mut total_score = 0u64;
+            let mut count = 0u64;
+            for sd in &session_data {
+                // Lightweight score: skip churn (expensive git call), use commits/prompts + basic metrics
+                let metrics = vibe::SessionMetrics {
+                    commit_count: sd.commit_count as usize,
+                    prompt_count: sd.prompt_count as usize,
+                    risk_flag_count: 0,
+                    files_touched: 0,
+                    lines_added: 1,
+                    lines_deleted: 0,
+                    was_reverted: false,
+                };
+                let vs = vibe::compute_vibe_score(&metrics);
+                total_score += vs.score as u64;
+                count += 1;
+            }
+            Some((total_score / count.max(1)) as u8)
+        }
+    };
+
     Ok(Some(DashboardData {
         total_ai_commits: stats.total_ai_commits,
         total_sessions: stats.total_sessions,
@@ -69,6 +97,7 @@ async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
         tool_usage,
         recent_sessions,
         risk_counts,
+        user_vibe_score,
     }))
 }
 

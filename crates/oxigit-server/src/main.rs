@@ -75,6 +75,7 @@ async fn main() {
         .route("/{owner}/{repo}/git-upload-pack", post(git_http::upload_pack))
         .route("/{owner}/{repo}/git-receive-pack", post(git_http::receive_pack))
         .route("/api/deploy-callback/{commit_sha}", post(git_http::deploy_callback))
+        .route("/internal/guardrail-check", post(git_http::guardrail_check))
         .with_state(state.clone());
 
     // Build router — use Shell for SSR, App for hydration

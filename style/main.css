@@ -2916,3 +2916,146 @@ a:hover {
     font-weight: 700;
     flex-shrink: 0;
 }
+
+/* =============================================================
+   Pricing
+   ============================================================= */
+
+.pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-6);
+    margin-top: var(--space-6);
+}
+
+.pricing-card {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-6);
+}
+
+.pricing-card-highlight {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 20px var(--accent-muted);
+}
+
+.pricing-card-founding {
+    border-color: var(--merged);
+    box-shadow: 0 0 0 1px var(--merged), 0 0 20px var(--merged-muted);
+}
+
+.pricing-card-header {
+    text-align: center;
+    margin-bottom: var(--space-6);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--border);
+}
+
+.pricing-card-header h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0 0 var(--space-2);
+}
+
+.pricing-amount {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+}
+
+.pricing-per {
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
+.pricing-period {
+    font-size: 0.8125rem;
+    color: var(--text-tertiary);
+    margin: var(--space-2) 0 0;
+}
+
+.pricing-features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 var(--space-6);
+    flex: 1;
+}
+
+.pricing-features li {
+    padding: var(--space-2) 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    border-bottom: 1px solid var(--border-muted);
+}
+
+.pricing-features li:last-child {
+    border-bottom: none;
+}
+
+.pricing-features li::before {
+    content: "\2713 ";
+    color: var(--success);
+    margin-right: var(--space-2);
+}
+
+.pricing-cta {
+    text-align: center;
+    margin-top: auto;
+}
+
+.pricing-cta .btn {
+    width: 100%;
+}
+
+.page-subtitle {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    margin: var(--space-2) 0 0;
+}
+
+/* =============================================================
+   Billing
+   ============================================================= */
+
+.billing-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-muted);
+}
+
+.billing-row:last-child {
+    border-bottom: none;
+}
+
+.billing-label {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.billing-value {
+    color: var(--text);
+    font-weight: 500;
+}
+
+.badge-success {
+    background: var(--success-muted);
+    color: var(--success);
+}
+
+.badge-warning {
+    background: var(--warning-muted);
+    color: var(--warning);
+}
+
+.badge-danger {
+    background: var(--danger-muted);
+    color: var(--danger);
+}
+
+.navbar-link-sm {
+    font-size: 0.8125rem;
+}

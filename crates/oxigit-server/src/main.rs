@@ -11,6 +11,7 @@ use oxigit_core::db;
 
 mod config;
 mod git_http;
+mod stripe_webhook;
 
 use config::Config;
 
@@ -67,6 +68,12 @@ async fn main() {
         llm_api_key: config.llm_api_key.clone(),
         llm_model: config.llm_model.clone(),
         llm_base_url: config.llm_base_url.clone(),
+        stripe_secret_key: config.stripe_secret_key.clone(),
+        stripe_publishable_key: config.stripe_publishable_key.clone(),
+        stripe_webhook_secret: config.stripe_webhook_secret.clone(),
+        stripe_price_pro: config.stripe_price_pro.clone(),
+        stripe_price_team: config.stripe_price_team.clone(),
+        stripe_price_founding: config.stripe_price_founding.clone(),
     };
 
     // Git Smart HTTP routes + deploy callback (must be before Leptos routes)
@@ -76,6 +83,7 @@ async fn main() {
         .route("/{owner}/{repo}/git-receive-pack", post(git_http::receive_pack))
         .route("/api/deploy-callback/{commit_sha}", post(git_http::deploy_callback))
         .route("/internal/guardrail-check", post(git_http::guardrail_check))
+        .route("/api/stripe/webhook", post(stripe_webhook::handle_webhook))
         .with_state(state.clone());
 
     // Build router — use Shell for SSR, App for hydration

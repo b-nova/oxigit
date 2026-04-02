@@ -262,3 +262,25 @@ pub struct DeployPreview {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Subscription {
+    pub id: i64,
+    pub user_id: i64,
+    pub stripe_customer_id: String,
+    pub stripe_subscription_id: Option<String>,
+    pub plan: String,
+    pub status: String,
+    pub current_period_end: Option<String>,
+    pub seats: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct FoundingMember {
+    pub id: i64,
+    pub user_id: i64,
+    pub slot_number: i64,
+    pub claimed_at: String,
+}

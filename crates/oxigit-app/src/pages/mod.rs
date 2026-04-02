@@ -1,5 +1,6 @@
 pub mod ai_hub;
 pub mod ai_session_detail;
+pub mod billing;
 pub mod blame;
 pub mod commit_view;
 pub mod conflict_resolve;
@@ -13,6 +14,7 @@ pub mod pr_list;
 pub mod pr_new;
 pub mod pr_view;
 pub mod login;
+pub mod pricing;
 pub mod prompt_detail;
 pub mod prompt_history;
 pub mod recipe_detail;

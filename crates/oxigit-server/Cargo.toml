@@ -27,6 +27,7 @@ tracing-subscriber = { workspace = true }
 hex = { workspace = true }
 rand_core = { workspace = true }
 base64 = { workspace = true }
+chrono = { workspace = true }
 
 [features]
 default = ["ssr"]

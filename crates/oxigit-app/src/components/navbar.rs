@@ -36,6 +36,7 @@ pub fn Navbar() -> impl IntoView {
                     <span class="navbar-divider"></span>
                     <a href="/explore" class="navbar-link">"Explore"</a>
                     <a href="/recipes" class="navbar-link">"Recipes"</a>
+                    <a href="/pricing" class="navbar-link">"Pricing"</a>
                     <Suspense fallback=|| ()>
                         {move || Suspend::new(async move {
                             match user.await {
@@ -54,6 +55,7 @@ pub fn Navbar() -> impl IntoView {
                                 Ok(Some(u)) => {
                                     let profile_href = format!("/{}", &u.username);
                                     view! {
+                                        <a href="/billing" class="navbar-link navbar-link-sm">"Billing"</a>
                                         <a href="/settings" class="navbar-icon" title="Settings">
                                             <IconGear />
                                         </a>

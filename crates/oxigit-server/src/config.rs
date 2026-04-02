@@ -36,4 +36,28 @@ pub struct Config {
     /// Base URL for Ollama or custom LLM endpoints
     #[arg(long, env = "OXIGIT_LLM_BASE_URL")]
     pub llm_base_url: Option<String>,
+
+    /// Stripe secret key (sk_test_... or sk_live_...)
+    #[arg(long, env = "STRIPE_SECRET_KEY")]
+    pub stripe_secret_key: Option<String>,
+
+    /// Stripe webhook signing secret (whsec_...)
+    #[arg(long, env = "STRIPE_WEBHOOK_SECRET")]
+    pub stripe_webhook_secret: Option<String>,
+
+    /// Stripe publishable key (pk_test_... or pk_live_...)
+    #[arg(long, env = "STRIPE_PUBLISHABLE_KEY")]
+    pub stripe_publishable_key: Option<String>,
+
+    /// Stripe Price ID for Pro plan
+    #[arg(long, env = "STRIPE_PRICE_PRO")]
+    pub stripe_price_pro: Option<String>,
+
+    /// Stripe Price ID for Team plan
+    #[arg(long, env = "STRIPE_PRICE_TEAM")]
+    pub stripe_price_team: Option<String>,
+
+    /// Stripe Price ID for Founding Member plan
+    #[arg(long, env = "STRIPE_PRICE_FOUNDING")]
+    pub stripe_price_founding: Option<String>,
 }

@@ -3433,9 +3433,12 @@ dependencies = [
 name = "oxigit-e2e"
 version = "0.1.0"
 dependencies = [
+ "hex",
+ "hmac",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "tokio",
 ]
@@ -3446,6 +3449,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64",
+ "chrono",
  "clap",
  "hex",
  "leptos",

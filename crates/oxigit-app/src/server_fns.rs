@@ -18,6 +18,12 @@ pub struct AppState {
     pub llm_api_key: Option<String>,
     pub llm_model: String,
     pub llm_base_url: Option<String>,
+    pub stripe_secret_key: Option<String>,
+    pub stripe_publishable_key: Option<String>,
+    pub stripe_webhook_secret: Option<String>,
+    pub stripe_price_pro: Option<String>,
+    pub stripe_price_team: Option<String>,
+    pub stripe_price_founding: Option<String>,
 }
 
 pub async fn get_pool() -> Result<SqlitePool, ServerFnError> {
@@ -51,6 +57,33 @@ pub async fn get_effective_llm_config(user_id: Option<i64>) -> Result<(String, O
     }
 
     Ok((provider, api_key, model, base_url))
+}
+
+/// Stripe configuration for billing operations.
+#[derive(Clone, Debug)]
+pub struct StripeConfig {
+    pub secret_key: String,
+    pub publishable_key: Option<String>,
+    pub webhook_secret: String,
+    pub price_pro: Option<String>,
+    pub price_team: Option<String>,
+    pub price_founding: Option<String>,
+}
+
+/// Extract Stripe configuration. Returns None if Stripe is not configured.
+pub async fn get_stripe_config() -> Result<Option<StripeConfig>, ServerFnError> {
+    let Extension(state): Extension<AppState> = extract().await?;
+    match (state.stripe_secret_key, state.stripe_webhook_secret) {
+        (Some(secret_key), Some(webhook_secret)) => Ok(Some(StripeConfig {
+            secret_key,
+            publishable_key: state.stripe_publishable_key,
+            webhook_secret,
+            price_pro: state.stripe_price_pro,
+            price_team: state.stripe_price_team,
+            price_founding: state.stripe_price_founding,
+        })),
+        _ => Ok(None),
+    }
 }
 
 /// Extract the base URL from the request Host header.

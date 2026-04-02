@@ -105,6 +105,56 @@ impl TestServer {
         server
     }
 
+    /// Start a server with Stripe webhook secret configured for billing tests.
+    pub async fn start_with_stripe(webhook_secret: &str) -> Self {
+        let http_port = free_port();
+        let ssh_port = free_port();
+        let data_dir = TempDir::new().expect("failed to create temp dir");
+
+        let binary = find_binary();
+
+        let child = Command::new(&binary)
+            .env("OXIGIT_DATA_DIR", data_dir.path())
+            .env("OXIGIT_HTTP_ADDR", format!("127.0.0.1:{http_port}"))
+            .env("OXIGIT_SSH_ADDR", format!("127.0.0.1:{ssh_port}"))
+            .env("STRIPE_WEBHOOK_SECRET", webhook_secret)
+            .env("STRIPE_SECRET_KEY", "sk_test_fake")
+            .env("RUST_LOG", "warn")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap_or_else(|e| {
+                panic!(
+                    "failed to start server binary at {}: {e}",
+                    binary.display()
+                )
+            });
+
+        let base_url = format!("http://127.0.0.1:{http_port}");
+
+        let server = TestServer {
+            http_port,
+            ssh_port,
+            base_url,
+            data_dir,
+            child,
+        };
+
+        // Wait for server to be ready
+        let client = reqwest::Client::new();
+        for i in 0..150 {
+            if client.get(&server.base_url).send().await.is_ok() {
+                return server;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if i == 149 {
+                panic!("server did not become ready within 15 seconds");
+            }
+        }
+
+        server
+    }
+
     pub fn client(&self) -> TestClient {
         TestClient::new(&self.base_url)
     }

@@ -25,6 +25,9 @@ pub enum OxigitError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Billing error: {0}")]
+    Billing(String),
 }
 
 pub type Result<T> = std::result::Result<T, OxigitError>;

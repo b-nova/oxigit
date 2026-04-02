@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::auth::{hash_password, validate_repo_name, validate_username, verify_password};
 use crate::error::{OxigitError, Result};
-use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, DeployPreview, GuardrailConfig, GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile, PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, User, UserSettings};
+use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, DeployPreview, FoundingMember, GuardrailConfig, GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile, PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, Subscription, User, UserSettings};
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
@@ -1807,4 +1807,106 @@ pub async fn delete_recipe(pool: &SqlitePool, recipe_id: i64, author_id: i64) ->
     sqlx::query("DELETE FROM recipes WHERE id = ? AND author_id = ?")
         .bind(recipe_id).bind(author_id).execute(pool).await?;
     Ok(())
+}
+
+// --- Subscription queries ---
+
+pub async fn get_subscription(pool: &SqlitePool, user_id: i64) -> Result<Option<Subscription>> {
+    let sub = sqlx::query_as::<_, Subscription>("SELECT * FROM subscriptions WHERE user_id = ?")
+        .bind(user_id).fetch_optional(pool).await?;
+    Ok(sub)
+}
+
+pub async fn get_subscription_by_stripe_customer(pool: &SqlitePool, stripe_customer_id: &str) -> Result<Option<Subscription>> {
+    let sub = sqlx::query_as::<_, Subscription>("SELECT * FROM subscriptions WHERE stripe_customer_id = ?")
+        .bind(stripe_customer_id).fetch_optional(pool).await?;
+    Ok(sub)
+}
+
+pub async fn get_subscription_by_stripe_subscription(pool: &SqlitePool, stripe_subscription_id: &str) -> Result<Option<Subscription>> {
+    let sub = sqlx::query_as::<_, Subscription>("SELECT * FROM subscriptions WHERE stripe_subscription_id = ?")
+        .bind(stripe_subscription_id).fetch_optional(pool).await?;
+    Ok(sub)
+}
+
+pub async fn upsert_subscription(
+    pool: &SqlitePool,
+    user_id: i64,
+    stripe_customer_id: &str,
+    stripe_subscription_id: Option<&str>,
+    plan: &str,
+    status: &str,
+    current_period_end: Option<&str>,
+    seats: i64,
+) -> Result<Subscription> {
+    let sub = sqlx::query_as::<_, Subscription>(
+        "INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_end, seats) \
+         VALUES (?, ?, ?, ?, ?, ?, ?) \
+         ON CONFLICT(user_id) DO UPDATE SET \
+           stripe_customer_id = excluded.stripe_customer_id, \
+           stripe_subscription_id = excluded.stripe_subscription_id, \
+           plan = excluded.plan, \
+           status = excluded.status, \
+           current_period_end = excluded.current_period_end, \
+           seats = excluded.seats, \
+           updated_at = datetime('now') \
+         RETURNING *",
+    )
+    .bind(user_id).bind(stripe_customer_id).bind(stripe_subscription_id)
+    .bind(plan).bind(status).bind(current_period_end).bind(seats)
+    .fetch_one(pool).await?;
+    Ok(sub)
+}
+
+pub async fn update_subscription_status(
+    pool: &SqlitePool,
+    stripe_subscription_id: &str,
+    status: &str,
+    current_period_end: Option<&str>,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE subscriptions SET status = ?, current_period_end = ?, updated_at = datetime('now') \
+         WHERE stripe_subscription_id = ?",
+    )
+    .bind(status).bind(current_period_end).bind(stripe_subscription_id)
+    .execute(pool).await?;
+    Ok(())
+}
+
+pub async fn cancel_subscription(pool: &SqlitePool, stripe_subscription_id: &str) -> Result<()> {
+    sqlx::query(
+        "UPDATE subscriptions SET status = 'canceled', updated_at = datetime('now') WHERE stripe_subscription_id = ?",
+    )
+    .bind(stripe_subscription_id).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn get_user_plan(pool: &SqlitePool, user_id: i64) -> Result<String> {
+    let sub = get_subscription(pool, user_id).await?;
+    match sub {
+        Some(s) if s.status == "active" => Ok(s.plan),
+        _ => Ok("free".to_string()),
+    }
+}
+
+// --- Founding member queries ---
+
+pub async fn count_founding_members(pool: &SqlitePool) -> Result<i64> {
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM founding_members")
+        .fetch_one(pool).await?;
+    Ok(count)
+}
+
+/// Atomically claim a founding member slot. Returns the slot number if successful,
+/// or None if all 100 slots are taken.
+pub async fn claim_founding_slot(pool: &SqlitePool, user_id: i64) -> Result<Option<i64>> {
+    // Atomic insert: only succeeds if fewer than 100 slots claimed and user hasn't claimed one
+    let result = sqlx::query_as::<_, FoundingMember>(
+        "INSERT INTO founding_members (user_id, slot_number) \
+         SELECT ?, COALESCE((SELECT MAX(slot_number) FROM founding_members), 0) + 1 \
+         WHERE (SELECT COUNT(*) FROM founding_members) < 100 \
+         RETURNING *",
+    )
+    .bind(user_id).fetch_optional(pool).await?;
+    Ok(result.map(|fm| fm.slot_number))
 }

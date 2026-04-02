@@ -22,6 +22,7 @@ use components::navbar::Navbar;
 use pages::{
     ai_hub::AiHubPage,
     ai_session_detail::AiSessionDetailPage,
+    billing::BillingPage,
     blame::BlamePage,
     commit_view::CommitViewPage,
     conflict_resolve::ConflictResolvePage,
@@ -32,6 +33,7 @@ use pages::{
     issue_new::IssueNewPage,
     issue_view::IssueViewPage,
     login::LoginPage,
+    pricing::PricingPage,
     pr_list::PrListPage,
     pr_new::PrNewPage,
     pr_view::PrViewPage,
@@ -101,6 +103,8 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/repos") view=RepoListPage />
                     <Route path=path!("/repos/new") view=NewRepoPage />
                     <Route path=path!("/settings") view=SettingsPage />
+                    <Route path=path!("/pricing") view=PricingPage />
+                    <Route path=path!("/billing") view=BillingPage />
                     <Route path=path!("/recipes") view=RecipeMarketplacePage />
                     <Route path=path!("/recipes/:recipe_id") view=RecipeDetailPage />
                     <Route path=path!("/:owner/:repo/issues") view=IssueListPage />

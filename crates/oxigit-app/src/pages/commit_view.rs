@@ -214,12 +214,20 @@ async fn generate_diff_summary(
     repo: String,
     sha: String,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_effective_llm_config};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_effective_llm_config, get_user_entitlements};
     use oxigit_core::{db, git, llm, risk};
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let entitlements = get_user_entitlements(user.id).await?;
+    if !entitlements.ai_features {
+        return Err(ServerFnError::new(
+            "AI features require a Pro or higher plan. Upgrade at /pricing",
+        ));
+    }
+
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
     let (provider, api_key, model, base_url) = get_effective_llm_config(Some(user.id)).await?;

@@ -51,7 +51,7 @@ pub async fn info_refs(
     };
 
     // Verify repo exists and check access
-    let pool = &state.pool;
+    let pool = &state.pool();
     let (_, repo_db) = match db::get_repository(pool, &owner, repo_name).await {
         Ok(r) => r,
         Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
@@ -152,7 +152,7 @@ pub async fn receive_pack(
     body: axum::body::Bytes,
 ) -> Response {
     let repo_name = repo.strip_suffix(".git").unwrap_or(&repo);
-    let pool = &state.pool;
+    let pool = &state.pool();
 
     // Require auth for push — owner or collaborator
     let repo_db_id;
@@ -225,7 +225,7 @@ pub async fn deploy_callback(
     axum::extract::State(state): axum::extract::State<AppState>,
     axum::Json(payload): axum::Json<DeployCallbackPayload>,
 ) -> Response {
-    let pool = &state.pool;
+    let pool = &state.pool();
 
     let (_, repo_db) = match db::get_repository(pool, &payload.repo_owner, &payload.repo_name).await {
         Ok(r) => r,
@@ -354,7 +354,7 @@ pub async fn guardrail_check(
     let commit_ref = params.get("ref").cloned().unwrap_or_default();
     let new_sha = params.get("new").cloned().unwrap_or_default();
 
-    let pool = &state.pool;
+    let pool = &state.pool();
 
     // Load block rules only
     let rules = match db::get_guardrail_rules(pool, repo_id).await {

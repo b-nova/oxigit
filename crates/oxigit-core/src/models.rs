@@ -7,6 +7,8 @@ pub struct User {
     pub email: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
+    pub is_admin: bool,
+    pub is_disabled: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -283,4 +285,23 @@ pub struct FoundingMember {
     pub user_id: i64,
     pub slot_number: i64,
     pub claimed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Organization {
+    pub id: i64,
+    pub slug: String,
+    pub display_name: String,
+    pub created_by: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct OrgMembership {
+    pub id: i64,
+    pub org_id: i64,
+    pub user_id: i64,
+    pub role: String,
+    pub created_at: String,
 }

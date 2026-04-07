@@ -4,15 +4,21 @@ use super::get_current_user;
 
 #[server]
 async fn login_user(username: String, password: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_pool, set_session_user};
+    use crate::server_fns::{get_control_pool, set_session_user};
     use oxigit_core::db;
 
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
     let user = db::authenticate_user(&pool, &username, &password)
         .await
         .map_err(|_| ServerFnError::new("Invalid username or password"))?;
 
-    set_session_user(user.id, &user.username).await;
+    // Auto-select the user's first org (typically their personal org)
+    let orgs = db::list_user_organizations(&pool, user.id)
+        .await
+        .unwrap_or_default();
+    let org_slug = orgs.first().map(|(org, _)| org.slug.as_str());
+
+    set_session_user(user.id, &user.username, org_slug).await;
     leptos_axum::redirect("/repos");
     Ok(())
 }

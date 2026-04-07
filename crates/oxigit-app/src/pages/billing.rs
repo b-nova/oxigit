@@ -12,12 +12,12 @@ pub struct BillingInfo {
 
 #[server]
 async fn fetch_billing_info() -> Result<BillingInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool, get_stripe_config};
+    use crate::server_fns::{extract_session_user, get_control_pool, get_stripe_config};
     use oxigit_core::db;
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
     let stripe = get_stripe_config().await?;
 
     let sub = db::get_subscription(&pool, user.id).await
@@ -43,12 +43,12 @@ async fn fetch_billing_info() -> Result<BillingInfo, ServerFnError> {
 
 #[server]
 async fn create_portal_redirect() -> Result<String, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_base_url, get_pool, get_stripe_config};
+    use crate::server_fns::{extract_session_user, get_base_url, get_control_pool, get_stripe_config};
     use oxigit_core::{billing, db};
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
     let stripe = get_stripe_config().await?
         .ok_or_else(|| ServerFnError::new("Billing not configured"))?;
 

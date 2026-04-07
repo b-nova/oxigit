@@ -20,6 +20,7 @@ use leptos_router::{
 
 use components::navbar::Navbar;
 use pages::{
+    admin::AdminPage,
     ai_hub::AiHubPage,
     ai_session_detail::AiSessionDetailPage,
     billing::BillingPage,
@@ -33,6 +34,8 @@ use pages::{
     issue_new::IssueNewPage,
     issue_view::IssueViewPage,
     login::LoginPage,
+    org_new::OrgNewPage,
+    org_settings::OrgSettingsPage,
     pricing::PricingPage,
     pr_list::PrListPage,
     pr_new::PrNewPage,
@@ -106,6 +109,9 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/settings") view=SettingsPage />
                     <Route path=path!("/pricing") view=PricingPage />
                     <Route path=path!("/billing") view=BillingPage />
+                    <Route path=path!("/admin") view=AdminPage />
+                    <Route path=path!("/orgs/new") view=OrgNewPage />
+                    <Route path=path!("/orgs/:slug/settings") view=OrgSettingsPage />
                     <Route path=path!("/recipes") view=RecipeMarketplacePage />
                     <Route path=path!("/recipes/:recipe_id") view=RecipeDetailPage />
                     <Route path=path!("/:owner/:repo/issues") view=IssueListPage />

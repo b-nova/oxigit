@@ -678,12 +678,20 @@ async fn get_guardrail_settings(
     owner: String,
     repo: String,
 ) -> Result<GuardrailSettingsInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_pool, get_user_entitlements};
     use oxigit_core::db;
     use super::GuardrailRuleInfo;
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let entitlements = get_user_entitlements(user.id).await?;
+    if !entitlements.team_features {
+        return Err(ServerFnError::new(
+            "Guardrails require a Team plan. Upgrade at /pricing",
+        ));
+    }
+
     let pool = get_pool().await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
@@ -725,11 +733,19 @@ async fn save_guardrail_settings(
     min_vibe_score: Option<i64>,
     max_files_per_push: Option<i64>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let entitlements = get_user_entitlements(user.id).await?;
+    if !entitlements.team_features {
+        return Err(ServerFnError::new(
+            "Guardrails require a Team plan. Upgrade at /pricing",
+        ));
+    }
+
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
 

@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod ai_hub;
 pub mod ai_session_detail;
 pub mod billing;
@@ -14,6 +15,8 @@ pub mod pr_list;
 pub mod pr_new;
 pub mod pr_view;
 pub mod login;
+pub mod org_new;
+pub mod org_settings;
 pub mod pricing;
 pub mod prompt_detail;
 pub mod prompt_history;
@@ -38,6 +41,7 @@ use serde::{Deserialize, Serialize};
 pub struct UserInfo {
     pub id: i64,
     pub username: String,
+    pub active_org_slug: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -444,6 +448,61 @@ pub struct ConflictFileContentResponse {
 pub async fn get_current_user() -> Result<Option<UserInfo>, ServerFnError> {
     use crate::server_fns::extract_session_user;
     Ok(extract_session_user().await)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OrgListItem {
+    pub slug: String,
+    pub display_name: String,
+    pub role: String,
+}
+
+#[server]
+pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_control_pool};
+    use oxigit_core::db;
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_control_pool().await?;
+    let orgs = db::list_user_organizations(&pool, user.id)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    Ok(orgs
+        .into_iter()
+        .map(|(org, role)| OrgListItem {
+            slug: org.slug,
+            display_name: org.display_name,
+            role,
+        })
+        .collect())
+}
+
+#[server]
+pub async fn switch_org(slug: String) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_control_pool, set_session_org};
+    use oxigit_core::db;
+
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_control_pool().await?;
+
+    // Verify the user is a member of this org
+    let org = db::get_organization_by_slug(&pool, &slug)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    if !db::is_org_member(&pool, org.id, user.id)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?
+    {
+        return Err(ServerFnError::new("Not a member of this organization"));
+    }
+
+    set_session_org(&user, &slug).await;
+    leptos_axum::redirect("/repos");
+    Ok(())
 }
 
 #[server]

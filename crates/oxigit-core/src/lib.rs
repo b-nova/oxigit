@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod billing;
 pub mod db;
+pub mod entitlements;
 pub mod error;
 pub mod git;
 pub mod guardrail;
@@ -8,5 +9,6 @@ pub mod hooks;
 pub mod llm;
 pub mod models;
 pub mod risk;
+pub mod tenant;
 pub mod vibe;
 pub mod webhook;

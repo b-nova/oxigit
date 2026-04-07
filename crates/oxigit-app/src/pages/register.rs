@@ -8,15 +8,35 @@ async fn register_user(
     email: String,
     password: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_pool, set_session_user};
+    use crate::server_fns::{get_control_pool, set_session_user};
     use oxigit_core::db;
 
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
+
+    // First registered user becomes admin automatically
+    let is_first_user = db::count_users(&pool)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))? == 0;
+
     let user = db::create_user(&pool, &username, &email, &password)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    set_session_user(user.id, &user.username).await;
+    if is_first_user {
+        db::set_user_admin(&pool, user.id, true)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+    }
+
+    // Create personal org for the new user
+    let org = db::create_organization(&pool, &username, &username, user.id)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    db::add_org_member(&pool, org.id, user.id, "owner")
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    set_session_user(user.id, &user.username, Some(&username)).await;
     leptos_axum::redirect("/repos");
     Ok(())
 }

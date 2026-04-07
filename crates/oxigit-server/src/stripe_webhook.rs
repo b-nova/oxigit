@@ -48,7 +48,7 @@ pub async fn handle_webhook(
 
     tracing::info!("Stripe webhook: {}", event.event_type);
 
-    let pool = &state.pool;
+    let pool = &state.pool();
 
     match event.event_type.as_str() {
         "checkout.session.completed" => {

@@ -7,7 +7,7 @@ use super::{get_current_user, DashboardData, RecentSessionInfo, RiskCountInfo, T
 
 #[server]
 async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool};
     use oxigit_core::{db, vibe};
     use std::collections::HashMap;
 
@@ -15,7 +15,7 @@ async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
         Some(u) => u,
         None => return Ok(None),
     };
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
 
     let stats = db::get_user_ai_stats(&pool, user.id)
         .await

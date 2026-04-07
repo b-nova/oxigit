@@ -3189,3 +3189,118 @@ a:hover {
 .navbar-link-sm {
     font-size: 0.8125rem;
 }
+
+/* ============================================================
+   Admin Dashboard
+   ============================================================ */
+
+.admin-page { max-width: 1100px; margin: 0 auto; }
+
+.admin-stats {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 140px;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.stat-label {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    text-transform: capitalize;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.admin-table th,
+.admin-table td {
+    padding: 0.625rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.admin-table th {
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.admin-table select {
+    background: var(--bg-tertiary);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.admin-table tr.user-disabled td {
+    opacity: 0.5;
+}
+
+.btn-sm {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.625rem;
+}
+
+.btn-danger {
+    background: var(--danger-muted);
+    color: var(--danger);
+    border: 1px solid var(--danger);
+}
+
+.btn-danger:hover {
+    background: var(--danger);
+    color: var(--bg);
+}
+
+/* ============================================================
+   Org Switcher
+   ============================================================ */
+
+.org-switcher { display: inline-flex; align-items: center; }
+
+.org-select {
+    background: var(--bg-tertiary);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
+.form-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-end;
+}
+
+.form-hint {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}

@@ -64,6 +64,7 @@ console_error_panic_hook = "0.1"
 
 [[workspace.metadata.leptos]]
 name = "oxigit"
+bin-target = "oxigit-server"
 output-name = "oxigit"
 site-root = "target/site"
 site-pkg-dir = "pkg"

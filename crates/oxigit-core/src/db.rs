@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::auth::{hash_password, validate_repo_name, validate_username, verify_password};
 use crate::error::{OxigitError, Result};
-use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, DeployPreview, FoundingMember, GuardrailConfig, GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile, PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, Subscription, User, UserSettings};
+use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, DeployPreview, FoundingMember, GuardrailConfig, GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile, OrgMembership, Organization, PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, Subscription, User, UserSettings};
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
@@ -13,9 +13,26 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     Ok(pool)
 }
 
+/// Run all migrations on a single database (legacy mode).
 pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     sqlx::migrate!("../../migrations").run(pool).await.map_err(|e| {
         OxigitError::Database(sqlx::Error::Protocol(format!("Migration failed: {e}")))
+    })?;
+    Ok(())
+}
+
+/// Run control-plane migrations (users, auth, billing, orgs).
+pub async fn run_control_migrations(pool: &SqlitePool) -> Result<()> {
+    sqlx::migrate!("../../migrations_control").run(pool).await.map_err(|e| {
+        OxigitError::Database(sqlx::Error::Protocol(format!("Control migration failed: {e}")))
+    })?;
+    Ok(())
+}
+
+/// Run tenant migrations (repos, issues, PRs, AI data, etc.).
+pub async fn run_tenant_migrations(pool: &SqlitePool) -> Result<()> {
+    sqlx::migrate!("../../migrations_tenant").run(pool).await.map_err(|e| {
+        OxigitError::Database(sqlx::Error::Protocol(format!("Tenant migration failed: {e}")))
     })?;
     Ok(())
 }
@@ -160,6 +177,36 @@ pub async fn get_repository(
     Ok((owner, repo))
 }
 
+/// Get a repository by owner_id directly (tenant-only, no user lookup).
+pub async fn get_repository_by_owner_id(
+    pool: &SqlitePool,
+    owner_id: i64,
+    repo_name: &str,
+) -> Result<Repository> {
+    let repo = sqlx::query_as::<_, Repository>(
+        "SELECT * FROM repositories WHERE owner_id = ? AND name = ?",
+    )
+    .bind(owner_id)
+    .bind(repo_name)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(OxigitError::NotFound("Repository not found".into()))?;
+    Ok(repo)
+}
+
+/// Cross-DB repository lookup: resolves user from control pool, repo from tenant pool.
+/// Works against a single DB too (pass the same pool for both).
+pub async fn get_repository_cross(
+    control_pool: &SqlitePool,
+    tenant_pool: &SqlitePool,
+    owner_name: &str,
+    repo_name: &str,
+) -> Result<(User, Repository)> {
+    let owner = get_user_by_username(control_pool, owner_name).await?;
+    let repo = get_repository_by_owner_id(tenant_pool, owner.id, repo_name).await?;
+    Ok((owner, repo))
+}
+
 /// Check if a user can access a repository. Public repos are accessible to all.
 /// Private repos require the viewer to be the owner.
 pub fn can_access_repo(repo: &Repository, viewer_id: Option<i64>) -> bool {
@@ -199,7 +246,7 @@ pub async fn search_public_repositories(pool: &SqlitePool, query: &str) -> Resul
         .into_iter()
         .map(|(uid, username, email, pw, rid, name, desc, private, forked_from, has_remix, created, updated)| {
             (
-                User { id: uid, username, email, password_hash: pw, created_at: created.clone(), updated_at: updated.clone() },
+                User { id: uid, username, email, password_hash: pw, is_admin: false, is_disabled: false, created_at: created.clone(), updated_at: updated.clone() },
                 Repository { id: rid, owner_id: uid, name, description: desc, is_private: private, forked_from, has_remix, created_at: created, updated_at: updated },
             )
         })
@@ -386,7 +433,7 @@ pub async fn list_collaborators(pool: &SqlitePool, repo_id: i64) -> Result<Vec<(
         .into_iter()
         .map(|(uid, username, email, pw, ucreated, uupdated, cid, repo_id, user_id, perm, ccreated)| {
             (
-                User { id: uid, username, email, password_hash: pw, created_at: ucreated, updated_at: uupdated },
+                User { id: uid, username, email, password_hash: pw, is_admin: false, is_disabled: false, created_at: ucreated, updated_at: uupdated },
                 Collaborator { id: cid, repo_id, user_id, permission: perm, created_at: ccreated },
             )
         })
@@ -909,7 +956,7 @@ pub async fn search_remixable_repositories(pool: &SqlitePool, query: &str) -> Re
         .into_iter()
         .map(|(uid, username, email, pw, rid, name, desc, private, forked_from, has_remix, created, updated)| {
             (
-                User { id: uid, username, email, password_hash: pw, created_at: created.clone(), updated_at: updated.clone() },
+                User { id: uid, username, email, password_hash: pw, is_admin: false, is_disabled: false, created_at: created.clone(), updated_at: updated.clone() },
                 Repository { id: rid, owner_id: uid, name, description: desc, is_private: private, forked_from, has_remix, created_at: created, updated_at: updated },
             )
         })
@@ -1909,4 +1956,266 @@ pub async fn claim_founding_slot(pool: &SqlitePool, user_id: i64) -> Result<Opti
     )
     .bind(user_id).fetch_optional(pool).await?;
     Ok(result.map(|fm| fm.slot_number))
+}
+
+// --- Admin queries ---
+
+pub async fn is_user_admin(pool: &SqlitePool, user_id: i64) -> Result<bool> {
+    let (val,): (bool,) = sqlx::query_as("SELECT is_admin FROM users WHERE id = ?")
+        .bind(user_id).fetch_one(pool).await?;
+    Ok(val)
+}
+
+pub async fn is_user_disabled(pool: &SqlitePool, user_id: i64) -> Result<bool> {
+    let (val,): (bool,) = sqlx::query_as("SELECT is_disabled FROM users WHERE id = ?")
+        .bind(user_id).fetch_one(pool).await?;
+    Ok(val)
+}
+
+pub async fn set_user_admin(pool: &SqlitePool, user_id: i64, is_admin: bool) -> Result<()> {
+    sqlx::query("UPDATE users SET is_admin = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(is_admin).bind(user_id).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn set_user_disabled(pool: &SqlitePool, user_id: i64, disabled: bool) -> Result<()> {
+    sqlx::query("UPDATE users SET is_disabled = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(disabled).bind(user_id).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn list_all_users(pool: &SqlitePool) -> Result<Vec<User>> {
+    let users = sqlx::query_as::<_, User>("SELECT * FROM users ORDER BY created_at DESC")
+        .fetch_all(pool).await?;
+    Ok(users)
+}
+
+pub async fn count_users(pool: &SqlitePool) -> Result<i64> {
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(pool).await?;
+    Ok(count)
+}
+
+pub async fn count_repositories(pool: &SqlitePool) -> Result<i64> {
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM repositories")
+        .fetch_one(pool).await?;
+    Ok(count)
+}
+
+/// Count repositories via the control-plane index (works after split).
+pub async fn count_indexed_repositories(pool: &SqlitePool) -> Result<i64> {
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM repository_index")
+        .fetch_one(pool).await?;
+    Ok(count)
+}
+
+pub async fn count_private_repositories(pool: &SqlitePool, owner_id: i64) -> Result<i64> {
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM repositories WHERE owner_id = ? AND is_private = 1",
+    )
+    .bind(owner_id).fetch_one(pool).await?;
+    Ok(count)
+}
+
+pub async fn subscription_breakdown(pool: &SqlitePool) -> Result<Vec<(String, i64)>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT plan, COUNT(*) FROM subscriptions WHERE status = 'active' GROUP BY plan",
+    )
+    .fetch_all(pool).await?;
+    Ok(rows)
+}
+
+pub async fn admin_override_plan(pool: &SqlitePool, user_id: i64, plan: &str) -> Result<()> {
+    // Upsert a subscription with a sentinel stripe_customer_id for admin overrides
+    sqlx::query(
+        "INSERT INTO subscriptions (user_id, stripe_customer_id, plan, status, seats) \
+         VALUES (?, 'admin_override_' || ?, ?, 'active', 1) \
+         ON CONFLICT(user_id) DO UPDATE SET \
+           plan = excluded.plan, \
+           status = 'active', \
+           updated_at = datetime('now')",
+    )
+    .bind(user_id).bind(user_id).bind(plan)
+    .execute(pool).await?;
+    Ok(())
+}
+
+// --- Organization queries ---
+
+pub async fn create_organization(
+    pool: &SqlitePool,
+    slug: &str,
+    display_name: &str,
+    created_by: i64,
+) -> Result<Organization> {
+    validate_username(slug)?; // same validation rules as usernames
+    let org = sqlx::query_as::<_, Organization>(
+        "INSERT INTO organizations (slug, display_name, created_by) VALUES (?, ?, ?) RETURNING *",
+    )
+    .bind(slug)
+    .bind(display_name)
+    .bind(created_by)
+    .fetch_one(pool)
+    .await?;
+    Ok(org)
+}
+
+pub async fn get_organization_by_slug(pool: &SqlitePool, slug: &str) -> Result<Organization> {
+    let org = sqlx::query_as::<_, Organization>("SELECT * FROM organizations WHERE slug = ?")
+        .bind(slug)
+        .fetch_one(pool)
+        .await?;
+    Ok(org)
+}
+
+pub async fn list_user_organizations(pool: &SqlitePool, user_id: i64) -> Result<Vec<(Organization, String)>> {
+    let rows: Vec<(i64, String, String, i64, String, String, String)> = sqlx::query_as(
+        "SELECT o.id, o.slug, o.display_name, o.created_by, o.created_at, o.updated_at, m.role \
+         FROM organizations o \
+         JOIN org_memberships m ON o.id = m.org_id \
+         WHERE m.user_id = ? \
+         ORDER BY o.slug",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, slug, display_name, created_by, created_at, updated_at, role)| {
+            (
+                Organization { id, slug, display_name, created_by, created_at, updated_at },
+                role,
+            )
+        })
+        .collect())
+}
+
+pub async fn add_org_member(
+    pool: &SqlitePool,
+    org_id: i64,
+    user_id: i64,
+    role: &str,
+) -> Result<OrgMembership> {
+    let membership = sqlx::query_as::<_, OrgMembership>(
+        "INSERT INTO org_memberships (org_id, user_id, role) VALUES (?, ?, ?) RETURNING *",
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .bind(role)
+    .fetch_one(pool)
+    .await?;
+    Ok(membership)
+}
+
+pub async fn get_org_membership(
+    pool: &SqlitePool,
+    org_id: i64,
+    user_id: i64,
+) -> Result<Option<OrgMembership>> {
+    let membership = sqlx::query_as::<_, OrgMembership>(
+        "SELECT * FROM org_memberships WHERE org_id = ? AND user_id = ?",
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(membership)
+}
+
+pub async fn is_org_member(pool: &SqlitePool, org_id: i64, user_id: i64) -> Result<bool> {
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM org_memberships WHERE org_id = ? AND user_id = ?",
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(count > 0)
+}
+
+pub async fn remove_org_member(pool: &SqlitePool, org_id: i64, user_id: i64) -> Result<()> {
+    sqlx::query("DELETE FROM org_memberships WHERE org_id = ? AND user_id = ?")
+        .bind(org_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn list_org_members(pool: &SqlitePool, org_id: i64) -> Result<Vec<(User, String)>> {
+    let rows: Vec<(i64, String, String, String, bool, bool, String, String, String)> = sqlx::query_as(
+        "SELECT u.id, u.username, u.email, u.password_hash, u.is_admin, u.is_disabled, \
+                u.created_at, u.updated_at, m.role \
+         FROM users u \
+         JOIN org_memberships m ON u.id = m.user_id \
+         WHERE m.org_id = ? \
+         ORDER BY m.role, u.username",
+    )
+    .bind(org_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, username, email, password_hash, is_admin, is_disabled, created_at, updated_at, role)| {
+            (
+                User { id, username, email, password_hash, is_admin, is_disabled, created_at, updated_at },
+                role,
+            )
+        })
+        .collect())
+}
+
+// --- Repository index queries ---
+
+/// Look up which org owns a repository by owner/repo name.
+pub async fn lookup_repo_org(pool: &SqlitePool, owner_username: &str, repo_name: &str) -> Result<String> {
+    let (org_slug,): (String,) = sqlx::query_as(
+        "SELECT org_slug FROM repository_index WHERE owner_username = ? AND repo_name = ?",
+    )
+    .bind(owner_username)
+    .bind(repo_name)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(OxigitError::NotFound("Repository not found in index".into()))?;
+    Ok(org_slug)
+}
+
+/// Register a repository in the global index.
+pub async fn register_repo_in_index(
+    pool: &SqlitePool,
+    org_slug: &str,
+    owner_id: i64,
+    owner_username: &str,
+    repo_name: &str,
+    description: &str,
+    is_private: bool,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO repository_index (org_slug, owner_id, owner_username, repo_name, description, is_private) \
+         VALUES (?, ?, ?, ?, ?, ?) \
+         ON CONFLICT(owner_username, repo_name) DO UPDATE SET \
+           org_slug = excluded.org_slug, \
+           description = excluded.description, \
+           is_private = excluded.is_private, \
+           updated_at = datetime('now')",
+    )
+    .bind(org_slug)
+    .bind(owner_id)
+    .bind(owner_username)
+    .bind(repo_name)
+    .bind(description)
+    .bind(is_private)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Remove a repository from the global index.
+pub async fn remove_repo_from_index(pool: &SqlitePool, owner_username: &str, repo_name: &str) -> Result<()> {
+    sqlx::query("DELETE FROM repository_index WHERE owner_username = ? AND repo_name = ?")
+        .bind(owner_username)
+        .bind(repo_name)
+        .execute(pool)
+        .await?;
+    Ok(())
 }

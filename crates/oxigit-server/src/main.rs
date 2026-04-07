@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{Extension, Router, routing::{get, post}};
 use clap::Parser;
 use leptos::prelude::*;
@@ -8,6 +10,7 @@ use tracing_subscriber::EnvFilter;
 use oxigit_app::{App, Shell, ShellProps};
 use oxigit_app::server_fns::AppState;
 use oxigit_core::db;
+use oxigit_core::tenant::TenantPoolManager;
 
 mod config;
 mod git_http;
@@ -30,7 +33,7 @@ async fn main() {
     std::fs::create_dir_all(config.data_dir.join("repos"))
         .expect("Failed to create repos directory");
 
-    // Database setup
+    // Database setup — use legacy single DB for now, wrapped in TenantPoolManager
     let db_path = config.data_dir.join("oxigit.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
     let pool = db::create_pool(&database_url)
@@ -41,6 +44,9 @@ async fn main() {
         .expect("Failed to run migrations");
 
     tracing::info!("Database initialized at {}", db_path.display());
+
+    // Wrap pool in TenantPoolManager (control pool = legacy single DB during transition)
+    let tenant_mgr = Arc::new(TenantPoolManager::new(pool.clone(), config.data_dir.clone(), 50));
 
     // SSH host key
     let host_key = oxigit_ssh::load_or_generate_host_key(&config.data_dir);
@@ -60,7 +66,7 @@ async fn main() {
     let secret_key = load_or_generate_secret(&config);
 
     let state = AppState {
-        pool: pool.clone(),
+        tenant_mgr: tenant_mgr.clone(),
         data_dir: config.data_dir.clone(),
         secret_key,
         leptos_options: leptos_options.clone(),

@@ -550,7 +550,7 @@ fn IssueTabContent(owner: String, repo: String) -> impl IntoView {
     );
 
     view! {
-        <div class="flex-row gap-2 mb-4">
+        <div class="flex-row-between gap-2 mb-4">
             <div class="filter-tabs">
                 <button
                     class=move || if status_filter.get() == "open" { "filter-tab filter-tab-active" } else { "filter-tab" }
@@ -687,7 +687,7 @@ fn PrTabContent(owner: String, repo: String) -> impl IntoView {
     );
 
     view! {
-        <div class="flex-row gap-2 mb-4">
+        <div class="flex-row-between gap-2 mb-4">
             <div class="filter-tabs">
                 <button
                     class=move || if status_filter.get() == "open" { "filter-tab filter-tab-active" } else { "filter-tab" }

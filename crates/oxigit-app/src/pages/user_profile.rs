@@ -9,10 +9,10 @@ use super::RepoInfo;
 async fn fetch_user_profile(
     username: String,
 ) -> Result<(String, Vec<RepoInfo>), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool};
     use oxigit_core::db;
 
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
     let current_user = extract_session_user().await;
 
     let user = db::get_user_by_username(&pool, &username)

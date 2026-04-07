@@ -23,9 +23,19 @@ pub fn init_bare_repo(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Resolve the on-disk path to a bare repository.
+/// Resolve the on-disk path to a bare repository (legacy layout).
 pub fn repo_path(data_dir: &Path, owner: &str, name: &str) -> std::path::PathBuf {
     data_dir.join("repos").join(owner).join(format!("{name}.git"))
+}
+
+/// Resolve the on-disk path to a bare repository in a tenant directory.
+pub fn tenant_repo_path(data_dir: &Path, org_slug: &str, owner: &str, name: &str) -> std::path::PathBuf {
+    data_dir
+        .join("tenants")
+        .join(org_slug)
+        .join("repos")
+        .join(owner)
+        .join(format!("{name}.git"))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

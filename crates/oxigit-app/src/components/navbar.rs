@@ -3,7 +3,7 @@ use leptos_router::hooks::use_location;
 
 use super::icons::{IconGear, IconLogout, IconUser};
 use super::theme_toggle::ThemeToggle;
-use crate::pages::{get_current_user, Logout};
+use crate::pages::{get_current_user, list_my_orgs, Logout, SwitchOrg};
 
 #[component]
 pub fn Navbar() -> impl IntoView {
@@ -56,7 +56,9 @@ pub fn Navbar() -> impl IntoView {
                             match user.await {
                                 Ok(Some(u)) => {
                                     let profile_href = format!("/{}", &u.username);
+                                    let active_org = u.active_org_slug.clone().unwrap_or_default();
                                     view! {
+                                        <OrgSwitcher active_org=active_org />
                                         <a href="/billing" class="navbar-link navbar-link-sm">"Billing"</a>
                                         <a href="/settings" class="navbar-icon" title="Settings">
                                             <IconGear />
@@ -82,5 +84,66 @@ pub fn Navbar() -> impl IntoView {
                 </div>
             </div>
         </nav>
+    }
+}
+
+#[component]
+fn OrgSwitcher(active_org: String) -> impl IntoView {
+    let orgs = Resource::new(|| (), |_| list_my_orgs());
+    let switch_action = ServerAction::<SwitchOrg>::new();
+
+    let active_org_signal = active_org;
+
+    view! {
+        <Suspense fallback=|| ()>
+            {move || {
+                let active_org = active_org_signal.clone();
+                Suspend::new(async move {
+                match orgs.await {
+                    Ok(orgs) if orgs.len() > 1 => {
+                        let active = active_org.clone();
+                        view! {
+                            <div class="org-switcher">
+                                <ActionForm action=switch_action>
+                                    <select
+                                        name="slug"
+                                        class="org-select"
+                                        on:change=move |ev| {
+                                            // Submit the form when selection changes
+                                            use leptos::wasm_bindgen::JsCast;
+                                            if let Some(select) = event_target::<leptos::web_sys::HtmlSelectElement>(&ev)
+                                                .closest("form")
+                                                .ok()
+                                                .flatten()
+                                                .and_then(|f| f.dyn_into::<leptos::web_sys::HtmlFormElement>().ok())
+                                            {
+                                                let _ = select.request_submit();
+                                            }
+                                        }
+                                    >
+                                        {orgs.iter().map(|o| {
+                                            let selected = o.slug == active;
+                                            view! {
+                                                <option value={o.slug.clone()} selected=selected>
+                                                    {o.display_name.clone()}
+                                                </option>
+                                            }
+                                        }).collect::<Vec<_>>()}
+                                    </select>
+                                </ActionForm>
+                            </div>
+                        }.into_any()
+                    }
+                    Ok(orgs) if orgs.len() == 1 => {
+                        let org = &orgs[0];
+                        let settings_href = format!("/orgs/{}/settings", org.slug);
+                        view! {
+                            <a href=settings_href class="navbar-link navbar-link-sm">{org.display_name.clone()}</a>
+                        }.into_any()
+                    }
+                    _ => view! { <span></span> }.into_any(),
+                }
+            })}}
+        </Suspense>
     }
 }

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use axum::Extension;
 use leptos::prelude::*;
@@ -8,9 +9,9 @@ use sqlx::SqlitePool;
 use crate::pages::UserInfo;
 
 /// Application state shared via Axum Extension layer.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AppState {
-    pub pool: SqlitePool,
+    pub tenant_mgr: Arc<oxigit_core::tenant::TenantPoolManager>,
     pub data_dir: PathBuf,
     pub secret_key: Vec<u8>,
     pub leptos_options: LeptosOptions,
@@ -26,9 +27,52 @@ pub struct AppState {
     pub stripe_price_founding: Option<String>,
 }
 
+impl std::fmt::Debug for AppState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppState")
+            .field("data_dir", &self.data_dir)
+            .finish_non_exhaustive()
+    }
+}
+
+impl AppState {
+    /// Backward-compatible pool accessor — returns the control plane pool.
+    /// During migration, all existing `get_pool()` callers use this.
+    pub fn pool(&self) -> SqlitePool {
+        self.tenant_mgr.control_pool().clone()
+    }
+}
+
+/// Get the control plane pool (users, auth, billing, orgs).
+/// This is the backward-compatible default — all existing server functions use this.
 pub async fn get_pool() -> Result<SqlitePool, ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
-    Ok(state.pool)
+    Ok(state.pool())
+}
+
+/// Get the control plane pool explicitly.
+pub async fn get_control_pool() -> Result<SqlitePool, ServerFnError> {
+    get_pool().await
+}
+
+/// Get the tenant pool for the user's active org.
+/// Returns an error if no org is selected in the session.
+pub async fn get_tenant_pool() -> Result<SqlitePool, ServerFnError> {
+    let Extension(state): Extension<AppState> = extract().await?;
+    let org_slug = extract_active_org()
+        .await
+        .ok_or_else(|| ServerFnError::new("No active organization"))?;
+    state
+        .tenant_mgr
+        .get_tenant_pool(&org_slug)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))
+}
+
+/// Get the TenantPoolManager for advanced operations (provisioning, etc.).
+pub async fn get_tenant_mgr() -> Result<Arc<oxigit_core::tenant::TenantPoolManager>, ServerFnError> {
+    let Extension(state): Extension<AppState> = extract().await?;
+    Ok(state.tenant_mgr.clone())
 }
 
 pub async fn get_data_dir() -> Result<PathBuf, ServerFnError> {
@@ -44,11 +88,12 @@ pub async fn get_llm_config() -> Result<(String, Option<String>, String, Option<
 /// Resolve effective LLM config: user settings override server defaults.
 pub async fn get_effective_llm_config(user_id: Option<i64>) -> Result<(String, Option<String>, String, Option<String>), ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
+    let pool = state.pool();
     let (mut provider, mut api_key, mut model, mut base_url) =
         (state.llm_provider, state.llm_api_key, state.llm_model, state.llm_base_url);
 
     if let Some(uid) = user_id {
-        if let Ok(Some(settings)) = oxigit_core::db::get_user_settings(&state.pool, uid).await {
+        if let Ok(Some(settings)) = oxigit_core::db::get_user_settings(&pool, uid).await {
             if let Some(p) = settings.llm_provider { provider = p; }
             if let Some(k) = settings.llm_api_key { api_key = Some(k); }
             if let Some(m) = settings.llm_model { model = m; }
@@ -105,27 +150,67 @@ pub async fn get_base_url() -> String {
 }
 
 /// Extract the current user from the signed session cookie.
+/// Returns `None` if the cookie is missing/invalid or the user is disabled.
 pub async fn extract_session_user() -> Option<UserInfo> {
     let Extension(state): Extension<AppState> = extract().await.ok()?;
     let headers: axum::http::HeaderMap = extract().await.ok()?;
     let cookie = headers.get("cookie")?.to_str().ok()?;
 
+    let mut user_info = None;
     for part in cookie.split(';') {
         let part = part.trim();
         if let Some(value) = part.strip_prefix("oxigit_session=") {
-            return verify_session_cookie(value.trim(), &state.secret_key);
+            user_info = verify_session_cookie(value.trim(), &state.secret_key);
+            break;
         }
     }
-    None
+
+    let user = user_info?;
+
+    // Block disabled users
+    if oxigit_core::db::is_user_disabled(&state.pool(), user.id)
+        .await
+        .unwrap_or(false)
+    {
+        return None;
+    }
+
+    Some(user)
+}
+
+/// Require the current user to be an admin. Returns the user or a ServerFnError.
+pub async fn require_admin() -> Result<UserInfo, ServerFnError> {
+    let user = extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let pool = get_pool().await?;
+    if !oxigit_core::db::is_user_admin(&pool, user.id)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?
+    {
+        return Err(ServerFnError::new("Admin access required"));
+    }
+    Ok(user)
+}
+
+/// Get plan entitlements for a user based on their active subscription.
+pub async fn get_user_entitlements(
+    user_id: i64,
+) -> Result<oxigit_core::entitlements::PlanEntitlements, ServerFnError> {
+    let pool = get_pool().await?;
+    let plan = oxigit_core::db::get_user_plan(&pool, user_id)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    Ok(oxigit_core::entitlements::for_plan(&plan))
 }
 
 /// Set a signed session cookie on the response.
-pub async fn set_session_user(user_id: i64, username: &str) {
+pub async fn set_session_user(user_id: i64, username: &str, org_slug: Option<&str>) {
     let Extension(state): Extension<AppState> = match extract().await {
         Ok(s) => s,
         Err(_) => return,
     };
-    let signed = sign_session_cookie(user_id, username, &state.secret_key);
+    let signed = sign_session_cookie(user_id, username, org_slug, &state.secret_key);
     let cookie = format!(
         "oxigit_session={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800",
         signed
@@ -135,6 +220,17 @@ pub async fn set_session_user(user_id: i64, username: &str) {
         axum::http::header::SET_COOKIE,
         axum::http::HeaderValue::from_str(&cookie).unwrap(),
     );
+}
+
+/// Update only the active org in the session cookie (for org switching).
+pub async fn set_session_org(user: &UserInfo, org_slug: &str) {
+    set_session_user(user.id, &user.username, Some(org_slug)).await;
+}
+
+/// Extract the active org slug from the session, if set.
+pub async fn extract_active_org() -> Option<String> {
+    let user = extract_session_user().await?;
+    user.active_org_slug
 }
 
 /// Clear session cookie.
@@ -147,12 +243,16 @@ pub async fn clear_session() {
     );
 }
 
-/// Sign a session value: "user_id:username:hmac_hex"
-fn sign_session_cookie(user_id: i64, username: &str, secret: &[u8]) -> String {
+/// Sign a session value: "user_id:username:org_slug:hmac_hex"
+/// When org_slug is None, format is "user_id:username:hmac_hex" (backward compat).
+fn sign_session_cookie(user_id: i64, username: &str, org_slug: Option<&str>, secret: &[u8]) -> String {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
 
-    let payload = format!("{}:{}", user_id, username);
+    let payload = match org_slug {
+        Some(slug) => format!("{}:{}:{}", user_id, username, slug),
+        None => format!("{}:{}", user_id, username),
+    };
     let mut mac = Hmac::<Sha256>::new_from_slice(secret).expect("HMAC key error");
     mac.update(payload.as_bytes());
     let signature = hex::encode(mac.finalize().into_bytes());
@@ -160,11 +260,12 @@ fn sign_session_cookie(user_id: i64, username: &str, secret: &[u8]) -> String {
 }
 
 /// Verify a signed session cookie. Returns None if invalid.
+/// Supports both old format "user_id:username:hmac" and new "user_id:username:org_slug:hmac".
 fn verify_session_cookie(value: &str, secret: &[u8]) -> Option<UserInfo> {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
 
-    // Format: "user_id:username:signature_hex"
+    // Signature is always the last colon-separated segment
     let mut parts = value.rsplitn(2, ':');
     let signature_hex = parts.next()?;
     let payload = parts.next()?;
@@ -175,10 +276,24 @@ fn verify_session_cookie(value: &str, secret: &[u8]) -> Option<UserInfo> {
     let expected_sig = hex::decode(signature_hex).ok()?;
     mac.verify_slice(&expected_sig).ok()?;
 
-    // Parse payload
-    let mut payload_parts = payload.splitn(2, ':');
-    let id: i64 = payload_parts.next()?.parse().ok()?;
-    let username = payload_parts.next()?.to_string();
-
-    Some(UserInfo { id, username })
+    // Parse payload: "user_id:username" or "user_id:username:org_slug"
+    let payload_parts: Vec<&str> = payload.splitn(3, ':').collect();
+    match payload_parts.len() {
+        2 => {
+            let id: i64 = payload_parts[0].parse().ok()?;
+            let username = payload_parts[1].to_string();
+            Some(UserInfo { id, username, active_org_slug: None })
+        }
+        3 => {
+            let id: i64 = payload_parts[0].parse().ok()?;
+            let username = payload_parts[1].to_string();
+            let org_slug = payload_parts[2].to_string();
+            Some(UserInfo {
+                id,
+                username,
+                active_org_slug: if org_slug.is_empty() { None } else { Some(org_slug) },
+            })
+        }
+        _ => None,
+    }
 }

@@ -11,13 +11,13 @@ pub struct SshKeyInfo {
 
 #[server]
 async fn list_ssh_keys() -> Result<Vec<SshKeyInfo>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
     let keys = db::list_ssh_keys(&pool, user.id)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
@@ -35,13 +35,13 @@ async fn list_ssh_keys() -> Result<Vec<SshKeyInfo>, ServerFnError> {
 
 #[server]
 async fn add_ssh_key(name: String, public_key: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
 
     // Parse and validate the public key, compute fingerprint
     let public_key = public_key.trim().to_string();
@@ -145,13 +145,13 @@ pub struct LlmSettingsInfo {
 
 #[server]
 async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_llm_config, get_pool};
+    use crate::server_fns::{extract_session_user, get_llm_config, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
     let (default_provider, default_key, default_model, default_base_url) = get_llm_config().await?;
 
     let settings = db::get_user_settings(&pool, user.id)
@@ -173,13 +173,13 @@ async fn save_llm_settings(
     model: String,
     base_url: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
 
     let provider = if provider.is_empty() || provider == "none" { None } else { Some(provider) };
     let api_key = if api_key.is_empty() { None } else { Some(api_key) };
@@ -202,13 +202,13 @@ async fn save_llm_settings(
 
 #[server]
 async fn delete_key(key_id: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_control_pool().await?;
     db::delete_ssh_key(&pool, key_id, user.id)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;

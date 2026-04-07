@@ -80,7 +80,7 @@ async fn test_session_detail_content() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let resp = client.get("/bob/detailrepo/ai/detail-sess-1").await;
-    let body = resp.text().await.unwrap();
+    let body = strip_hydration_markers(&resp.text().await.unwrap());
 
     assert!(body.contains("2 commits"), "Expected 2 commits in session");
     assert!(body.contains("cursor"), "Expected tool badge");

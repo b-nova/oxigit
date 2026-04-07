@@ -43,9 +43,9 @@ async fn test_prompt_detail_page() {
 
     // Fetch prompt detail for prompt_index=1
     let resp = client.get("/alice/promptdetail/ai/pd-session-1/prompt/1").await;
-    let body = resp.text().await.unwrap();
+    let body = strip_hydration_markers(&resp.text().await.unwrap());
 
-    assert!(body.contains("Add authentication"), "Expected prompt text, got: {}", &body[..500.min(body.len())]);
+    assert!(body.contains("Add authentication"), "Expected prompt text, got: {}", &body[..2000.min(body.len())]);
     assert!(body.contains("claude-code"), "Expected AI tool badge");
     assert!(body.contains("2 commits"), "Expected 2 commits for this prompt");
     assert!(body.contains("Prompt Operations") || body.contains("Revert Prompt"),
@@ -85,9 +85,94 @@ async fn test_prompt_detail_isolation() {
 
     // Fetch prompt 2 — should show "Build feature B" but NOT "Build feature A"
     let resp = client.get("/bob/isolation/ai/iso-sess/prompt/2").await;
-    let body = resp.text().await.unwrap();
+    let body = strip_hydration_markers(&resp.text().await.unwrap());
 
     assert!(body.contains("Build feature B"), "Expected prompt B text");
     // Prompt A's text should not appear in the prompt section (it may appear in breadcrumb links)
     assert!(body.contains("1 commit"), "Expected 1 commit for prompt 2");
+}
+
+/// Test that prompt detail page shows vibe score and squash button.
+#[tokio::test]
+async fn test_prompt_detail_shows_vibe_and_squash() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    client.register("carol", "carol@test.com", "password123").await;
+    client.login("carol", "password123").await;
+    client.create_repo("vibesquash", "Vibe and squash test", false).await;
+
+    let clone_url = http_clone_url(&server.base_url, "carol", "password123", "carol", "vibesquash");
+    let dest = server.data_dir.path().join("clone-vs");
+    git_clone_http(&clone_url, &dest);
+    init_repo_config(&dest);
+
+    create_commit(&dest, "base.txt", "base", "initial");
+    create_branch(&dest, "feature");
+
+    create_commit_with_trailers(
+        &dest, "module.rs", "fn module() {}", "feat: module",
+        "claude-code", Some("claude-opus-4-6"), Some("Create module"),
+        Some("vs-session"), Some(1),
+    );
+    create_commit_with_trailers(
+        &dest, "module_test.rs", "fn test_module() {}", "test: module",
+        "claude-code", Some("claude-opus-4-6"), Some("Create module"),
+        Some("vs-session"), Some(1),
+    );
+
+    let push = git_push(&dest);
+    assert!(push.status.success());
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let resp = client.get("/carol/vibesquash/ai/vs-session/prompt/1").await;
+    let body = strip_hydration_markers(&resp.text().await.unwrap());
+
+    // Vibe score badge should be present
+    assert!(body.contains("vibe-badge"), "Expected vibe score badge, got: {}", &body[..500.min(body.len())]);
+    // Squash button should be present for owner
+    assert!(body.contains("Squash Prompt"), "Expected squash button");
+    // Cherry-pick should also be present
+    assert!(body.contains("Cherry-pick to"), "Expected cherry-pick button");
+    // Time range should be shown
+    assert!(body.contains(" — "), "Expected time range separator");
+}
+
+/// Test that non-owners don't see prompt operations.
+#[tokio::test]
+async fn test_prompt_ops_hidden_for_non_owner() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    client.register("dan", "dan@test.com", "password123").await;
+    client.login("dan", "password123").await;
+    client.create_repo("privprompt", "Private prompt ops", false).await;
+
+    let clone_url = http_clone_url(&server.base_url, "dan", "password123", "dan", "privprompt");
+    let dest = server.data_dir.path().join("clone-pp");
+    git_clone_http(&clone_url, &dest);
+    init_repo_config(&dest);
+
+    create_commit_with_trailers(
+        &dest, "code.rs", "fn code() {}", "feat: code",
+        "claude-code", None, Some("Write code"),
+        Some("pp-sess"), Some(1),
+    );
+    git_push(&dest);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Login as different user
+    client.register("eve", "eve@test.com", "password123").await;
+    client.login("eve", "password123").await;
+
+    let resp = client.get("/dan/privprompt/ai/pp-sess/prompt/1").await;
+    let body = strip_hydration_markers(&resp.text().await.unwrap());
+
+    assert!(!body.contains("Prompt Operations"), "Non-owner should not see operations panel");
+    assert!(!body.contains("Squash Prompt"), "Non-owner should not see squash");
+    assert!(!body.contains("Revert Prompt"), "Non-owner should not see revert");
+    // Vibe score should still be visible
+    assert!(body.contains("vibe-badge"), "Vibe score should be visible to non-owners");
 }

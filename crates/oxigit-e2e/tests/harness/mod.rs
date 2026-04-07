@@ -983,6 +983,12 @@ pub fn get_head_sha(repo_dir: &Path) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
+/// Strip Leptos SSR hydration markers (`<!>`) so substring assertions work on
+/// dynamic text that spans multiple text nodes.
+pub fn strip_hydration_markers(html: &str) -> String {
+    html.replace("<!>", "")
+}
+
 /// Generate an ed25519 SSH keypair in the given directory.
 /// Returns (private_key_path, public_key_string).
 pub fn generate_ssh_keypair(dir: &Path) -> (PathBuf, String) {

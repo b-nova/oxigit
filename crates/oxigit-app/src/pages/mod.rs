@@ -243,6 +243,10 @@ pub struct PromptDetailResponse {
     pub can_operate: bool,
     pub branches: Vec<String>,
     pub default_branch: String,
+    pub summary: Option<DiffSummaryInfo>,
+    pub vibe_score: Option<VibeScoreInfo>,
+    pub first_time: String,
+    pub last_time: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

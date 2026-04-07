@@ -113,7 +113,7 @@ async fn test_prompt_history_groups_by_prompt_index() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let resp = client.get("/carol/grouprepo/prompts").await;
-    let body = resp.text().await.unwrap();
+    let body = strip_hydration_markers(&resp.text().await.unwrap());
     assert!(body.contains("Build feature A"), "Expected prompt A");
     assert!(body.contains("Now build feature B"), "Expected prompt B");
     // The "Build feature A" prompt should show 2 commits

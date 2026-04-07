@@ -128,12 +128,13 @@ async fn test_violations_on_ai_hub() {
 
     // The AI hub should render without errors even with no violations
     let resp = client.get("/frank/hubviolation/ai").await;
+    let status = resp.status();
     let body = resp.text().await.unwrap();
 
     // Page should load successfully
     assert!(
-        resp.status().is_success() || body.contains("No AI activity"),
+        status.is_success() || body.contains("No AI activity"),
         "AI hub page should load, got status: {}",
-        resp.status()
+        status
     );
 }

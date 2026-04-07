@@ -35,6 +35,10 @@
     --border-muted: #21273a;
     --border-accent: rgba(224, 138, 74, 0.4);
 
+    /* Theme-specific */
+    --navbar-bg: rgba(20, 24, 32, 0.85);
+    --btn-primary-text: #0c0f14;
+
     /* Typography */
     --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
@@ -68,6 +72,47 @@
     --transition-fast: 150ms ease;
     --transition-base: 200ms ease;
     --transition-slow: 300ms ease;
+}
+
+/* ============================================================
+   Light Theme — "Daylight" Palette
+   ============================================================ */
+
+:root[data-theme="light"] {
+    --bg: #ffffff;
+    --bg-secondary: #f6f8fa;
+    --bg-tertiary: #eaeef2;
+    --bg-overlay: #d0d7de;
+
+    --accent: #c47522;
+    --accent-hover: #a8631a;
+    --accent-muted: rgba(196, 117, 34, 0.12);
+    --accent-glow: rgba(196, 117, 34, 0.18);
+
+    --success: #1a7f37;
+    --success-muted: rgba(26, 127, 55, 0.12);
+    --danger: #cf222e;
+    --danger-muted: rgba(207, 34, 46, 0.12);
+    --warning: #9a6700;
+    --warning-muted: rgba(154, 103, 0, 0.12);
+    --merged: #8250df;
+    --merged-muted: rgba(130, 80, 223, 0.12);
+
+    --text: #1f2328;
+    --text-secondary: #656d76;
+    --text-tertiary: #8b949e;
+
+    --border: #d0d7de;
+    --border-muted: #e0e4e8;
+    --border-accent: rgba(196, 117, 34, 0.4);
+
+    --navbar-bg: rgba(255, 255, 255, 0.85);
+    --btn-primary-text: #ffffff;
+
+    --shadow-sm: 0 1px 2px rgba(31, 35, 40, 0.06);
+    --shadow-md: 0 4px 12px rgba(31, 35, 40, 0.1);
+    --shadow-lg: 0 8px 24px rgba(31, 35, 40, 0.14);
+    --shadow-glow: 0 0 20px rgba(196, 117, 34, 0.1);
 }
 
 /* ============================================================
@@ -165,7 +210,7 @@ a:hover {
    ============================================================ */
 
 .navbar {
-    background: rgba(20, 24, 32, 0.85);
+    background: var(--navbar-bg);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
@@ -191,6 +236,9 @@ a:hover {
     align-items: center;
     color: var(--text);
 }
+
+.logo-hole { fill: var(--bg); }
+.logo-text { fill: var(--text); }
 
 .navbar-brand-logo {
     flex-shrink: 0;
@@ -294,13 +342,13 @@ a:hover {
 .btn-primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: #0c0f14;
+    color: var(--btn-primary-text);
 }
 
 .btn-primary:hover {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
-    color: #0c0f14;
+    color: var(--btn-primary-text);
 }
 
 .btn-danger {
@@ -523,6 +571,55 @@ a:hover {
     background: var(--bg-secondary);
     color: var(--text);
     box-shadow: var(--shadow-sm);
+}
+
+/* ============================================================
+   Repo Nav Tabs
+   ============================================================ */
+
+.repo-nav {
+    display: flex;
+    gap: var(--space-4);
+    border-bottom: 1px solid var(--border);
+    padding: 0;
+}
+
+.repo-nav-tab {
+    padding: 0.5rem 0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color var(--transition-fast);
+    text-decoration: none;
+    font-family: var(--font-sans);
+    border: none;
+    background: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+
+.repo-nav-tab:hover {
+    color: var(--text);
+    border-bottom-color: var(--text-tertiary);
+    text-decoration: none;
+}
+
+.repo-nav-tab-active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+}
+
+.repo-nav-tab-ai {
+    color: var(--accent);
+}
+
+.repo-nav-tab-ai:hover {
+    border-bottom-color: var(--accent);
+}
+
+.repo-nav-tab-ai.repo-nav-tab-active {
+    border-bottom-color: var(--accent);
 }
 
 /* ============================================================
@@ -3007,6 +3104,39 @@ a:hover {
 
 .pricing-cta .btn {
     width: 100%;
+}
+
+.pricing-deploy-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
+}
+
+.pricing-deploy-card {
+    text-align: center;
+    padding: var(--space-6);
+}
+
+.pricing-deploy-card h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: var(--space-2);
+}
+
+.pricing-deploy-card .pricing-amount {
+    font-size: 2rem;
+}
+
+.pricing-deploy-desc {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    margin-top: var(--space-3);
+    line-height: 1.5;
+}
+
+.pricing-deploy-cloud {
+    border-color: var(--accent);
 }
 
 .page-subtitle {

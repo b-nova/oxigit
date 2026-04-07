@@ -15,7 +15,7 @@ pub struct AiHubResponse {
 }
 
 #[server]
-async fn fetch_ai_hub(
+pub async fn fetch_ai_hub(
     owner: String,
     repo: String,
     query: String,

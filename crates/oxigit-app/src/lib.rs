@@ -70,6 +70,7 @@ pub fn Shell(options: LeptosOptions) -> impl IntoView {
                 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
                 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
                 <link rel="manifest" href="/site.webmanifest" />
+                <script>"(function(){var t=localStorage.getItem('theme');if(t==='light'||(t!=='dark'&&window.matchMedia('(prefers-color-scheme:light)').matches)){document.documentElement.setAttribute('data-theme','light')}})()"</script>
                 <meta name="theme-color" content="#0c0f14" />
                 <meta property="og:title" content="Oxigit" />
                 <meta property="og:description" content="The AI-native Git platform for vibecoders." />

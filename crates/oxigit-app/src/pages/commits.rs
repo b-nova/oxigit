@@ -13,7 +13,7 @@ pub struct CommitEntry {
 }
 
 #[server]
-async fn fetch_commits(
+pub async fn fetch_commits(
     owner: String,
     repo: String,
 ) -> Result<Vec<CommitEntry>, ServerFnError> {

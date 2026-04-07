@@ -110,7 +110,27 @@ pub fn PricingPage() -> impl IntoView {
     view! {
         <div class="page-header">
             <h1 class="page-title">"Pricing"</h1>
-            <p class="page-subtitle">"Simple, transparent pricing for every team."</p>
+            <p class="page-subtitle">"Open source and self-hostable. Or let us run it for you."</p>
+        </div>
+
+        <div class="pricing-deploy-options">
+            <div class="card pricing-deploy-card">
+                <h3>"Self-Hosted"</h3>
+                <div class="pricing-amount">"Free"</div>
+                <p class="pricing-period">"forever, open source"</p>
+                <p class="pricing-deploy-desc">
+                    "Run Oxigit on your own infrastructure. Full-featured, no limits, no cost. "
+                    <a href="https://github.com/b-nova/oxigit" target="_blank" rel="noopener">"View on GitHub \u{2192}"</a>
+                </p>
+            </div>
+            <div class="card pricing-deploy-card pricing-deploy-cloud">
+                <h3>"Cloud"</h3>
+                <div class="pricing-amount">"Hosted"</div>
+                <p class="pricing-period">"managed by Oxigit"</p>
+                <p class="pricing-deploy-desc">
+                    "We handle hosting, backups, and updates. Choose a plan below to get started."
+                </p>
+            </div>
         </div>
 
         <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>

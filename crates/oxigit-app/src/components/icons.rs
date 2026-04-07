@@ -207,6 +207,32 @@ pub fn IconServer() -> impl IntoView {
 }
 
 #[component]
+pub fn IconSun() -> impl IntoView {
+    view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="8" r="3" />
+            <line x1="8" y1="1" x2="8" y2="3" />
+            <line x1="8" y1="13" x2="8" y2="15" />
+            <line x1="2.3" y1="2.3" x2="3.7" y2="3.7" />
+            <line x1="12.3" y1="12.3" x2="13.7" y2="13.7" />
+            <line x1="1" y1="8" x2="3" y2="8" />
+            <line x1="13" y1="8" x2="15" y2="8" />
+            <line x1="2.3" y1="13.7" x2="3.7" y2="12.3" />
+            <line x1="12.3" y1="3.7" x2="13.7" y2="2.3" />
+        </svg>
+    }
+}
+
+#[component]
+pub fn IconMoon() -> impl IntoView {
+    view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13.5 8.5a5.5 5.5 0 1 1-7-7 4.5 4.5 0 0 0 7 7Z" />
+        </svg>
+    }
+}
+
+#[component]
 pub fn IconRust() -> impl IntoView {
     view! {
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">

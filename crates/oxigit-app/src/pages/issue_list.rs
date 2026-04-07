@@ -12,7 +12,7 @@ pub struct IssueSummary {
 }
 
 #[server]
-async fn list_issues(
+pub async fn list_issues(
     owner: String,
     repo: String,
     status: String,

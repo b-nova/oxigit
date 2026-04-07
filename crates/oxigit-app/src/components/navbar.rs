@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_location;
 
 use super::icons::{IconGear, IconLogout, IconUser};
+use super::theme_toggle::ThemeToggle;
 use crate::pages::{get_current_user, Logout};
 
 #[component]
@@ -28,9 +29,9 @@ pub fn Navbar() -> impl IntoView {
                                     <circle cx="27.5" cy="27.5" r="2.5"/>
                                     <circle cx="16" cy="16" r="7.5"/>
                                 </g>
-                                <circle cx="16" cy="16" fill="#0c0f14" r="4.5"/>
+                                <circle cx="16" cy="16" class="logo-hole" r="4.5"/>
                             </g>
-                            <text x="27" y="23" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-weight="700" font-size="22" letter-spacing="-0.02em" fill="#e6edf3">{"xigit"}</text>
+                            <text x="27" y="23" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-weight="700" font-size="22" letter-spacing="-0.02em" class="logo-text">{"xigit"}</text>
                         </svg>
                     </a>
                     <span class="navbar-divider"></span>
@@ -49,6 +50,7 @@ pub fn Navbar() -> impl IntoView {
                     </Suspense>
                 </div>
                 <div class="navbar-actions">
+                    <ThemeToggle />
                     <Suspense fallback=|| ()>
                         {move || Suspend::new(async move {
                             match user.await {

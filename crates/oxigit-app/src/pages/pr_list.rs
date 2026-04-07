@@ -14,7 +14,7 @@ pub struct PrSummary {
 }
 
 #[server]
-async fn list_prs(
+pub async fn list_prs(
     owner: String,
     repo: String,
     status: String,

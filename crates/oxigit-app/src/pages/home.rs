@@ -246,47 +246,85 @@ pub fn HomePage() -> impl IntoView {
                         }.into_any()
                     }
                     _ => view! {
-                        <div class="hero animate-in">
-                            <h1 class="hero-title">"Oxigit"</h1>
-                            <p class="hero-subtitle">
-                                "The AI-native Git platform for vibecoders. Track what your AI builds, review it, remix it, deploy it."
-                            </p>
-                            <div class="hero-actions">
-                                <a href="/login" class="btn btn-lg btn-outline">"Sign in"</a>
-                                <a href="/register" class="btn btn-lg btn-primary">"Get started"</a>
+                        <div class="landing-page">
+                            <div class="hero-section">
+                                <div class="hero-orb hero-orb-1"></div>
+                                <div class="hero-orb hero-orb-2"></div>
+                                <div class="hero-content">
+                                    <span class="hero-eyebrow hero-stagger">"THE AI-NATIVE GIT PLATFORM"</span>
+                                    <h1 class="hero-title hero-stagger">"Oxigit"</h1>
+                                    <p class="hero-subtitle hero-stagger">
+                                        "The Git platform for vibecoders. Track what your AI builds, review it, remix it, deploy it."
+                                    </p>
+                                    <div class="hero-actions hero-stagger">
+                                        <a href="/login" class="btn btn-lg btn-outline">"Sign in"</a>
+                                        <a href="/register" class="btn btn-lg btn-primary btn-primary-glow">"Get started"</a>
+                                    </div>
+                                    <p class="hero-trust hero-stagger">"No credit card required. Self-host in minutes."</p>
+                                </div>
                             </div>
                             <div class="hero-features">
-                                <div class="feature-card">
+                                <div class="feature-card feature-card-stagger">
                                     <div class="feature-card-icon"><IconBranch /></div>
                                     <div class="feature-card-title">"AI-Aware Commits"</div>
                                     <div class="feature-card-desc">"Every commit tracks which AI tool and prompt generated it. Browse your repo as a conversation timeline."</div>
                                 </div>
-                                <div class="feature-card">
+                                <div class="feature-card feature-card-stagger">
                                     <div class="feature-card-icon"><IconSearch /></div>
                                     <div class="feature-card-title">"Smart Diff Review"</div>
                                     <div class="feature-card-desc">"Auto-generated summaries and risk detection on every diff. Understand what your AI wrote, instantly."</div>
                                 </div>
-                                <div class="feature-card">
+                                <div class="feature-card feature-card-stagger">
                                     <div class="feature-card-icon"><IconRepo /></div>
                                     <div class="feature-card-title">"Session Snapshots"</div>
                                     <div class="feature-card-desc">"Browse, review, and revert entire AI coding sessions. The session is the new unit of work."</div>
                                 </div>
-                                <div class="feature-card">
+                                <div class="feature-card feature-card-stagger">
                                     <div class="feature-card-icon"><IconPlus /></div>
                                     <div class="feature-card-title">"Remix Projects"</div>
                                     <div class="feature-card-desc">"One-click remix with starter prompts. Fork a project and start vibecoding on it immediately."</div>
                                 </div>
-                                <div class="feature-card">
+                                <div class="feature-card feature-card-stagger">
                                     <div class="feature-card-icon"><IconServer /></div>
                                     <div class="feature-card-title">"Deploy Previews"</div>
                                     <div class="feature-card-desc">"Webhook-based live previews for every push. See if it works before reading a single line of code."</div>
                                 </div>
-                                <div class="feature-card">
+                                <div class="feature-card feature-card-stagger">
                                     <div class="feature-card-icon"><IconRust /></div>
                                     <div class="feature-card-title">"Self-Hosted Rust"</div>
                                     <div class="feature-card-desc">"Your code, your server. Built with Rust for blazing speed and memory safety. Git over HTTP and SSH."</div>
                                 </div>
                             </div>
+                            <div class="how-it-works">
+                                <div class="how-it-works-title">"How it works"</div>
+                                <div class="how-it-works-grid">
+                                    <div class="how-step">
+                                        <div class="how-step-number">"1"</div>
+                                        <div class="how-step-title">"Push your code"</div>
+                                        <div class="how-step-desc">"Use git push over HTTP or SSH. Works with any AI coding tool."</div>
+                                    </div>
+                                    <div class="how-step">
+                                        <div class="how-step-number">"2"</div>
+                                        <div class="how-step-title">"Oxigit analyzes"</div>
+                                        <div class="how-step-desc">"Commits are tagged, sessions grouped, diffs summarized automatically."</div>
+                                    </div>
+                                    <div class="how-step">
+                                        <div class="how-step-number">"3"</div>
+                                        <div class="how-step-title">"Review and ship"</div>
+                                        <div class="how-step-desc">"Browse sessions, check risk flags, remix projects, deploy previews."</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="final-cta">
+                                <div class="final-cta-icon"><IconRust /></div>
+                                <div class="final-cta-title">"Built with Rust. Ready to self-host."</div>
+                                <div class="final-cta-desc">"Open source, blazing fast, and yours to control."</div>
+                                <div class="final-cta-actions">
+                                    <a href="/register" class="btn btn-lg btn-primary btn-primary-glow">"Get started"</a>
+                                    <a href="https://github.com/b-nova/oxigit" target="_blank" rel="noopener noreferrer" class="btn btn-lg btn-outline">"View on GitHub"</a>
+                                </div>
+                            </div>
+                            <div class="landing-footer"></div>
                         </div>
                     }.into_any(),
                 }

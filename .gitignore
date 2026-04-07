@@ -30,3 +30,9 @@ Thumbs.db
 
 # Node (if any tooling)
 node_modules/
+
+# Claude Code
+CLAUDE.md
+MEMORY.md
+.claude/
+docs/agents/

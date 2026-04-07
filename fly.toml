@@ -8,6 +8,9 @@ primary_region = "fra"
   OXIGIT_HTTP_ADDR = "0.0.0.0:9100"
   OXIGIT_SSH_ADDR = "0.0.0.0:2222"
   RUST_LOG = "info"
+  OXIGIT_LLM_PROVIDER = "openai"
+  OXIGIT_LLM_BASE_URL = "https://openrouter.ai/api/v1"
+  OXIGIT_LLM_MODEL = "qwen/qwen3-coder:free"
 
 [mounts]
   source = "oxigit_data"

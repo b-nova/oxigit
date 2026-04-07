@@ -21,16 +21,17 @@ pub struct Config {
     #[arg(long, env = "OXIGIT_SECRET_KEY")]
     pub secret_key: Option<String>,
 
-    /// LLM provider for AI diff summaries (none/openai/anthropic/ollama)
-    #[arg(long, env = "OXIGIT_LLM_PROVIDER", default_value = "none")]
+    /// LLM provider for AI diff summaries (none/openai/anthropic/ollama).
+    /// Defaults to "ollama" so AI features work out of the box with a local Ollama instance.
+    #[arg(long, env = "OXIGIT_LLM_PROVIDER", default_value = "ollama")]
     pub llm_provider: String,
 
     /// API key for cloud LLM providers
     #[arg(long, env = "OXIGIT_LLM_API_KEY")]
     pub llm_api_key: Option<String>,
 
-    /// LLM model name (e.g., "gpt-4o-mini", "claude-haiku-4-5-20251001")
-    #[arg(long, env = "OXIGIT_LLM_MODEL", default_value = "gpt-4o-mini")]
+    /// LLM model name (e.g., "qwen3-coder", "gpt-4o-mini", "claude-haiku-4-5-20251001")
+    #[arg(long, env = "OXIGIT_LLM_MODEL", default_value = "qwen3-coder")]
     pub llm_model: String,
 
     /// Base URL for Ollama or custom LLM endpoints

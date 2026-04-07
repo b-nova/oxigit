@@ -1,0 +1,18 @@
+services:
+  oxigit:
+    image: ghcr.io/b-nova/oxigit:main
+    ports:
+      - "9100:9100"
+      - "2222:2222"
+    volumes:
+      - oxigit-data:/app/data
+    environment:
+      - RUST_LOG=info
+      # Cloud: uses OpenRouter with qwen3-coder (free, OpenAI-compatible)
+      - OXIGIT_LLM_PROVIDER=openai
+      - OXIGIT_LLM_BASE_URL=https://openrouter.ai/api/v1
+      - OXIGIT_LLM_MODEL=qwen/qwen3-coder:free
+      - OXIGIT_LLM_API_KEY=${OPENROUTER_API_KEY}
+
+volumes:
+  oxigit-data:

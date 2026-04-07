@@ -260,29 +260,72 @@ pub fn SettingsPage() -> impl IntoView {
             <Suspense fallback=|| view! { <p class="text-secondary">"Loading..."</p> }>
                 {move || Suspend::new(async move {
                     let defaults = llm_settings.await.unwrap_or(LlmSettingsInfo {
-                        provider: "none".into(),
+                        provider: "ollama".into(),
                         api_key: String::new(),
-                        model: "gpt-4o-mini".into(),
+                        model: "qwen3-coder".into(),
                         base_url: String::new(),
                     });
+                    let default_provider = defaults.provider.clone();
+                    let default_api_key = defaults.api_key.clone();
+                    let default_model = defaults.model.clone();
+                    let default_base_url = defaults.base_url.clone();
+                    let (selected_provider, set_selected_provider) = signal(default_provider.clone());
+                    let (model_value, set_model_value) = signal(default_model.clone());
+                    let needs_api_key = move || {
+                        let p = selected_provider.get();
+                        p == "openai" || p == "anthropic"
+                    };
+                    let model_placeholder = move || {
+                        match selected_provider.get().as_str() {
+                            "openai" => "gpt-4o-mini",
+                            "anthropic" => "claude-haiku-4-5-20251001",
+                            _ => "qwen3-coder",
+                        }.to_string()
+                    };
+                    let default_model_for_provider = move |provider: &str| -> String {
+                        match provider {
+                            "openai" => "gpt-4o-mini".to_string(),
+                            "anthropic" => "claude-haiku-4-5-20251001".to_string(),
+                            _ => "qwen3-coder".to_string(),
+                        }
+                    };
                     view! {
+                        <p class="text-secondary" style="margin-bottom: var(--space-3);">
+                            "Oxigit uses an LLM to generate plain-English summaries of commits and pull requests. "
+                            "By default, it connects to a local "
+                            <a href="https://ollama.com" target="_blank">"Ollama"</a>
+                            " instance running the "
+                            <code>"qwen3-coder"</code>
+                            " model — free and private, no API key required. "
+                            "You can also bring your own cloud provider below."
+                        </p>
                         <ActionForm action=save_llm_action>
                             <div class="form-group">
                                 <label for="provider">"Provider"</label>
-                                <select id="provider" name="provider" class="form-select">
-                                    <option value="none" selected={defaults.provider == "none"}>"None (disabled)"</option>
-                                    <option value="openai" selected={defaults.provider == "openai"}>"OpenAI"</option>
-                                    <option value="anthropic" selected={defaults.provider == "anthropic"}>"Anthropic"</option>
-                                    <option value="ollama" selected={defaults.provider == "ollama"}>"Ollama"</option>
+                                <select
+                                    id="provider"
+                                    name="provider"
+                                    class="form-select"
+                                    on:change=move |ev| {
+                                        let target = event_target::<leptos::web_sys::HtmlSelectElement>(&ev);
+                                        let new_provider = target.value();
+                                        set_model_value.set(default_model_for_provider(&new_provider));
+                                        set_selected_provider.set(new_provider);
+                                    }
+                                >
+                                    <option value="ollama" selected={default_provider == "ollama"}>"Ollama (default, no API key needed)"</option>
+                                    <option value="openai" selected={default_provider == "openai"}>"OpenAI"</option>
+                                    <option value="anthropic" selected={default_provider == "anthropic"}>"Anthropic"</option>
+                                    <option value="none" selected={default_provider == "none"}>"None (disabled)"</option>
                                 </select>
                             </div>
-                            <div class="form-group">
+                            <div class="form-group" style:display=move || if needs_api_key() { "block" } else { "none" }>
                                 <label for="api_key">"API Key"</label>
                                 <input
                                     type="password"
                                     id="api_key"
                                     name="api_key"
-                                    value={defaults.api_key}
+                                    value={default_api_key}
                                     placeholder="sk-... or your API key"
                                 />
                             </div>
@@ -292,8 +335,12 @@ pub fn SettingsPage() -> impl IntoView {
                                     type="text"
                                     id="model"
                                     name="model"
-                                    value={defaults.model}
-                                    placeholder="gpt-4o-mini"
+                                    prop:value=model_value
+                                    placeholder=model_placeholder
+                                    on:input=move |ev| {
+                                        let target = event_target::<leptos::web_sys::HtmlInputElement>(&ev);
+                                        set_model_value.set(target.value());
+                                    }
                                 />
                             </div>
                             <div class="form-group">
@@ -302,7 +349,7 @@ pub fn SettingsPage() -> impl IntoView {
                                     type="text"
                                     id="base_url"
                                     name="base_url"
-                                    value={defaults.base_url}
+                                    value={default_base_url}
                                     placeholder="For Ollama or custom endpoints (optional)"
                                 />
                             </div>

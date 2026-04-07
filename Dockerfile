@@ -1,4 +1,4 @@
-FROM rust:1.94 AS builder
+FROM rust:1.94-bookworm AS builder
 
 # Install wasm target
 RUN rustup target add wasm32-unknown-unknown

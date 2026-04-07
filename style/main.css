@@ -1174,16 +1174,13 @@ a:hover {
 }
 
 .hero-title {
-    font-size: clamp(3.5rem, 8vw, 6rem);
-    font-weight: 700;
-    line-height: 1.1;
-    letter-spacing: -0.04em;
-    background: linear-gradient(135deg, var(--accent) 0%, #f0c87a 30%, var(--accent) 60%, #f0c87a 100%);
-    background-size: 200% 200%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: gradient-shift 6s ease infinite;
+    display: flex;
+    justify-content: center;
+}
+
+.hero-logo {
+    width: clamp(280px, 50vw, 500px);
+    height: auto;
 }
 
 .hero-subtitle {
@@ -1720,8 +1717,8 @@ a:hover {
         padding: 0 var(--space-4);
     }
 
-    .hero-title {
-        font-size: 3rem;
+    .hero-logo {
+        width: clamp(220px, 45vw, 350px);
     }
 
     .hero-features {
@@ -1778,8 +1775,8 @@ a:hover {
 }
 
 @media (max-width: 480px) {
-    .hero-title {
-        font-size: 2.5rem;
+    .hero-logo {
+        width: clamp(180px, 60vw, 280px);
     }
 
     .hero-features {
@@ -1826,10 +1823,6 @@ a:hover {
     }
 
     .hero-orb {
-        animation: none;
-    }
-
-    .hero-title {
         animation: none;
     }
 

@@ -2,6 +2,9 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingCard;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommitEntry {
     pub id: String,
@@ -87,7 +90,7 @@ pub fn CommitsPage() -> impl IntoView {
             </h1>
         </div>
         <div class="card-flush">
-            <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingCard /> }>
                 {move || {
                     let owner_name = owner();
                     let repo_name = repo();
@@ -126,7 +129,7 @@ pub fn CommitsPage() -> impl IntoView {
                                 </ul>
                             }.into_any(),
                             Err(e) => view! {
-                                <div class="flash flash-error" style="margin: var(--space-4);">{e.to_string()}</div>
+                                <ErrorDisplay error=e.to_string() />
                             }.into_any(),
                         }
                     })

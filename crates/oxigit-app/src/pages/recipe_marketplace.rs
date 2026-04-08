@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 
+use crate::components::error_display::ErrorDisplay;
 use crate::components::icons::IconSearch;
+use crate::components::loading::LoadingCard;
 
 #[allow(unused_imports)]
 use super::{RecipeListItem, RecipeMarketplaceResponse};
@@ -95,7 +97,7 @@ pub fn RecipeMarketplacePage() -> impl IntoView {
             </button>
         </div>
 
-        <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingCard /> }>
             {move || {
                 let current_page = page.get();
                 Suspend::new(async move {
@@ -156,7 +158,7 @@ pub fn RecipeMarketplacePage() -> impl IntoView {
                             }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

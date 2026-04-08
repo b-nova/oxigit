@@ -1,4 +1,7 @@
 use leptos::prelude::*;
+use leptos_router::hooks::use_query_map;
+
+use crate::components::error_display::ErrorDisplay;
 
 use super::get_current_user;
 
@@ -7,8 +10,9 @@ async fn register_user(
     username: String,
     email: String,
     password: String,
+    plan: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_control_pool, set_session_user};
+    use crate::server_fns::{get_control_pool, get_stripe_config, set_session_user};
     use oxigit_core::db;
 
     let pool = get_control_pool().await?;
@@ -37,6 +41,30 @@ async fn register_user(
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
     set_session_user(user.id, &user.username, Some(&username)).await;
+
+    // If a paid plan was selected, handle billing
+    if let Some(ref p) = plan {
+        if matches!(p.as_str(), "flat" | "team" | "founding") {
+            let stripe = get_stripe_config().await?;
+            if stripe.is_some() {
+                // Stripe configured — redirect to checkout flow
+                leptos_axum::redirect(&format!("/pricing?checkout={}", p));
+                return Ok(());
+            }
+
+            // No billing provider (self-hosted) — grant the plan directly
+            db::upsert_subscription(
+                &pool, user.id, "self-hosted", None, p, "active", None, 1,
+            )
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+            if p == "founding" {
+                let _ = db::claim_founding_slot(&pool, user.id).await;
+            }
+        }
+    }
+
     leptos_axum::redirect("/repos");
     Ok(())
 }
@@ -45,6 +73,8 @@ async fn register_user(
 pub fn RegisterPage() -> impl IntoView {
     let user = Resource::new(|| (), |_| get_current_user());
     let register_action = ServerAction::<RegisterUser>::new();
+    let query = use_query_map();
+    let plan_param = move || query.read().get("plan").unwrap_or_default();
     let error = move || {
         register_action.value().get().and_then(|r| {
             r.err().map(|e| e.to_string())
@@ -68,9 +98,10 @@ pub fn RegisterPage() -> impl IntoView {
                         <div class="card">
                             <h1 class="card-header">"Create your account"</h1>
                             {move || error().map(|e| view! {
-                                <div class="flash flash-error">{e}</div>
+                                <ErrorDisplay error=e />
                             })}
                             <ActionForm action=register_action>
+                                <input type="hidden" name="plan" value=plan_param />
                                 <div class="form-group">
                                     <label for="username">"Username"</label>
                                     <input type="text" id="username" name="username" required autocomplete="username" />

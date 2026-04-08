@@ -2,6 +2,9 @@ use leptos::prelude::*;
 use leptos_router::hooks::{use_location, use_params_map};
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlobResponse {
     pub file_path: String,
@@ -137,7 +140,7 @@ pub fn RepoBlobPage() -> impl IntoView {
     );
 
     view! {
-        <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingPage /> }>
             {move || {
                 let owner_name = owner().unwrap_or_default();
                 let repo_name = repo().unwrap_or_default();
@@ -171,7 +174,7 @@ pub fn RepoBlobPage() -> impl IntoView {
                             }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

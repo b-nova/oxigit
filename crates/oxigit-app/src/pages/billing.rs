@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingCard;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BillingInfo {
     pub plan: String,
@@ -87,14 +90,15 @@ pub fn BillingPage() -> impl IntoView {
             <h1 class="page-title">"Billing"</h1>
         </div>
 
-        <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingCard /> }>
             {move || Suspend::new(async move {
                 match billing.await {
                     Ok(info) => {
                         let plan_display = match info.plan.as_str() {
-                            "pro" => "Pro",
+                            "flat" => "Flat",
                             "team" => "Team",
                             "founding" => "Founding Member",
+                            "enterprise" => "Enterprise",
                             _ => "Free",
                         };
 
@@ -120,10 +124,12 @@ pub fn BillingPage() -> impl IntoView {
                                         <span class="billing-label">"Status"</span>
                                         <span class={format!("badge {}", status_class)}>{info.status.clone()}</span>
                                     </div>
-                                    <div class="billing-row">
-                                        <span class="billing-label">"Seats"</span>
-                                        <span class="billing-value">{info.seats}</span>
-                                    </div>
+                                    {(info.plan == "team" || info.plan == "enterprise").then(|| view! {
+                                        <div class="billing-row">
+                                            <span class="billing-label">"Seats"</span>
+                                            <span class="billing-value">{info.seats}</span>
+                                        </div>
+                                    })}
                                     {info.current_period_end.clone().map(|end| view! {
                                         <div class="billing-row">
                                             <span class="billing-label">"Current period ends"</span>
@@ -156,7 +162,7 @@ pub fn BillingPage() -> impl IntoView {
                         }.into_any()
                     },
                     Err(e) => view! {
-                        <div class="flash flash-error">{e.to_string()}</div>
+                        <ErrorDisplay error=e.to_string() />
                     }.into_any(),
                 }
             })}

@@ -1,5 +1,9 @@
 use leptos::prelude::*;
+use leptos_router::hooks::use_query_map;
 use serde::{Deserialize, Serialize};
+
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingCard;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PricingInfo {
@@ -53,8 +57,8 @@ async fn create_checkout(plan: String) -> Result<String, ServerFnError> {
 
     // Determine price ID
     let price_id = match plan.as_str() {
-        "pro" => stripe.price_pro
-            .ok_or_else(|| ServerFnError::new("Pro plan price not configured"))?,
+        "flat" => stripe.price_flat
+            .ok_or_else(|| ServerFnError::new("Flat plan price not configured"))?,
         "team" => stripe.price_team
             .ok_or_else(|| ServerFnError::new("Team plan price not configured"))?,
         "founding" => {
@@ -98,6 +102,7 @@ async fn create_checkout(plan: String) -> Result<String, ServerFnError> {
         &format!("{}/billing?success=true", base_url),
         &format!("{}/pricing", base_url),
         &user.id.to_string(),
+        &plan,
     ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     Ok(checkout_url)
@@ -109,48 +114,35 @@ pub fn PricingPage() -> impl IntoView {
 
     view! {
         <div class="page-header">
-            <h1 class="page-title">"Pricing"</h1>
-            <p class="page-subtitle">"Open source and self-hostable. Or let us run it for you."</p>
+            <h1 class="page-title">"Choose your plan"</h1>
+            <p class="page-subtitle">"Start free with AI insights, upgrade to Flat for the full experience."</p>
         </div>
 
-        <div class="pricing-deploy-options">
-            <div class="card pricing-deploy-card">
-                <h3>"Self-Hosted"</h3>
-                <div class="pricing-amount">"Free"</div>
-                <p class="pricing-period">"forever, open source"</p>
-                <p class="pricing-deploy-desc">
-                    "Run Oxigit on your own infrastructure. Full-featured, no limits, no cost. "
-                    <a href="https://github.com/b-nova/oxigit" target="_blank" rel="noopener">"View on GitHub \u{2192}"</a>
-                </p>
-            </div>
-            <div class="card pricing-deploy-card pricing-deploy-cloud">
-                <h3>"Cloud"</h3>
-                <div class="pricing-amount">"Hosted"</div>
-                <p class="pricing-period">"managed by Oxigit"</p>
-                <p class="pricing-deploy-desc">
-                    "We handle hosting, backups, and updates. Choose a plan below to get started."
-                </p>
-            </div>
-        </div>
-
-        <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingCard /> }>
             {move || Suspend::new(async move {
                 match pricing.await {
                     Ok(info) => view! {
                         <PricingCards info />
                     }.into_any(),
                     Err(e) => view! {
-                        <div class="flash flash-error">{e.to_string()}</div>
+                        <ErrorDisplay error=e.to_string() />
                     }.into_any(),
                 }
             })}
         </Suspense>
+
+        <p class="pricing-selfhost-note">
+            "Prefer to self-host? Oxigit is "
+            <a href="https://github.com/b-nova/oxigit" target="_blank" rel="noopener">"open source"</a>
+            " and free to run on your own infrastructure."
+        </p>
     }
 }
 
 #[component]
 fn PricingCards(info: PricingInfo) -> impl IntoView {
     let info = StoredValue::new(info);
+    let query = use_query_map();
 
     let checkout_action = Action::new(move |plan: &String| {
         let plan = plan.clone();
@@ -164,7 +156,20 @@ fn PricingCards(info: PricingInfo) -> impl IntoView {
         }
     });
 
-    let is_loading = move || checkout_action.pending().get();
+    // Auto-trigger checkout when redirected from register with ?checkout=plan
+    Effect::new(move || {
+        let checkout_plan = query.read().get("checkout").unwrap_or_default();
+        let i = info.get_value();
+        if !checkout_plan.is_empty()
+            && i.is_authenticated
+            && i.stripe_configured
+            && matches!(checkout_plan.as_str(), "flat" | "team" | "founding")
+        {
+            checkout_action.dispatch(checkout_plan);
+        }
+    });
+
+    let is_loading = Signal::derive(move || checkout_action.pending().get());
 
     view! {
         <div class="pricing-grid">
@@ -178,7 +183,10 @@ fn PricingCards(info: PricingInfo) -> impl IntoView {
                 <ul class="pricing-features">
                     <li>"Unlimited public repos"</li>
                     <li>"5 private repos"</li>
-                    <li>"Basic git hosting"</li>
+                    <li>"AI commit badges"</li>
+                    <li>"AI Hub preview"</li>
+                    <li>"30-day metrics"</li>
+                    <li>"Recent prompts (10)"</li>
                     <li>"Community support"</li>
                 </ul>
                 <div class="pricing-cta">
@@ -195,41 +203,21 @@ fn PricingCards(info: PricingInfo) -> impl IntoView {
                 </div>
             </div>
 
-            // Pro tier
-            <div class="card pricing-card pricing-card-highlight">
-                <div class="pricing-card-header">
-                    <h3>"Pro"</h3>
-                    <div class="pricing-amount">"$9"<span class="pricing-per">" / user / mo"</span></div>
-                    <p class="pricing-period">"billed monthly"</p>
-                </div>
-                <ul class="pricing-features">
-                    <li>"Unlimited private repos"</li>
-                    <li>"AI diff summaries"</li>
-                    <li>"AI-aware commits"</li>
-                    <li>"Deploy previews"</li>
-                    <li>"Priority support"</li>
-                </ul>
-                <div class="pricing-cta">
-                    {move || {
-                        let i = info.get_value();
-                        if i.current_plan == "pro" {
-                            view! { <span class="btn btn-sm" style="opacity:0.6;">"Current plan"</span> }.into_any()
-                        } else if !i.is_authenticated {
-                            view! { <a href="/register?plan=pro" class="btn btn-primary">"Start free trial"</a> }.into_any()
-                        } else if i.stripe_configured {
-                            view! {
-                                <button
-                                    class="btn btn-primary"
-                                    disabled=is_loading
-                                    on:click=move |_| { checkout_action.dispatch("pro".to_string()); }
-                                >{move || if is_loading() { "Redirecting..." } else { "Upgrade to Pro" }}</button>
-                            }.into_any()
-                        } else {
-                            view! { <span class="btn btn-sm" style="opacity:0.6;">"Coming soon"</span> }.into_any()
-                        }
-                    }}
-                </div>
-            </div>
+            // Flat tier (with Founding toggle)
+            {move || {
+                let i = info.get_value();
+                let slots = i.founding_slots_remaining;
+                let show_founding = slots > 0 && i.current_plan != "flat";
+                view! {
+                    <FlatCard
+                        info=i
+                        slots_remaining=slots
+                        show_founding=show_founding
+                        checkout_action=checkout_action
+                        is_loading=is_loading
+                    />
+                }
+            }}
 
             // Team tier
             <div class="card pricing-card">
@@ -239,11 +227,10 @@ fn PricingCards(info: PricingInfo) -> impl IntoView {
                     <p class="pricing-period">"min 3 seats, billed monthly"</p>
                 </div>
                 <ul class="pricing-features">
-                    <li>"Everything in Pro"</li>
+                    <li>"Everything in Flat"</li>
                     <li>"Team management"</li>
                     <li>"Guardrails & policies"</li>
                     <li>"Recipe marketplace"</li>
-                    <li>"Audit log"</li>
                     <li>"Dedicated support"</li>
                 </ul>
                 <div class="pricing-cta">
@@ -251,61 +238,45 @@ fn PricingCards(info: PricingInfo) -> impl IntoView {
                         let i = info.get_value();
                         if i.current_plan == "team" {
                             view! { <span class="btn btn-sm" style="opacity:0.6;">"Current plan"</span> }.into_any()
+                        } else if !i.stripe_configured {
+                            view! { <span class="btn btn-sm" style="opacity:0.6;">"Coming soon"</span> }.into_any()
                         } else if !i.is_authenticated {
                             view! { <a href="/register?plan=team" class="btn btn-primary">"Start free trial"</a> }.into_any()
-                        } else if i.stripe_configured {
+                        } else {
                             view! {
                                 <button
                                     class="btn btn-primary"
                                     disabled=is_loading
                                     on:click=move |_| { checkout_action.dispatch("team".to_string()); }
-                                >{move || if is_loading() { "Redirecting..." } else { "Upgrade to Team" }}</button>
+                                >{move || if is_loading.get() { "Redirecting..." } else { "Upgrade to Team" }}</button>
                             }.into_any()
-                        } else {
-                            view! { <span class="btn btn-sm" style="opacity:0.6;">"Coming soon"</span> }.into_any()
                         }
                     }}
                 </div>
             </div>
 
-            // Founding Member
-            <div class="card pricing-card pricing-card-founding">
+            // Enterprise tier
+            <div class="card pricing-card">
                 <div class="pricing-card-header">
-                    <h3>"Founding Member"</h3>
-                    <div class="pricing-amount">"$5"<span class="pricing-per">" / user / mo"</span></div>
-                    <p class="pricing-period">"locked forever, first 100 only"</p>
+                    <h3>"Enterprise"</h3>
+                    <div class="pricing-amount">"Custom"</div>
+                    <p class="pricing-period">"tailored to your org"</p>
                 </div>
                 <ul class="pricing-features">
-                    <li>"Everything in Pro"</li>
-                    <li>"Locked-in rate forever"</li>
-                    <li>"Founding member badge"</li>
-                    <li>"Early access to features"</li>
-                    <li>"Direct founder support"</li>
+                    <li>"Everything in Team"</li>
+                    <li>"SSO / SAML"</li>
+                    <li>"Audit logging"</li>
+                    <li>"Custom integrations"</li>
+                    <li>"Dedicated account manager"</li>
+                    <li>"SLA guarantee"</li>
                 </ul>
                 <div class="pricing-cta">
                     {move || {
                         let i = info.get_value();
-                        let slots = i.founding_slots_remaining;
-                        if i.current_plan == "founding" {
+                        if i.current_plan == "enterprise" {
                             view! { <span class="btn btn-sm" style="opacity:0.6;">"Current plan"</span> }.into_any()
-                        } else if slots == 0 {
-                            view! { <span class="btn btn-sm" style="opacity:0.6;">"Sold out"</span> }.into_any()
-                        } else if !i.is_authenticated {
-                            view! {
-                                <a href="/register?plan=founding" class="btn btn-primary">
-                                    {format!("Join ({} slots left)", slots)}
-                                </a>
-                            }.into_any()
-                        } else if i.stripe_configured {
-                            view! {
-                                <button
-                                    class="btn btn-primary"
-                                    disabled=is_loading
-                                    on:click=move |_| { checkout_action.dispatch("founding".to_string()); }
-                                >{move || if is_loading() { "Redirecting...".to_string() } else { format!("Join ({} slots left)", slots) }}</button>
-                            }.into_any()
                         } else {
-                            view! { <span class="btn btn-sm" style="opacity:0.6;">"Coming soon"</span> }.into_any()
+                            view! { <a href="/contact" class="btn btn-primary">"Contact us"</a> }.into_any()
                         }
                     }}
                 </div>
@@ -314,7 +285,137 @@ fn PricingCards(info: PricingInfo) -> impl IntoView {
 
         // Error display
         {move || checkout_action.value().get().and_then(|r| r.err()).map(|e| view! {
-            <div class="flash flash-error" style="margin-top: var(--space-4);">{e.to_string()}</div>
+            <ErrorDisplay error=e.to_string() />
         })}
+    }
+}
+
+#[component]
+fn FlatCard(
+    info: PricingInfo,
+    slots_remaining: i64,
+    show_founding: bool,
+    checkout_action: Action<String, Result<String, ServerFnError>>,
+    is_loading: Signal<bool>,
+) -> impl IntoView {
+    let (is_founding_mode, set_founding_mode) = signal(false);
+
+    view! {
+        <div class=move || if is_founding_mode.get() && show_founding {
+            "card pricing-card pricing-card-highlight pricing-card-founding-active"
+        } else {
+            "card pricing-card pricing-card-highlight"
+        }>
+            <div class="pricing-card-header">
+                <h3>{move || if is_founding_mode.get() && show_founding {
+                    "Flat — Founding"
+                } else {
+                    "Flat"
+                }}</h3>
+                <div class="pricing-amount">
+                    {move || if is_founding_mode.get() && show_founding {
+                        view! { <>
+                            <span class="pricing-amount-old">"$9"</span>
+                            " $5"<span class="pricing-per">" / mo"</span>
+                        </> }.into_any()
+                    } else {
+                        view! { <>"$9"<span class="pricing-per">" / mo"</span></> }.into_any()
+                    }}
+                </div>
+                <p class="pricing-period">
+                    {move || if is_founding_mode.get() && show_founding {
+                        "locked forever — first 100 only"
+                    } else {
+                        "billed monthly"
+                    }}
+                </p>
+            </div>
+            <ul class="pricing-features">
+                <li>"Unlimited private repos"</li>
+                <li>"AI diff summaries"</li>
+                <li>"AI-aware commits"</li>
+                <li>"Deploy previews"</li>
+                <li>"Priority support"</li>
+                {move || (is_founding_mode.get() && show_founding).then(|| view! {
+                    <li class="pricing-feature-founding">"Founding member badge"</li>
+                    <li class="pricing-feature-founding">"Early access to features"</li>
+                    <li class="pricing-feature-founding">"Direct founder support"</li>
+                })}
+            </ul>
+            // Founding Member banner
+            {show_founding.then(|| view! {
+                <div
+                    class=move || if is_founding_mode.get() {
+                        "pricing-founding-banner pricing-founding-banner-active"
+                    } else {
+                        "pricing-founding-banner"
+                    }
+                    on:click=move |_| set_founding_mode.update(|v| *v = !*v)
+                >
+                    <div class="pricing-founding-banner-content">
+                        <div class="pricing-founding-banner-title">
+                            {move || if is_founding_mode.get() {
+                                "Founding Member selected"
+                            } else {
+                                "Become a Founding Member"
+                            }}
+                        </div>
+                        <div class="pricing-founding-banner-desc">
+                            {move || if is_founding_mode.get() {
+                                "Click to switch back to Standard".to_string()
+                            } else {
+                                format!("$5/mo locked forever — {} of 100 slots left", slots_remaining)
+                            }}
+                        </div>
+                    </div>
+                    <span class="pricing-founding-banner-arrow">
+                        {move || if is_founding_mode.get() { "\u{2191}" } else { "\u{2192}" }}
+                    </span>
+                </div>
+            })}
+            <div class="pricing-cta">
+                {move || {
+                    let founding = is_founding_mode.get() && show_founding;
+                    let plan_id = if founding { "founding" } else { "flat" };
+                    if founding && info.current_plan == "founding" {
+                        view! { <span class="btn btn-sm" style="opacity:0.6;">"Current plan"</span> }.into_any()
+                    } else if !founding && (info.current_plan == "flat" || info.current_plan == "pro") {
+                        view! { <span class="btn btn-sm" style="opacity:0.6;">"Current plan"</span> }.into_any()
+                    } else if !info.stripe_configured {
+                        view! { <span class="btn btn-sm" style="opacity:0.6;">"Coming soon"</span> }.into_any()
+                    } else if !info.is_authenticated {
+                        let href = format!("/register?plan={}", plan_id);
+                        if founding {
+                            view! {
+                                <a href={href} class="btn btn-primary btn-founding">
+                                    {format!("Claim your spot ({} left)", slots_remaining)}
+                                </a>
+                            }.into_any()
+                        } else {
+                            view! { <a href={href} class="btn btn-primary">"Start free trial"</a> }.into_any()
+                        }
+                    } else {
+                        let plan = plan_id.to_string();
+                        if founding {
+                            view! {
+                                <button
+                                    class="btn btn-primary btn-founding"
+                                    disabled=is_loading
+                                    on:click=move |_| { checkout_action.dispatch("founding".to_string()); }
+                                >{move || if is_loading.get() { "Redirecting...".to_string() } else { format!("Claim your spot ({} left)", slots_remaining) }}</button>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <button
+                                    class="btn btn-primary"
+                                    disabled=is_loading
+                                    on:click={let plan = plan.clone(); move |_| { checkout_action.dispatch(plan.clone()); }}
+                                >{move || if is_loading.get() { "Redirecting..." } else { "Upgrade to Flat" }}</button>
+                            }.into_any()
+                        }
+                    }
+                }}
+            </div>
+        </div>
     }
 }

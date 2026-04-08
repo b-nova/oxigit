@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+
 #[allow(unused_imports)]
 use super::{RepoMetricsResponse, RiskCountInfo, SessionScoreItem, ToolScoreInfo, VibeScoreInfo};
 
@@ -9,18 +12,22 @@ async fn fetch_repo_metrics(
     owner: String,
     repo: String,
 ) -> Result<RepoMetricsResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
-    use oxigit_core::{db, git, risk, vibe};
+    use crate::server_fns::{extract_session_user, get_ai_access_level, get_data_dir, get_pool};
+    use oxigit_core::{db, entitlements::AiAccessLevel, git, risk, vibe};
 
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
-    let current_user = extract_session_user().await;
+    let current_user = extract_session_user().await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let ai_access = get_ai_access_level(current_user.id).await?;
+    let is_limited = ai_access == AiAccessLevel::Limited;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    if !db::can_access_repo(&repo_db, current_user.map(|u| u.id)) {
+    if !db::can_access_repo(&repo_db, Some(current_user.id)) {
         return Err(ServerFnError::new("Repository not found"));
     }
 
@@ -29,6 +36,19 @@ async fn fetch_repo_metrics(
     let session_data = db::get_repo_session_data(&pool, repo_db.id)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    // Free plan: limit to last 30 days
+    let session_data = if is_limited {
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(30))
+            .format("%Y-%m-%d")
+            .to_string();
+        session_data
+            .into_iter()
+            .filter(|sd| sd.last_time.as_str() >= cutoff.as_str())
+            .collect()
+    } else {
+        session_data
+    };
 
     let mut session_scores = Vec::new();
     let mut tool_scores: std::collections::HashMap<String, (i64, u64)> = std::collections::HashMap::new();
@@ -151,6 +171,8 @@ async fn fetch_repo_metrics(
         session_scores,
         tool_comparison,
         risk_distribution,
+        data_range_days: if is_limited { Some(30) } else { None },
+        is_limited,
     })
 }
 
@@ -166,13 +188,15 @@ pub fn RepoMetricsPage() -> impl IntoView {
     );
 
     view! {
-        <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingPage /> }>
             {move || {
                 let owner_name = owner();
                 let repo_name = repo();
                 Suspend::new(async move {
                     match data.await {
                         Ok(d) => {
+                            let limited = d.is_limited;
+                            let range_days = d.data_range_days;
                             let avg_score = d.average_score.round() as u8;
                             let avg_grade = match avg_score {
                                 80..=100 => 'A', 60..=79 => 'B', 40..=59 => 'C', 20..=39 => 'D', _ => 'F',
@@ -181,11 +205,17 @@ pub fn RepoMetricsPage() -> impl IntoView {
 
                             // Session score rows
                             let session_rows: Vec<AnyView> = d.session_scores.iter().map(|s| {
-                                let href = format!("/{}/{}/ai/{}", owner_name, repo_name, s.session_id);
+                                let short_id = s.session_id[..8.min(s.session_id.len())].to_string();
                                 let grade_class = format!("vibe-{}", s.grade);
                                 let prompt_preview = s.first_prompt.clone()
                                     .map(|p| if p.len() > 60 { format!("{}...", &p[..60]) } else { p })
                                     .unwrap_or_default();
+                                let session_cell: AnyView = if limited {
+                                    view! { <td><span class="text-secondary">{short_id}</span></td> }.into_any()
+                                } else {
+                                    let href = format!("/{}/{}/ai/{}", owner_name, repo_name, s.session_id);
+                                    view! { <td><a href={href} class="commit-sha">{short_id}</a></td> }.into_any()
+                                };
                                 view! {
                                     <tr>
                                         <td>
@@ -193,7 +223,7 @@ pub fn RepoMetricsPage() -> impl IntoView {
                                                 {s.score.to_string()} " " {s.grade.clone()}
                                             </span>
                                         </td>
-                                        <td><a href={href} class="commit-sha">{s.session_id[..8.min(s.session_id.len())].to_string()}</a></td>
+                                        {session_cell}
                                         <td><span class="ai-badge">{s.ai_tool.clone()}</span></td>
                                         <td class="text-secondary">{prompt_preview}</td>
                                         <td class="text-tertiary">{s.commit_count} "c / " {s.prompt_count} "p"</td>
@@ -242,6 +272,14 @@ pub fn RepoMetricsPage() -> impl IntoView {
                                         <span>"Metrics"</span>
                                     </h1>
                                 </div>
+
+                                {range_days.map(|days| view! {
+                                    <div class="flash flash-info mb-4">
+                                        {format!("Showing last {} days. ", days)}
+                                        <a href="/pricing">"Upgrade to Flat"</a>
+                                        " for full history."
+                                    </div>
+                                })}
 
                                 // Stat cards
                                 <div class="dashboard-stats mb-4">
@@ -303,7 +341,7 @@ pub fn RepoMetricsPage() -> impl IntoView {
                             }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

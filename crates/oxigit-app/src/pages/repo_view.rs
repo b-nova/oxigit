@@ -1,7 +1,10 @@
 use leptos::prelude::*;
 use leptos_router::hooks::{use_location, use_params_map};
 
+use crate::components::copy_button::CopyButton;
+use crate::components::error_display::ErrorDisplay;
 use crate::components::icons::{IconFile, IconFolder, IconLock, IconSearch};
+use crate::components::loading::{LoadingCard, LoadingPage};
 
 #[allow(unused_imports)]
 use super::{CommitSummary, RepoInfo, RepoTreeResponse, TreeEntryInfo};
@@ -197,7 +200,7 @@ pub fn RepoViewPage() -> impl IntoView {
     let (active_tab, set_active_tab) = signal("code".to_string());
 
     view! {
-        <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingPage /> }>
             {move || Suspend::new(async move {
                 match tree.await {
                     Ok(resp) => {
@@ -254,7 +257,8 @@ pub fn RepoViewPage() -> impl IntoView {
                             // Clone URL
                             <div class="clone-bar">
                                 <span class="clone-bar-label">"Clone:"</span>
-                                <code class="clone-bar-url">{clone_url}</code>
+                                <code class="clone-bar-url">{clone_url.clone()}</code>
+                                <CopyButton text=clone_url />
                             </div>
 
                             // Tab navigation
@@ -337,7 +341,7 @@ pub fn RepoViewPage() -> impl IntoView {
                         }.into_any()
                     }
                     Err(e) => view! {
-                        <div class="flash flash-error">{e.to_string()}</div>
+                        <ErrorDisplay error=e.to_string() />
                     }.into_any(),
                 }
             })}
@@ -564,7 +568,7 @@ fn IssueTabContent(owner: String, repo: String) -> impl IntoView {
             <a href={format!("/{}/{}/issues/new", owner_c, repo_c)} class="btn btn-primary btn-sm">"New Issue"</a>
         </div>
         <div class="card-flush">
-            <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingCard /> }>
                 {move || {
                     let owner_name = owner_c.clone();
                     let repo_name = repo_c.clone();
@@ -604,7 +608,7 @@ fn IssueTabContent(owner: String, repo: String) -> impl IntoView {
                                 </ul>
                             }.into_any(),
                             Err(e) => view! {
-                                <div class="flash flash-error" style="margin: var(--space-4);">{e.to_string()}</div>
+                                <ErrorDisplay error=e.to_string() />
                             }.into_any(),
                         }
                     })
@@ -626,7 +630,7 @@ fn CommitTabContent(owner: String, repo: String) -> impl IntoView {
 
     view! {
         <div class="card-flush">
-            <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingCard /> }>
                 {move || {
                     let owner_name = owner_c.clone();
                     let repo_name = repo_c.clone();
@@ -665,7 +669,7 @@ fn CommitTabContent(owner: String, repo: String) -> impl IntoView {
                                 </ul>
                             }.into_any(),
                             Err(e) => view! {
-                                <div class="flash flash-error" style="margin: var(--space-4);">{e.to_string()}</div>
+                                <ErrorDisplay error=e.to_string() />
                             }.into_any(),
                         }
                     })
@@ -705,7 +709,7 @@ fn PrTabContent(owner: String, repo: String) -> impl IntoView {
             <a href={format!("/{}/{}/pulls/new", owner_c, repo_c)} class="btn btn-primary btn-sm">"New Pull Request"</a>
         </div>
         <div class="card-flush">
-            <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingCard /> }>
                 {move || {
                     let owner_name = owner_c.clone();
                     let repo_name = repo_c.clone();
@@ -758,7 +762,7 @@ fn PrTabContent(owner: String, repo: String) -> impl IntoView {
                                 </ul>
                             }.into_any(),
                             Err(e) => view! {
-                                <div class="flash flash-error" style="margin: var(--space-4);">{e.to_string()}</div>
+                                <ErrorDisplay error=e.to_string() />
                             }.into_any(),
                         }
                     })
@@ -791,7 +795,7 @@ fn AiTabContent(owner: String, repo: String) -> impl IntoView {
                 }
             />
         </div>
-        <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingCard /> }>
             {move || {
                 let owner_name = owner_c.clone();
                 let repo_name = repo_c.clone();
@@ -920,7 +924,7 @@ fn AiTabContent(owner: String, repo: String) -> impl IntoView {
                             view! { <div>{parts}</div> }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

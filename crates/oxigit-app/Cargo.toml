@@ -25,6 +25,7 @@ pulldown-cmark = { workspace = true, optional = true }
 syntect = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
 
 # Client-side only
 wasm-bindgen = { workspace = true, optional = true }
@@ -50,4 +51,5 @@ ssr = [
     "dep:syntect",
     "dep:hmac",
     "dep:hex",
+    "dep:chrono",
 ]

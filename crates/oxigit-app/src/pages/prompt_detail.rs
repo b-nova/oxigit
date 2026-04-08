@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+
 #[allow(unused_imports)]
 use super::{AiTimelineEntry, PromptDetailResponse};
 
@@ -11,19 +14,27 @@ async fn fetch_prompt_detail(
     session_id: String,
     prompt_index: i64,
 ) -> Result<PromptDetailResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_effective_llm_config};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_effective_llm_config, get_user_entitlements};
     use oxigit_core::{db, git, llm, risk};
     use super::{AiMetadataInfo, DiffSummaryInfo, RiskFlagInfo, VibeScoreInfo};
 
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
-    let current_user = extract_session_user().await;
+    let current_user = extract_session_user().await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let entitlements = get_user_entitlements(current_user.id).await?;
+    if !entitlements.ai_features {
+        return Err(ServerFnError::new(
+            "AI features require a Flat or higher plan. Upgrade at /pricing",
+        ));
+    }
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    if !db::can_access_repo(&repo_db, current_user.as_ref().map(|u| u.id)) {
+    if !db::can_access_repo(&repo_db, Some(current_user.id)) {
         return Err(ServerFnError::new("Repository not found"));
     }
 
@@ -105,7 +116,7 @@ async fn fetch_prompt_detail(
             .unwrap_or_default();
         Some(DiffSummaryInfo { summary: s.summary, risk_flags: flags, generated_by: s.generated_by })
     } else {
-        let (provider, api_key, model, base_url) = get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
+        let (provider, api_key, model, base_url) = get_effective_llm_config(Some(current_user.id)).await?;
         if provider != "none" && !diff.is_empty() {
             let config = llm::LlmConfig { provider, api_key, model: model.clone(), base_url };
             match llm::generate_summary(&config, &diff, prompt_text.as_deref()).await {
@@ -160,9 +171,7 @@ async fn fetch_prompt_detail(
         })
     };
 
-    let can_operate = current_user.as_ref().map(|u| {
-        u.id == repo_db.owner_id
-    }).unwrap_or(false);
+    let can_operate = current_user.id == repo_db.owner_id;
 
     let branches = git::list_branches(&repo_path).unwrap_or_default();
     let default_branch = git::default_branch(&repo_path)
@@ -194,11 +203,19 @@ async fn revert_prompt(
     session_id: String,
     prompt_index: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let entitlements = get_user_entitlements(user.id).await?;
+    if !entitlements.ai_features {
+        return Err(ServerFnError::new(
+            "AI features require a Flat or higher plan. Upgrade at /pricing",
+        ));
+    }
+
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
 
@@ -242,11 +259,19 @@ async fn cherry_pick_prompt(
     prompt_index: i64,
     target_branch: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let entitlements = get_user_entitlements(user.id).await?;
+    if !entitlements.ai_features {
+        return Err(ServerFnError::new(
+            "AI features require a Flat or higher plan. Upgrade at /pricing",
+        ));
+    }
+
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
 
@@ -284,11 +309,19 @@ async fn squash_prompt(
     prompt_index: i64,
     message: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let entitlements = get_user_entitlements(user.id).await?;
+    if !entitlements.ai_features {
+        return Err(ServerFnError::new(
+            "AI features require a Flat or higher plan. Upgrade at /pricing",
+        ));
+    }
+
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
 
@@ -344,7 +377,7 @@ pub fn PromptDetailPage() -> impl IntoView {
     let cherry_pick_action = ServerAction::<CherryPickPrompt>::new();
 
     view! {
-        <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingPage /> }>
             {move || {
                 let owner_name = owner();
                 let repo_name = repo();
@@ -565,7 +598,7 @@ pub fn PromptDetailPage() -> impl IntoView {
                             view! { <div>{parts}</div> }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 
-use crate::components::icons::IconLock;
+use crate::components::error_display::ErrorDisplay;
+use crate::components::icons::{IconLock, IconRepo};
+use crate::components::loading::LoadingCard;
 
 use super::RepoInfo;
 
@@ -38,13 +40,16 @@ pub fn RepoListPage() -> impl IntoView {
             <a href="/repos/new" class="btn btn-primary">"New repository"</a>
         </div>
         <div class="card-flush">
-            <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingCard /> }>
                 {move || Suspend::new(async move {
                     match repos.await {
                         Ok((_, repos)) if repos.is_empty() => view! {
                             <div class="empty-state">
+                                <div class="empty-state-icon"><IconRepo /></div>
                                 <p class="empty-state-title">"No repositories yet."</p>
-                                <p class="empty-state-text"><a href="/repos/new">"Create one!"</a></p>
+                                <div class="empty-state-actions">
+                                    <a href="/repos/new" class="btn btn-primary">"Create repository"</a>
+                                </div>
                             </div>
                         }.into_any(),
                         Ok((username, repos)) => view! {
@@ -77,7 +82,7 @@ pub fn RepoListPage() -> impl IntoView {
                             </ul>
                         }.into_any(),
                         Err(e) => view! {
-                            <div class="flash flash-error" style="margin: var(--space-4);">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })}

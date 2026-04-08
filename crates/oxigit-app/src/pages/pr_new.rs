@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
+use crate::components::error_display::ErrorDisplay;
+
 #[server]
 async fn get_branches(owner: String, repo: String) -> Result<Vec<String>, ServerFnError> {
     use crate::server_fns::{get_data_dir, get_pool};
@@ -85,7 +87,7 @@ pub fn PrNewPage() -> impl IntoView {
         </div>
         <div class="card">
             {move || error().map(|e| view! {
-                <div class="flash flash-error">{e}</div>
+                <ErrorDisplay error=e />
             })}
             <ActionForm action=create_action>
                 <input type="hidden" name="owner" value={move || owner()} />

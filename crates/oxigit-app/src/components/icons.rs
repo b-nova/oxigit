@@ -233,6 +233,58 @@ pub fn IconMoon() -> impl IntoView {
 }
 
 #[component]
+pub fn IconCopy() -> impl IntoView {
+    view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="5" width="9" height="9" rx="1.5" />
+            <path d="M5 11H3.5C2.67 11 2 10.33 2 9.5V3.5C2 2.67 2.67 2 3.5 2H9.5C10.33 2 11 2.67 11 3.5V5" />
+        </svg>
+    }
+}
+
+#[component]
+pub fn IconClipboardCheck() -> impl IntoView {
+    view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="5" width="9" height="9" rx="1.5" />
+            <path d="M5 11H3.5C2.67 11 2 10.33 2 9.5V3.5C2 2.67 2.67 2 3.5 2H9.5C10.33 2 11 2.67 11 3.5V5" />
+            <polyline points="8 10.5 9.5 12 12 8.5" />
+        </svg>
+    }
+}
+
+#[component]
+pub fn IconMenu() -> impl IntoView {
+    view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="2" y1="4" x2="14" y2="4" />
+            <line x1="2" y1="8" x2="14" y2="8" />
+            <line x1="2" y1="12" x2="14" y2="12" />
+        </svg>
+    }
+}
+
+#[component]
+pub fn IconX() -> impl IntoView {
+    view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="4" x2="12" y2="12" />
+            <line x1="12" y1="4" x2="4" y2="12" />
+        </svg>
+    }
+}
+
+#[component]
+pub fn IconArrowUpRight() -> impl IntoView {
+    view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="12" x2="12" y2="4" />
+            <polyline points="6 4 12 4 12 10" />
+        </svg>
+    }
+}
+
+#[component]
 pub fn IconRust() -> impl IntoView {
     view! {
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">

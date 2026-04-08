@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
+use crate::components::error_display::ErrorDisplay;
+
 #[server]
 async fn create_issue(
     owner: String,
@@ -53,7 +55,7 @@ pub fn IssueNewPage() -> impl IntoView {
         </div>
         <div class="card">
             {move || error().map(|e| view! {
-                <div class="flash flash-error">{e}</div>
+                <ErrorDisplay error=e />
             })}
             <ActionForm action=create_action>
                 <input type="hidden" name="owner" value={move || owner()} />

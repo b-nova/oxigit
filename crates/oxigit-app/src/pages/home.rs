@@ -278,9 +278,9 @@ pub fn HomePage() -> impl IntoView {
                                     </p>
                                     <div class="hero-actions hero-stagger">
                                         <a href="/login" class="btn btn-lg btn-outline">"Sign in"</a>
-                                        <a href="/register" class="btn btn-lg btn-primary btn-primary-glow">"Get started"</a>
+                                        <a href="/pricing" class="btn btn-lg btn-primary btn-primary-glow">"Get started"</a>
                                     </div>
-                                    <p class="hero-trust hero-stagger">"No credit card required. Self-host in minutes."</p>
+                                    <p class="hero-trust hero-stagger">"No credit card required. Free tier available."</p>
                                 </div>
                             </div>
                             <div class="hero-features">
@@ -337,10 +337,10 @@ pub fn HomePage() -> impl IntoView {
                             </div>
                             <div class="final-cta">
                                 <div class="final-cta-icon"><IconRust /></div>
-                                <div class="final-cta-title">"Built with Rust. Ready to self-host."</div>
-                                <div class="final-cta-desc">"Open source, blazing fast, and yours to control."</div>
+                                <div class="final-cta-title">"Built with Rust. Ready for your team."</div>
+                                <div class="final-cta-desc">"Start free, upgrade when you need AI features and deploy previews."</div>
                                 <div class="final-cta-actions">
-                                    <a href="/register" class="btn btn-lg btn-primary btn-primary-glow">"Get started"</a>
+                                    <a href="/pricing" class="btn btn-lg btn-primary btn-primary-glow">"See plans"</a>
                                     <a href="https://github.com/b-nova/oxigit" target="_blank" rel="noopener noreferrer" class="btn btn-lg btn-outline">"View on GitHub"</a>
                                 </div>
                             </div>

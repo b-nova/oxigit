@@ -1,7 +1,9 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
+use crate::components::error_display::ErrorDisplay;
 use crate::components::icons::IconSearch;
+use crate::components::loading::LoadingCard;
 
 use super::{PromptHistoryEntry, PromptHistoryResponse};
 
@@ -12,32 +14,41 @@ async fn fetch_prompt_history(
     query: String,
     page: i64,
 ) -> Result<PromptHistoryResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
-    use oxigit_core::{db, git};
+    use crate::server_fns::{extract_session_user, get_ai_access_level, get_data_dir, get_pool};
+    use oxigit_core::{db, entitlements::AiAccessLevel, git};
     use super::PromptCommitInfo;
 
     const PAGE_SIZE: i64 = 20;
+    const FREE_LIMIT: i64 = 10;
 
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
-    let current_user = extract_session_user().await;
+    let current_user = extract_session_user().await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let ai_access = get_ai_access_level(current_user.id).await?;
+    let is_limited = ai_access == AiAccessLevel::Limited;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    if !db::can_access_repo(&repo_db, current_user.map(|u| u.id)) {
+    if !db::can_access_repo(&repo_db, Some(current_user.id)) {
         return Err(ServerFnError::new("Repository not found"));
     }
 
     let repo_path = git::repo_path(&data_dir, &owner, &repo);
-    let offset = page * PAGE_SIZE;
+    let (effective_page_size, offset) = if is_limited {
+        (FREE_LIMIT, 0i64)
+    } else {
+        (PAGE_SIZE, page * PAGE_SIZE)
+    };
 
     let total_prompts = db::count_prompt_groups(&pool, repo_db.id, &query)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    let groups = db::list_prompt_groups(&pool, repo_db.id, &query, PAGE_SIZE, offset)
+    let groups = db::list_prompt_groups(&pool, repo_db.id, &query, effective_page_size, offset)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -65,7 +76,7 @@ async fn fetch_prompt_history(
 
             PromptHistoryEntry {
                 prompt_text: g.ai_prompt,
-                session_id: g.ai_session_id,
+                session_id: if is_limited { None } else { g.ai_session_id },
                 prompt_index: g.ai_prompt_index,
                 ai_tool: g.ai_tool,
                 ai_model: g.ai_model,
@@ -77,12 +88,17 @@ async fn fetch_prompt_history(
         })
         .collect();
 
-    let has_more = (offset + PAGE_SIZE) < total_prompts;
+    let has_more = if is_limited {
+        total_prompts > FREE_LIMIT
+    } else {
+        (offset + PAGE_SIZE) < total_prompts
+    };
 
     Ok(PromptHistoryResponse {
         entries,
         total_prompts,
         has_more,
+        is_limited,
     })
 }
 
@@ -125,7 +141,7 @@ pub fn PromptHistoryPage() -> impl IntoView {
                 }
             />
         </div>
-        <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingCard /> }>
             {move || {
                 let owner_name = owner();
                 let repo_name = repo();
@@ -148,6 +164,7 @@ pub fn PromptHistoryPage() -> impl IntoView {
                         Ok(resp) => {
                             let total = resp.total_prompts;
                             let has_more = resp.has_more;
+                            let limited = resp.is_limited;
                             let cards: Vec<_> = resp.entries.into_iter().map(|entry| {
                                 render_prompt_card(&owner_name, &repo_name, entry)
                             }).collect();
@@ -157,24 +174,36 @@ pub fn PromptHistoryPage() -> impl IntoView {
                                     {total} " prompt" {if total != 1 { "s" } else { "" }}
                                 </p>
                                 <div class="prompt-timeline">{cards}</div>
-                                <div class="pagination">
-                                    {(current_page > 0).then(|| view! {
-                                        <button class="btn btn-sm"
-                                            on:click=move |_| set_page.set(current_page - 1)>
-                                            "Previous"
-                                        </button>
-                                    })}
-                                    {has_more.then(|| view! {
-                                        <button class="btn btn-sm"
-                                            on:click=move |_| set_page.set(current_page + 1)>
-                                            "Next"
-                                        </button>
-                                    })}
-                                </div>
+                                {if limited && has_more {
+                                    view! {
+                                        <div class="flash flash-info mt-4">
+                                            "Showing 10 most recent prompts. "
+                                            <a href="/pricing">"Upgrade to Flat"</a>
+                                            " for full prompt history."
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="pagination">
+                                            {(current_page > 0).then(|| view! {
+                                                <button class="btn btn-sm"
+                                                    on:click=move |_| set_page.set(current_page - 1)>
+                                                    "Previous"
+                                                </button>
+                                            })}
+                                            {has_more.then(|| view! {
+                                                <button class="btn btn-sm"
+                                                    on:click=move |_| set_page.set(current_page + 1)>
+                                                    "Next"
+                                                </button>
+                                            })}
+                                        </div>
+                                    }.into_any()
+                                }}
                             }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

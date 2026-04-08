@@ -2,6 +2,9 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+
 use super::GuardrailSettingsInfo;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -909,11 +912,11 @@ pub fn RepoSettingsPage() -> impl IntoView {
                     <div class="flash flash-success">"Visibility updated."</div>
                 }.into_any(),
                 Err(e) => view! {
-                    <div class="flash flash-error">{e.to_string()}</div>
+                    <ErrorDisplay error=e.to_string() />
                 }.into_any(),
             })}
 
-            <Suspense fallback=|| view! { <p class="text-secondary">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingPage /> }>
                 {move || {
                     let owner_val = owner();
                     let repo_val = repo();
@@ -946,7 +949,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                                 </ActionForm>
                             }.into_any(),
                             Err(e) => view! {
-                                <div class="flash flash-error">{e.to_string()}</div>
+                                <ErrorDisplay error=e.to_string() />
                             }.into_any(),
                         }
                     })
@@ -961,7 +964,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
             </p>
 
             {move || error().map(|e| view! {
-                <div class="flash flash-error">{e}</div>
+                <ErrorDisplay error=e />
             })}
 
             <ActionForm action=add_action>
@@ -979,7 +982,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                 </div>
             </ActionForm>
 
-            <Suspense fallback=|| view! { <p class="text-secondary">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingPage /> }>
                 {move || {
                     let owner_name = owner();
                     let repo_name = repo();
@@ -1017,7 +1020,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                                 </ul>
                             }.into_any()},
                             Err(e) => view! {
-                                <div class="flash flash-error">{e.to_string()}</div>
+                                <ErrorDisplay error=e.to_string() />
                             }.into_any(),
                         }
                     })
@@ -1033,7 +1036,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                 ". Clicking install commits the hook files directly to the default branch."
             </p>
             {move || hook_error().map(|e| view! {
-                <div class="flash flash-error">{e}</div>
+                <ErrorDisplay error=e />
             })}
             {move || hook_success().then(|| view! {
                 <div class="flash flash-success">"Hook installed. Pull to get the new files."</div>
@@ -1232,7 +1235,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                             }.into_any()
                         }
                             Err(e) => view! {
-                                <div class="flash flash-error">{e.to_string()}</div>
+                                <ErrorDisplay error=e.to_string() />
                             }.into_any(),
                         }
                     })
@@ -1249,7 +1252,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                     <strong>"Warn"</strong> " logs violations. "
                     <strong>"Block"</strong> " rejects the push."
                 </p>
-                <Suspense fallback=|| view! { <p class="text-tertiary">"Loading..."</p> }>
+                <Suspense fallback=|| view! { <LoadingPage /> }>
                     {move || {
                         let on = owner();
                         let rn = repo();
@@ -1318,7 +1321,7 @@ pub fn RepoSettingsPage() -> impl IntoView {
                                     }.into_any()
                                 }
                                 Err(e) => view! {
-                                    <div class="flash flash-error">{e.to_string()}</div>
+                                    <ErrorDisplay error=e.to_string() />
                                 }.into_any(),
                             }
                         })

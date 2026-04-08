@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+
 use super::{ConflictDetailResponse, ConflictFileContentResponse};
 
 #[server]
@@ -305,7 +308,7 @@ pub fn ConflictResolvePage() -> impl IntoView {
     let cancel_action = ServerAction::<CancelResolution>::new();
 
     view! {
-        <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingPage /> }>
             {move || {
                 let owner_name = owner();
                 let repo_name = repo();
@@ -513,7 +516,7 @@ pub fn ConflictResolvePage() -> impl IntoView {
                             }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

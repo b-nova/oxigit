@@ -2,6 +2,10 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+use crate::components::toast::use_toast;
+
 #[allow(unused_imports)]
 use super::{CommitSummary, DiffReviewData, DiffSummaryInfo, RiskFlagInfo};
 
@@ -398,8 +402,22 @@ pub fn PrViewPage() -> impl IntoView {
     let merge_action = ServerAction::<MergePr>::new();
     let close_action = ServerAction::<ClosePr>::new();
 
+    let toast = use_toast();
+    let toast_merge = toast.clone();
+    let toast_close = toast.clone();
+    Effect::new(move |_| {
+        if let Some(Ok(_)) = merge_action.value().get() {
+            toast_merge.success("Pull request merged");
+        }
+    });
+    Effect::new(move |_| {
+        if let Some(Ok(_)) = close_action.value().get() {
+            toast_close.success("Pull request closed");
+        }
+    });
+
     view! {
-        <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingPage /> }>
             {move || {
                 let owner_name = owner();
                 let repo_name = repo();
@@ -560,7 +578,7 @@ pub fn PrViewPage() -> impl IntoView {
                             }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

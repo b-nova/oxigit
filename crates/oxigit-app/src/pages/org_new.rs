@@ -1,5 +1,7 @@
 use leptos::prelude::*;
 
+use crate::components::error_display::ErrorDisplay;
+
 #[server]
 async fn create_org(slug: String, display_name: String) -> Result<(), ServerFnError> {
     use crate::server_fns::{extract_session_user, get_control_pool, set_session_org};
@@ -39,7 +41,7 @@ pub fn OrgNewPage() -> impl IntoView {
             <div class="card">
                 <h1 class="card-header">"Create Organization"</h1>
                 {move || error().map(|e| view! {
-                    <div class="flash flash-error">{e}</div>
+                    <ErrorDisplay error=e />
                 })}
                 <ActionForm action=create_action>
                     <div class="form-group">

@@ -1,5 +1,7 @@
 use leptos::prelude::*;
 
+use crate::components::error_display::ErrorDisplay;
+
 use super::get_current_user;
 
 #[server]
@@ -51,7 +53,7 @@ pub fn LoginPage() -> impl IntoView {
                         <div class="card">
                             <h1 class="card-header">"Sign in to Oxigit"</h1>
                             {move || error().map(|e| view! {
-                                <div class="flash flash-error">{e}</div>
+                                <ErrorDisplay error=e />
                             })}
                             <ActionForm action=login_action>
                                 <div class="form-group">
@@ -67,7 +69,7 @@ pub fn LoginPage() -> impl IntoView {
                                 </button>
                             </ActionForm>
                             <p class="auth-footer">
-                                "Don't have an account? " <a href="/register">"Sign up"</a>
+                                "Don't have an account? " <a href="/pricing">"Sign up"</a>
                             </p>
                         </div>
                     </div>

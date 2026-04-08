@@ -2,6 +2,10 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+use crate::components::toast::use_toast;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IssueDetail {
     pub number: i64,
@@ -145,8 +149,28 @@ pub fn IssueViewPage() -> impl IntoView {
     let reopen_action = ServerAction::<ReopenIssueAction>::new();
     let comment_action = ServerAction::<AddComment>::new();
 
+    let toast = use_toast();
+    let toast_close = toast.clone();
+    let toast_reopen = toast.clone();
+    let toast_comment = toast.clone();
+    Effect::new(move |_| {
+        if let Some(Ok(_)) = close_action.value().get() {
+            toast_close.success("Issue closed");
+        }
+    });
+    Effect::new(move |_| {
+        if let Some(Ok(_)) = reopen_action.value().get() {
+            toast_reopen.success("Issue reopened");
+        }
+    });
+    Effect::new(move |_| {
+        if let Some(Ok(_)) = comment_action.value().get() {
+            toast_comment.success("Comment added");
+        }
+    });
+
     view! {
-        <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingPage /> }>
             {move || {
                 let owner_name = owner();
                 let repo_name = repo();
@@ -250,7 +274,7 @@ pub fn IssueViewPage() -> impl IntoView {
                             }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

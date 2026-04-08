@@ -22,9 +22,15 @@ pub struct AppState {
     pub stripe_secret_key: Option<String>,
     pub stripe_publishable_key: Option<String>,
     pub stripe_webhook_secret: Option<String>,
-    pub stripe_price_pro: Option<String>,
+    pub stripe_price_flat: Option<String>,
     pub stripe_price_team: Option<String>,
     pub stripe_price_founding: Option<String>,
+    pub smtp_host: Option<String>,
+    pub smtp_port: u16,
+    pub smtp_user: Option<String>,
+    pub smtp_password: Option<String>,
+    pub smtp_from: Option<String>,
+    pub contact_email: Option<String>,
 }
 
 impl std::fmt::Debug for AppState {
@@ -110,7 +116,7 @@ pub struct StripeConfig {
     pub secret_key: String,
     pub publishable_key: Option<String>,
     pub webhook_secret: String,
-    pub price_pro: Option<String>,
+    pub price_flat: Option<String>,
     pub price_team: Option<String>,
     pub price_founding: Option<String>,
 }
@@ -123,10 +129,28 @@ pub async fn get_stripe_config() -> Result<Option<StripeConfig>, ServerFnError> 
             secret_key,
             publishable_key: state.stripe_publishable_key,
             webhook_secret,
-            price_pro: state.stripe_price_pro,
+            price_flat: state.stripe_price_flat,
             price_team: state.stripe_price_team,
             price_founding: state.stripe_price_founding,
         })),
+        _ => Ok(None),
+    }
+}
+
+/// Extract SMTP configuration. Returns None if SMTP is not configured.
+pub async fn get_smtp_config() -> Result<Option<oxigit_core::email::SmtpConfig>, ServerFnError> {
+    let Extension(state): Extension<AppState> = extract().await?;
+    match (&state.smtp_host, &state.smtp_user, &state.smtp_password, &state.smtp_from, &state.contact_email) {
+        (Some(host), Some(user), Some(password), Some(from), Some(contact_email)) => {
+            Ok(Some(oxigit_core::email::SmtpConfig {
+                host: host.clone(),
+                port: state.smtp_port,
+                user: user.clone(),
+                password: password.clone(),
+                from: from.clone(),
+                contact_email: contact_email.clone(),
+            }))
+        }
         _ => Ok(None),
     }
 }
@@ -191,6 +215,17 @@ pub async fn require_admin() -> Result<UserInfo, ServerFnError> {
         return Err(ServerFnError::new("Admin access required"));
     }
     Ok(user)
+}
+
+/// Get AI access level for a user (Limited for free, Full for paid plans).
+pub async fn get_ai_access_level(
+    user_id: i64,
+) -> Result<oxigit_core::entitlements::AiAccessLevel, ServerFnError> {
+    let pool = get_pool().await?;
+    let plan = oxigit_core::db::get_user_plan(&pool, user_id)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    Ok(oxigit_core::entitlements::ai_access_for_plan(&plan))
 }
 
 /// Get plan entitlements for a user based on their active subscription.

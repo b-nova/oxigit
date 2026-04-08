@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SshKeyInfo {
     pub id: i64,
@@ -255,9 +258,9 @@ pub fn SettingsPage() -> impl IntoView {
                 <div class="flash flash-success">"LLM settings saved."</div>
             })}
             {move || llm_save_error().map(|e| view! {
-                <div class="flash flash-error">{e}</div>
+                <ErrorDisplay error=e />
             })}
-            <Suspense fallback=|| view! { <p class="text-secondary">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingPage /> }>
                 {move || Suspend::new(async move {
                     let defaults = llm_settings.await.unwrap_or(LlmSettingsInfo {
                         provider: "ollama".into(),
@@ -364,7 +367,7 @@ pub fn SettingsPage() -> impl IntoView {
         <div class="card">
             <div class="card-header">"Add SSH Key"</div>
             {move || error().map(|e| view! {
-                <div class="flash flash-error">{e}</div>
+                <ErrorDisplay error=e />
             })}
             <ActionForm action=add_action>
                 <div class="form-group">
@@ -389,7 +392,7 @@ pub fn SettingsPage() -> impl IntoView {
         // Existing keys
         <div class="card">
             <div class="card-header">"SSH Keys"</div>
-            <Suspense fallback=|| view! { <p class="text-secondary">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingPage /> }>
                 {move || Suspend::new(async move {
                     match keys.await {
                         Ok(keys) if keys.is_empty() => view! {
@@ -419,7 +422,7 @@ pub fn SettingsPage() -> impl IntoView {
                             </ul>
                         }.into_any(),
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })}

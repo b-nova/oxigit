@@ -2,7 +2,9 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
 use crate::components::icons::IconSearch;
+use crate::components::loading::LoadingCard;
 
 #[allow(unused_imports)]
 use super::{AiMetadataInfo, AiTimelineEntry, SessionListItem, SessionListResponse, ViolationInfo};
@@ -12,6 +14,8 @@ pub struct AiHubResponse {
     pub sessions: Vec<SessionListItem>,
     pub unsessioned: Vec<AiTimelineEntry>,
     pub violations: Vec<ViolationInfo>,
+    #[serde(default)]
+    pub drill_down_enabled: bool,
 }
 
 #[server]
@@ -20,18 +24,21 @@ pub async fn fetch_ai_hub(
     repo: String,
     query: String,
 ) -> Result<AiHubResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
-    use oxigit_core::{db, git};
+    use crate::server_fns::{extract_session_user, get_ai_access_level, get_data_dir, get_pool};
+    use oxigit_core::{db, entitlements::AiAccessLevel, git};
 
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
-    let current_user = extract_session_user().await;
+    let current_user = extract_session_user().await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let ai_access = get_ai_access_level(current_user.id).await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    if !db::can_access_repo(&repo_db, current_user.map(|u| u.id)) {
+    if !db::can_access_repo(&repo_db, Some(current_user.id)) {
         return Err(ServerFnError::new("Repository not found"));
     }
 
@@ -106,7 +113,12 @@ pub async fn fetch_ai_hub(
         }
     }).collect();
 
-    Ok(AiHubResponse { sessions, unsessioned, violations })
+    Ok(AiHubResponse {
+        sessions,
+        unsessioned,
+        violations,
+        drill_down_enabled: ai_access == AiAccessLevel::Full,
+    })
 }
 
 #[component]
@@ -143,7 +155,7 @@ pub fn AiHubPage() -> impl IntoView {
                 }
             />
         </div>
-        <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingCard /> }>
             {move || {
                 let owner_name = owner();
                 let repo_name = repo();
@@ -163,7 +175,19 @@ pub fn AiHubPage() -> impl IntoView {
                             </div>
                         }.into_any(),
                         Ok(resp) => {
+                            let drill_down = resp.drill_down_enabled;
                             let mut parts: Vec<AnyView> = Vec::new();
+
+                            // Preview banner for free users
+                            if !drill_down {
+                                parts.push(view! {
+                                    <div class="flash flash-info mb-4">
+                                        "Viewing AI Hub in preview mode. "
+                                        <a href="/pricing">"Upgrade to Flat"</a>
+                                        " for full session drill-down."
+                                    </div>
+                                }.into_any());
+                            }
 
                             // Sessions grouped by tool
                             if !resp.sessions.is_empty() {
@@ -186,22 +210,42 @@ pub fn AiHubPage() -> impl IntoView {
                                         let prompt_preview = s.first_prompt
                                             .map(|p| if p.len() > 100 { format!("{}...", &p[..100]) } else { p })
                                             .unwrap_or_default();
-                                        view! {
-                                            <a href={href} class="session-card">
-                                                <div class="session-card-header">
-                                                    <span class="session-card-id">{short_id}</span>
-                                                    <span class="text-tertiary">
-                                                        {s.commit_count} " commit" {if s.commit_count != 1 { "s" } else { "" }}
-                                                    </span>
+                                        if drill_down {
+                                            view! {
+                                                <a href={href} class="session-card">
+                                                    <div class="session-card-header">
+                                                        <span class="session-card-id">{short_id}</span>
+                                                        <span class="text-tertiary">
+                                                            {s.commit_count} " commit" {if s.commit_count != 1 { "s" } else { "" }}
+                                                        </span>
+                                                    </div>
+                                                    {(!prompt_preview.is_empty()).then(|| view! {
+                                                        <p class="session-card-prompt">{prompt_preview}</p>
+                                                    })}
+                                                    <div class="session-card-time">
+                                                        {s.first_time} " — " {s.last_time}
+                                                    </div>
+                                                </a>
+                                            }.into_any()
+                                        } else {
+                                            view! {
+                                                <div class="session-card session-card-locked">
+                                                    <div class="session-card-header">
+                                                        <span class="session-card-id">{short_id}</span>
+                                                        <span class="upgrade-badge">"Flat"</span>
+                                                        <span class="text-tertiary">
+                                                            {s.commit_count} " commit" {if s.commit_count != 1 { "s" } else { "" }}
+                                                        </span>
+                                                    </div>
+                                                    {(!prompt_preview.is_empty()).then(|| view! {
+                                                        <p class="session-card-prompt">{prompt_preview}</p>
+                                                    })}
+                                                    <div class="session-card-time">
+                                                        {s.first_time} " — " {s.last_time}
+                                                    </div>
                                                 </div>
-                                                {(!prompt_preview.is_empty()).then(|| view! {
-                                                    <p class="session-card-prompt">{prompt_preview}</p>
-                                                })}
-                                                <div class="session-card-time">
-                                                    {s.first_time} " — " {s.last_time}
-                                                </div>
-                                            </a>
-                                        }.into_any()
+                                            }.into_any()
+                                        }
                                     }).collect();
                                     parts.push(view! {
                                         <div class="tool-group-heading">
@@ -227,7 +271,7 @@ pub fn AiHubPage() -> impl IntoView {
                                                     <a href={commit_href} class="commit-sha">{entry.short_sha}</a>
                                                     <span>{entry.commit_message}</span>
                                                 </div>
-                                                {entry.metadata.ai_prompt.map(|p| view! {
+                                                {(drill_down).then(|| entry.metadata.ai_prompt.clone()).flatten().map(|p| view! {
                                                     <p class="list-item-desc">{p}</p>
                                                 })}
                                             </div>
@@ -273,7 +317,7 @@ pub fn AiHubPage() -> impl IntoView {
                             view! { <div>{parts}</div> }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

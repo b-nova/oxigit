@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 pub mod components;
 pub mod pages;
 
@@ -19,6 +21,7 @@ use leptos_router::{
 };
 
 use components::navbar::Navbar;
+use components::toast::ToastProvider;
 use pages::{
     admin::AdminPage,
     ai_hub::AiHubPage,
@@ -26,6 +29,7 @@ use pages::{
     billing::BillingPage,
     blame::BlamePage,
     commit_view::CommitViewPage,
+    contact::ContactPage,
     conflict_resolve::ConflictResolvePage,
     commits::CommitsPage,
     explore::ExplorePage,
@@ -97,9 +101,16 @@ pub fn App() -> impl IntoView {
 
     view! {
         <Router>
+            <ToastProvider>
             <Navbar />
             <main class="container">
-                <Routes fallback=|| view! { <h1>"404 — Not Found"</h1> }>
+                <Routes fallback=|| view! {
+                    <div class="not-found">
+                        <div class="not-found-code">"404"</div>
+                        <div class="not-found-title">"Page not found"</div>
+                        <a href="/" class="btn btn-primary">"Go Home"</a>
+                    </div>
+                }>
                     <Route path=path!("/") view=HomePage />
                     <Route path=path!("/login") view=LoginPage />
                     <Route path=path!("/register") view=RegisterPage />
@@ -109,6 +120,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/settings") view=SettingsPage />
                     <Route path=path!("/pricing") view=PricingPage />
                     <Route path=path!("/billing") view=BillingPage />
+                    <Route path=path!("/contact") view=ContactPage />
                     <Route path=path!("/admin") view=AdminPage />
                     <Route path=path!("/orgs/new") view=OrgNewPage />
                     <Route path=path!("/orgs/:slug/settings") view=OrgSettingsPage />
@@ -138,6 +150,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/:user") view=UserProfilePage />
                 </Routes>
             </main>
+            </ToastProvider>
         </Router>
     }
 }

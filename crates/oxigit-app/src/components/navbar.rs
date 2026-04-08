@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_location;
 
-use super::icons::{IconGear, IconLogout, IconUser};
+use super::icons::{IconCheck, IconGear, IconLogout, IconMenu, IconUser, IconX};
 use super::theme_toggle::ThemeToggle;
 use crate::pages::{get_current_user, list_my_orgs, Logout, SwitchOrg};
 
@@ -14,6 +14,25 @@ pub fn Navbar() -> impl IntoView {
         |_| get_current_user(),
     );
     let logout_action = ServerAction::<Logout>::new();
+
+    let (menu_open, set_menu_open) = signal(false);
+
+    // Close mobile menu on route change
+    Effect::new(move |_| {
+        let _ = location.pathname.get();
+        set_menu_open.set(false);
+    });
+
+    let pathname = move || location.pathname.get();
+
+    let nav_class = move |href: &str| {
+        let p = pathname();
+        if p == href || (href != "/" && p.starts_with(href)) {
+            "navbar-link navbar-link-active"
+        } else {
+            "navbar-link"
+        }
+    };
 
     view! {
         <nav class="navbar">
@@ -35,14 +54,14 @@ pub fn Navbar() -> impl IntoView {
                         </svg>
                     </a>
                     <span class="navbar-divider"></span>
-                    <a href="/explore" class="navbar-link">"Explore"</a>
-                    <a href="/recipes" class="navbar-link">"Recipes"</a>
-                    <a href="/pricing" class="navbar-link">"Pricing"</a>
+                    <a href="/explore" class=move || nav_class("/explore")>"Explore"</a>
+                    <a href="/recipes" class=move || nav_class("/recipes")>"Recipes"</a>
+                    <a href="/pricing" class=move || nav_class("/pricing")>"Pricing"</a>
                     <Suspense fallback=|| ()>
                         {move || Suspend::new(async move {
                             match user.await {
                                 Ok(Some(_)) => view! {
-                                    <a href="/repos" class="navbar-link">"Repositories"</a>
+                                    <a href="/repos" class=move || nav_class("/repos")>"Repositories"</a>
                                 }.into_any(),
                                 _ => view! { <span></span> }.into_any(),
                             }
@@ -55,95 +74,195 @@ pub fn Navbar() -> impl IntoView {
                         {move || Suspend::new(async move {
                             match user.await {
                                 Ok(Some(u)) => {
-                                    let profile_href = format!("/{}", &u.username);
                                     let active_org = u.active_org_slug.clone().unwrap_or_default();
                                     view! {
-                                        <OrgSwitcher active_org=active_org />
-                                        <a href="/billing" class="navbar-link navbar-link-sm">"Billing"</a>
-                                        <a href="/settings" class="navbar-icon" title="Settings">
-                                            <IconGear />
-                                        </a>
-                                        <a href=profile_href class="navbar-icon" title=u.username>
-                                            <IconUser />
-                                        </a>
-                                        <span class="navbar-divider"></span>
-                                        <ActionForm action=logout_action>
-                                            <button type="submit" class="navbar-icon" title="Logout">
-                                                <IconLogout />
-                                            </button>
-                                        </ActionForm>
+                                        <UserDropdown
+                                            username=u.username.clone()
+                                            active_org=active_org
+                                            logout_action=logout_action
+                                        />
                                     }.into_any()
                                 },
                                 _ => view! {
                                     <a href="/login" class="navbar-link">"Sign in"</a>
-                                    <a href="/register" class="btn btn-primary btn-sm">"Sign up"</a>
+                                    <a href="/pricing" class="btn btn-primary btn-sm">"Sign up"</a>
                                 }.into_any(),
                             }
                         })}
                     </Suspense>
+                    <button
+                        class="mobile-nav-toggle"
+                        on:click=move |_| set_menu_open.update(|v| *v = !*v)
+                        title="Menu"
+                    >
+                        <IconMenu />
+                    </button>
                 </div>
             </div>
         </nav>
+
+        // Mobile navigation drawer
+        <div class=move || if menu_open.get() { "mobile-nav mobile-nav-open" } else { "mobile-nav" }>
+            <div class="mobile-nav-backdrop" on:click=move |_| set_menu_open.set(false)></div>
+            <div class="mobile-nav-drawer">
+                <div class="mobile-nav-header">
+                    <span class="text-secondary" style="font-size: 0.875rem; font-weight: 500;">"Menu"</span>
+                    <button class="mobile-nav-close" on:click=move |_| set_menu_open.set(false)>
+                        <IconX />
+                    </button>
+                </div>
+                <a href="/explore" class="mobile-nav-link">"Explore"</a>
+                <a href="/recipes" class="mobile-nav-link">"Recipes"</a>
+                <a href="/pricing" class="mobile-nav-link">"Pricing"</a>
+                <Suspense fallback=|| ()>
+                    {move || Suspend::new(async move {
+                        match user.await {
+                            Ok(Some(u)) => {
+                                let profile_href = format!("/{}", &u.username);
+                                view! {
+                                    <a href="/repos" class="mobile-nav-link">"Repositories"</a>
+                                    <div class="mobile-nav-divider"></div>
+                                    <a href="/billing" class="mobile-nav-link">"Billing"</a>
+                                    <a href="/settings" class="mobile-nav-link">"Settings"</a>
+                                    <a href=profile_href class="mobile-nav-link">"Profile"</a>
+                                    <div class="mobile-nav-divider"></div>
+                                    <ActionForm action=logout_action>
+                                        <button type="submit" class="mobile-nav-link w-full text-left" style="background: none; border: none; cursor: pointer; font: inherit;">
+                                            "Logout"
+                                        </button>
+                                    </ActionForm>
+                                }.into_any()
+                            },
+                            _ => view! {
+                                <div class="mobile-nav-divider"></div>
+                                <a href="/login" class="mobile-nav-link">"Sign in"</a>
+                                <a href="/pricing" class="mobile-nav-link">"Sign up"</a>
+                            }.into_any(),
+                        }
+                    })}
+                </Suspense>
+            </div>
+        </div>
     }
 }
 
 #[component]
-fn OrgSwitcher(active_org: String) -> impl IntoView {
+fn UserDropdown(
+    username: String,
+    active_org: String,
+    logout_action: ServerAction<Logout>,
+) -> impl IntoView {
+    let (dropdown_open, set_dropdown_open) = signal(false);
     let orgs = Resource::new(|| (), |_| list_my_orgs());
     let switch_action = ServerAction::<SwitchOrg>::new();
+    let location = use_location();
 
-    let active_org_signal = active_org;
+    // Close dropdown on route change
+    Effect::new(move |_| {
+        let _ = location.pathname.get();
+        set_dropdown_open.set(false);
+    });
+
+    let profile_href = format!("/{}", &username);
+    let active_org = StoredValue::new(active_org);
 
     view! {
-        <Suspense fallback=|| ()>
-            {move || {
-                let active_org = active_org_signal.clone();
-                Suspend::new(async move {
-                match orgs.await {
-                    Ok(orgs) if orgs.len() > 1 => {
-                        let active = active_org.clone();
-                        view! {
-                            <div class="org-switcher">
-                                <ActionForm action=switch_action>
-                                    <select
-                                        name="slug"
-                                        class="org-select"
-                                        on:change=move |ev| {
-                                            // Submit the form when selection changes
-                                            use leptos::wasm_bindgen::JsCast;
-                                            if let Some(select) = event_target::<leptos::web_sys::HtmlSelectElement>(&ev)
-                                                .closest("form")
-                                                .ok()
-                                                .flatten()
-                                                .and_then(|f| f.dyn_into::<leptos::web_sys::HtmlFormElement>().ok())
-                                            {
-                                                let _ = select.request_submit();
-                                            }
-                                        }
-                                    >
-                                        {orgs.iter().map(|o| {
-                                            let selected = o.slug == active;
-                                            view! {
-                                                <option value={o.slug.clone()} selected=selected>
-                                                    {o.display_name.clone()}
-                                                </option>
-                                            }
-                                        }).collect::<Vec<_>>()}
-                                    </select>
-                                </ActionForm>
-                            </div>
-                        }.into_any()
-                    }
-                    Ok(orgs) if orgs.len() == 1 => {
-                        let org = &orgs[0];
-                        let settings_href = format!("/orgs/{}/settings", org.slug);
-                        view! {
-                            <a href=settings_href class="navbar-link navbar-link-sm">{org.display_name.clone()}</a>
-                        }.into_any()
-                    }
-                    _ => view! { <span></span> }.into_any(),
-                }
-            })}}
-        </Suspense>
+        <div class="user-dropdown">
+            <button
+                class="navbar-icon"
+                on:click=move |_| set_dropdown_open.update(|v| *v = !*v)
+                title=username.clone()
+            >
+                <IconUser />
+            </button>
+            <Show when=move || dropdown_open.get()>
+                <div
+                    class="user-dropdown-backdrop"
+                    on:click=move |_| set_dropdown_open.set(false)
+                ></div>
+                <div class="user-dropdown-menu">
+                    <Suspense fallback=|| ()>
+                        {move || {
+                            let active = active_org.get_value();
+                            Suspend::new(async move {
+                                match orgs.await {
+                                    Ok(orgs) if orgs.len() > 1 => {
+                                        view! {
+                                            <div class="user-dropdown-label">"Organization"</div>
+                                            {orgs.iter().map(|o| {
+                                                let is_active = o.slug == active;
+                                                let slug = o.slug.clone();
+                                                let name = o.display_name.clone();
+                                                view! {
+                                                    <ActionForm action=switch_action>
+                                                        <input type="hidden" name="slug" value=slug />
+                                                        <button
+                                                            type="submit"
+                                                            class="user-dropdown-item"
+                                                            class:user-dropdown-item-active=is_active
+                                                        >
+                                                            {name}
+                                                            <Show when=move || is_active>
+                                                                <IconCheck />
+                                                            </Show>
+                                                        </button>
+                                                    </ActionForm>
+                                                }
+                                            }).collect::<Vec<_>>()}
+                                            <div class="user-dropdown-divider"></div>
+                                        }.into_any()
+                                    }
+                                    Ok(orgs) if orgs.len() == 1 => {
+                                        let org = &orgs[0];
+                                        let settings_href = format!("/orgs/{}/settings", org.slug);
+                                        view! {
+                                            <a
+                                                href=settings_href
+                                                class="user-dropdown-item"
+                                                on:click=move |_| set_dropdown_open.set(false)
+                                            >
+                                                {org.display_name.clone()}
+                                            </a>
+                                            <div class="user-dropdown-divider"></div>
+                                        }.into_any()
+                                    }
+                                    _ => view! { <span></span> }.into_any(),
+                                }
+                            })
+                        }}
+                    </Suspense>
+                    <a
+                        href=profile_href.clone()
+                        class="user-dropdown-item"
+                        on:click=move |_| set_dropdown_open.set(false)
+                    >
+                        <IconUser />
+                        " Profile"
+                    </a>
+                    <a
+                        href="/settings"
+                        class="user-dropdown-item"
+                        on:click=move |_| set_dropdown_open.set(false)
+                    >
+                        <IconGear />
+                        " Settings"
+                    </a>
+                    <a
+                        href="/billing"
+                        class="user-dropdown-item"
+                        on:click=move |_| set_dropdown_open.set(false)
+                    >
+                        " Billing"
+                    </a>
+                    <div class="user-dropdown-divider"></div>
+                    <ActionForm action=logout_action>
+                        <button type="submit" class="user-dropdown-item user-dropdown-item-danger">
+                            <IconLogout />
+                            " Sign out"
+                        </button>
+                    </ActionForm>
+                </div>
+            </Show>
+        </div>
     }
 }

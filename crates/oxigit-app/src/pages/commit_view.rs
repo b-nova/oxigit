@@ -2,6 +2,10 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
+use crate::components::copy_button::CopyButton;
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+
 #[allow(unused_imports)]
 use super::{AiMetadataInfo, CommitSummary, DiffReviewData, DiffSummaryInfo, RiskFlagInfo};
 
@@ -20,7 +24,7 @@ async fn fetch_commit_diff(
     repo: String,
     sha: String,
 ) -> Result<CommitDetail, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use crate::server_fns::{extract_session_user, get_ai_access_level, get_data_dir, get_pool};
     use oxigit_core::{db, git};
 
     let pool = get_pool().await?;
@@ -31,7 +35,7 @@ async fn fetch_commit_diff(
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    if !db::can_access_repo(&repo_db, current_user.map(|u| u.id)) {
+    if !db::can_access_repo(&repo_db, current_user.as_ref().map(|u| u.id)) {
         return Err(ServerFnError::new("Repository not found"));
     }
 
@@ -42,21 +46,29 @@ async fn fetch_commit_diff(
     // Render diff as HTML with line coloring
     let diff_html = render_diff(&diff);
 
-    // Fetch AI metadata if available
-    let ai_metadata = db::get_ai_metadata_for_commit(&pool, repo_db.id, &sha)
-        .await
-        .ok()
-        .flatten()
-        .map(|m| {
-            use super::AiMetadataInfo;
-            AiMetadataInfo {
-                ai_tool: m.ai_tool,
-                ai_model: m.ai_model,
-                ai_prompt: m.ai_prompt,
-                ai_session_id: m.ai_session_id,
-                ai_files_touched: m.ai_files_touched.and_then(|f| serde_json::from_str(&f).ok()),
-            }
-        });
+    // Fetch AI metadata — free users see tool/model badges, Flat+ sees full details
+    use oxigit_core::entitlements::AiAccessLevel;
+    let ai_access = match current_user.as_ref() {
+        Some(u) => get_ai_access_level(u.id).await.unwrap_or(AiAccessLevel::Limited),
+        None => AiAccessLevel::Limited,
+    };
+    let ai_metadata = {
+        db::get_ai_metadata_for_commit(&pool, repo_db.id, &sha)
+            .await
+            .ok()
+            .flatten()
+            .map(|m| {
+                use super::AiMetadataInfo;
+                let is_full = ai_access == AiAccessLevel::Full;
+                AiMetadataInfo {
+                    ai_tool: m.ai_tool,
+                    ai_model: m.ai_model,
+                    ai_prompt: if is_full { m.ai_prompt } else { None },
+                    ai_session_id: if is_full { m.ai_session_id } else { None },
+                    ai_files_touched: m.ai_files_touched.and_then(|f| serde_json::from_str(&f).ok()),
+                }
+            })
+    };
 
     // Check for deploy preview
     let preview = db::get_deploy_preview(&pool, repo_db.id, &sha).await.ok().flatten();
@@ -224,7 +236,7 @@ async fn generate_diff_summary(
     let entitlements = get_user_entitlements(user.id).await?;
     if !entitlements.ai_features {
         return Err(ServerFnError::new(
-            "AI features require a Pro or higher plan. Upgrade at /pricing",
+            "AI features require a Flat or higher plan. Upgrade at /pricing",
         ));
     }
 
@@ -349,7 +361,7 @@ pub fn CommitViewPage() -> impl IntoView {
     );
 
     view! {
-        <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingPage /> }>
             {move || {
                 let owner_name = owner();
                 let repo_name = repo();
@@ -368,6 +380,7 @@ pub fn CommitViewPage() -> impl IntoView {
                                         <a href={format!("/{}/{}/commits", owner_name, repo_name)}>"commits"</a>
                                         <span class="breadcrumb-sep">" / "</span>
                                         <span class="commit-sha">{short_sha.to_string()}</span>
+                                        <CopyButton text=commit_sha.clone() />
                                     </h1>
                                 </div>
                                 <div class="card mb-4">
@@ -467,7 +480,7 @@ pub fn CommitViewPage() -> impl IntoView {
                             }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

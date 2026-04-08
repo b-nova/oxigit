@@ -1,5 +1,7 @@
 use leptos::prelude::*;
 
+use crate::components::error_display::ErrorDisplay;
+
 #[server]
 async fn create_repo(
     name: String,
@@ -23,7 +25,7 @@ async fn create_repo(
                 .map_err(|e| ServerFnError::new(e.to_string()))?;
             if count as usize >= max {
                 return Err(ServerFnError::new(format!(
-                    "Free plan allows up to {} private repositories. Upgrade to Pro for unlimited.",
+                    "Free plan allows up to {} private repositories. Upgrade to Flat for unlimited.",
                     max
                 )));
             }
@@ -58,7 +60,7 @@ pub fn NewRepoPage() -> impl IntoView {
             <div class="card">
                 <h1 class="card-header">"Create a new repository"</h1>
                 {move || error().map(|e| view! {
-                    <div class="flash flash-error">{e}</div>
+                    <ErrorDisplay error=e />
                 })}
                 <ActionForm action=create_action>
                     <div class="form-group">

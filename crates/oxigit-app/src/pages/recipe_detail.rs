@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+
 #[allow(unused_imports)]
 use super::{RecipeDetailResponse, RecipeFileInfo, RecipeStepInfo, ReplayTargetRepo};
 
@@ -211,7 +214,7 @@ pub fn RecipeDetailPage() -> impl IntoView {
     let replay_action = ServerAction::<ReplayRecipe>::new();
 
     view! {
-        <Suspense fallback=|| view! { <p class="text-secondary mt-8">"Loading..."</p> }>
+        <Suspense fallback=|| view! { <LoadingPage /> }>
             {move || {
                 Suspend::new(async move {
                     match data.await {
@@ -324,7 +327,7 @@ pub fn RecipeDetailPage() -> impl IntoView {
                             }.into_any()
                         }
                         Err(e) => view! {
-                            <div class="flash flash-error">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })

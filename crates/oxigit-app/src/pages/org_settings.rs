@@ -1,6 +1,10 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+use crate::components::toast::use_toast;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OrgMemberInfo {
     pub user_id: i64,
@@ -18,12 +22,20 @@ pub struct OrgSettingsData {
 
 #[server]
 async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool, get_user_entitlements};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let entitlements = get_user_entitlements(user.id).await?;
+    if !entitlements.team_features {
+        return Err(ServerFnError::new(
+            "Team management requires a Team plan. Upgrade at /pricing",
+        ));
+    }
+
     let pool = get_control_pool().await?;
 
     let org = db::get_organization_by_slug(&pool, &slug)
@@ -63,12 +75,20 @@ async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError
 
 #[server]
 async fn add_member(slug: String, username: String, role: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool, get_user_entitlements};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let entitlements = get_user_entitlements(user.id).await?;
+    if !entitlements.team_features {
+        return Err(ServerFnError::new(
+            "Team management requires a Team plan. Upgrade at /pricing",
+        ));
+    }
+
     let pool = get_control_pool().await?;
 
     let org = db::get_organization_by_slug(&pool, &slug)
@@ -96,12 +116,20 @@ async fn add_member(slug: String, username: String, role: String) -> Result<(), 
 
 #[server]
 async fn remove_member(slug: String, user_id: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool, get_user_entitlements};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+
+    let entitlements = get_user_entitlements(user.id).await?;
+    if !entitlements.team_features {
+        return Err(ServerFnError::new(
+            "Team management requires a Team plan. Upgrade at /pricing",
+        ));
+    }
+
     let pool = get_control_pool().await?;
 
     let org = db::get_organization_by_slug(&pool, &slug)
@@ -142,12 +170,26 @@ pub fn OrgSettingsPage() -> impl IntoView {
         async move { remove_member(slug, user_id).await }
     });
 
+    let toast = use_toast();
+    let toast_add = toast.clone();
+    let toast_remove = toast.clone();
+    Effect::new(move |_| {
+        if let Some(Ok(_)) = add_action.value().get() {
+            toast_add.success("Member added");
+        }
+    });
+    Effect::new(move |_| {
+        if let Some(Ok(_)) = remove_action.value().get() {
+            toast_remove.success("Member removed");
+        }
+    });
+
     view! {
         <div class="settings-page">
-            <Suspense fallback=move || view! { <p>"Loading..."</p> }>
+            <Suspense fallback=move || view! { <LoadingPage /> }>
                 {move || settings.get().map(|result| match result {
                     Err(e) => view! {
-                        <div class="flash flash-error">{e.to_string()}</div>
+                        <ErrorDisplay error=e.to_string() />
                     }.into_any(),
                     Ok(data) => {
                         let members = data.members.clone();

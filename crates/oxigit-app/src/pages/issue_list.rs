@@ -2,6 +2,10 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::icons::IconIssueOpen;
+use crate::components::loading::LoadingCard;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IssueSummary {
     pub number: i64,
@@ -85,7 +89,7 @@ pub fn IssueListPage() -> impl IntoView {
         </div>
 
         <div class="card-flush">
-            <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingCard /> }>
                 {move || {
                     let owner_name = owner();
                     let repo_name = repo();
@@ -95,7 +99,10 @@ pub fn IssueListPage() -> impl IntoView {
                             Ok(issues) if issues.is_empty() => {
                                 let msg = format!("No {} issues.", current_status);
                                 view! {
-                                    <div class="empty-state">{msg}</div>
+                                    <div class="empty-state">
+                                        <div class="empty-state-icon"><IconIssueOpen /></div>
+                                        <p class="empty-state-title">{msg}</p>
+                                    </div>
                                 }.into_any()
                             },
                             Ok(issues) => view! {
@@ -125,7 +132,7 @@ pub fn IssueListPage() -> impl IntoView {
                                 </ul>
                             }.into_any(),
                             Err(e) => view! {
-                                <div class="flash flash-error" style="margin: var(--space-4);">{e.to_string()}</div>
+                                <ErrorDisplay error=e.to_string() />
                             }.into_any(),
                         }
                     })

@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
+use crate::components::error_display::ErrorDisplay;
+
 #[server]
 async fn share_session_as_recipe(
     owner: String,
@@ -154,7 +156,7 @@ pub fn ShareRecipePage() -> impl IntoView {
         </div>
 
         {move || error().map(|e| view! {
-            <div class="flash flash-error">{e.to_string()}</div>
+            <ErrorDisplay error=e.to_string() />
         })}
 
         <div class="card">

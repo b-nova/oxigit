@@ -4,6 +4,7 @@ pub mod ai_session_detail;
 pub mod billing;
 pub mod blame;
 pub mod commit_view;
+pub mod contact;
 pub mod conflict_resolve;
 pub mod explore;
 pub mod commits;
@@ -232,6 +233,8 @@ pub struct PromptHistoryResponse {
     pub entries: Vec<PromptHistoryEntry>,
     pub total_prompts: i64,
     pub has_more: bool,
+    #[serde(default)]
+    pub is_limited: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -294,6 +297,10 @@ pub struct RepoMetricsResponse {
     pub session_scores: Vec<SessionScoreItem>,
     pub tool_comparison: Vec<ToolScoreInfo>,
     pub risk_distribution: Vec<RiskCountInfo>,
+    #[serde(default)]
+    pub data_range_days: Option<u32>,
+    #[serde(default)]
+    pub is_limited: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

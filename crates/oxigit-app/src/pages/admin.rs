@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
+use crate::components::loading::LoadingPage;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AdminUserInfo {
     pub id: i64,
@@ -13,12 +16,23 @@ pub struct AdminUserInfo {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AdminContactInquiry {
+    pub id: i64,
+    pub name: String,
+    pub email: String,
+    pub company: String,
+    pub message: String,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AdminDashboardData {
     pub user_count: i64,
     pub repo_count: i64,
     pub subscription_breakdown: Vec<(String, i64)>,
     pub disk_usage_display: String,
     pub users: Vec<AdminUserInfo>,
+    pub contact_inquiries: Vec<AdminContactInquiry>,
 }
 
 #[server]
@@ -89,12 +103,27 @@ async fn get_admin_dashboard() -> Result<AdminDashboardData, ServerFnError> {
         });
     }
 
+    let inquiries = db::list_contact_inquiries(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|i| AdminContactInquiry {
+            id: i.id,
+            name: i.name,
+            email: i.email,
+            company: i.company,
+            message: i.message,
+            created_at: i.created_at,
+        })
+        .collect();
+
     Ok(AdminDashboardData {
         user_count,
         repo_count,
         subscription_breakdown,
         disk_usage_display,
         users,
+        contact_inquiries: inquiries,
     })
 }
 
@@ -141,12 +170,10 @@ pub fn AdminPage() -> impl IntoView {
     view! {
         <div class="admin-page">
             <h1>"Admin Dashboard"</h1>
-            <Suspense fallback=move || view! { <p>"Loading..."</p> }>
+            <Suspense fallback=move || view! { <LoadingPage /> }>
                 {move || dashboard.get().map(|result| match result {
                     Err(e) => view! {
-                        <div class="flash flash-error">
-                            <p>{e.to_string()}</p>
-                        </div>
+                        <ErrorDisplay error=e.to_string() />
                     }.into_any(),
                     Ok(data) => {
                         let users = data.users.clone();
@@ -210,9 +237,10 @@ pub fn AdminPage() -> impl IntoView {
                                                         }
                                                     >
                                                         <option value="free" selected={current_plan == "free"}>"Free"</option>
-                                                        <option value="pro" selected={current_plan == "pro"}>"Pro"</option>
+                                                        <option value="flat" selected={current_plan == "flat"}>"Flat"</option>
                                                         <option value="team" selected={current_plan == "team"}>"Team"</option>
                                                         <option value="founding" selected={current_plan == "founding"}>"Founding"</option>
+                                                        <option value="enterprise" selected={current_plan == "enterprise"}>"Enterprise"</option>
                                                     </select>
                                                 </td>
                                                 <td>{if u.is_disabled { "Disabled" } else { "Active" }}</td>
@@ -233,6 +261,38 @@ pub fn AdminPage() -> impl IntoView {
                                     }).collect::<Vec<_>>()}
                                 </tbody>
                             </table>
+                            {if !data.contact_inquiries.is_empty() {
+                                let inquiries = data.contact_inquiries.clone();
+                                Some(view! {
+                                    <h2>"Contact Inquiries"</h2>
+                                    <table class="admin-table">
+                                        <thead>
+                                            <tr>
+                                                <th>"Name"</th>
+                                                <th>"Email"</th>
+                                                <th>"Company"</th>
+                                                <th>"Message"</th>
+                                                <th>"Date"</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {inquiries.into_iter().map(|inq| {
+                                                view! {
+                                                    <tr>
+                                                        <td>{inq.name}</td>
+                                                        <td>{inq.email}</td>
+                                                        <td>{inq.company}</td>
+                                                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{inq.message}</td>
+                                                        <td>{inq.created_at.split('T').next().unwrap_or(&inq.created_at).to_string()}</td>
+                                                    </tr>
+                                                }
+                                            }).collect::<Vec<_>>()}
+                                        </tbody>
+                                    </table>
+                                })
+                            } else {
+                                None
+                            }}
                         }.into_any()
                     }
                 })}

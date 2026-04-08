@@ -1,7 +1,9 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::components::error_display::ErrorDisplay;
 use crate::components::icons::IconSearch;
+use crate::components::loading::LoadingCard;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExploreRepo {
@@ -79,7 +81,7 @@ pub fn ExplorePage() -> impl IntoView {
         </div>
 
         <div class="card-flush">
-            <Suspense fallback=|| view! { <p class="empty-state">"Loading..."</p> }>
+            <Suspense fallback=|| view! { <LoadingCard /> }>
                 {move || Suspend::new(async move {
                     match repos.await {
                         Ok(repos) if repos.is_empty() => view! {
@@ -115,7 +117,7 @@ pub fn ExplorePage() -> impl IntoView {
                             </ul>
                         }.into_any(),
                         Err(e) => view! {
-                            <div class="flash flash-error" style="margin: var(--space-4);">{e.to_string()}</div>
+                            <ErrorDisplay error=e.to_string() />
                         }.into_any(),
                     }
                 })}

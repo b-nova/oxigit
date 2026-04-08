@@ -2,13 +2,44 @@ mod harness;
 
 use harness::*;
 
+const STRIPE_SECRET: &str = "whsec_ai_test";
+
+/// Helper: upgrade a user to Pro via Stripe webhook.
+async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str) {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let payload = format!(
+        r#"{{"type":"checkout.session.completed","data":{{"object":{{"client_reference_id":"{}","customer":"cus_ai_{}","subscription":"sub_ai_{}","metadata":{{"plan":"flat"}}}}}}}}"#,
+        user_id, user_id, user_id
+    );
+    let timestamp = "1234567890";
+    let signed_payload = format!("{}.{}", timestamp, payload);
+    let mut mac = Hmac::<Sha256>::new_from_slice(STRIPE_SECRET.as_bytes()).unwrap();
+    mac.update(signed_payload.as_bytes());
+    let sig = hex::encode(mac.finalize().into_bytes());
+    let signature = format!("t={},v1={}", timestamp, sig);
+
+    let resp = client
+        .client
+        .post(format!("{}/api/stripe/webhook", base_url))
+        .header("stripe-signature", &signature)
+        .header("content-type", "application/json")
+        .body(payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200, "Flat upgrade webhook should succeed");
+}
+
 /// Test that pushing a commit with .oxigit/context.json causes metadata to appear in the commit detail.
 #[tokio::test]
 async fn test_ai_context_on_http_push() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_with_stripe(STRIPE_SECRET).await;
     let client = server.client();
 
     client.register("alice", "alice@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1").await;
     client.login("alice", "password123").await;
     client.create_repo("airepo", "AI test repo", false).await;
 
@@ -83,10 +114,11 @@ async fn test_ai_badge_in_commits_list() {
 /// Test manual AI metadata attachment via server function.
 #[tokio::test]
 async fn test_manual_ai_metadata_attachment() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_with_stripe(STRIPE_SECRET).await;
     let client = server.client();
 
     client.register("carol", "carol@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1").await;
     client.login("carol", "password123").await;
     client.create_repo("manual", "Manual metadata test", false).await;
 
@@ -134,10 +166,11 @@ async fn test_ai_context_via_ssh_push() {
         return;
     }
 
-    let server = TestServer::start().await;
+    let server = TestServer::start_with_stripe(STRIPE_SECRET).await;
     let client = server.client();
 
     client.register("dave", "dave@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1").await;
     client.login("dave", "password123").await;
     client.create_repo("sshrepo", "SSH AI test", false).await;
 

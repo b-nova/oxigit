@@ -2,6 +2,36 @@ mod harness;
 
 use harness::*;
 
+const STRIPE_SECRET: &str = "whsec_gemini_test";
+
+/// Helper: upgrade a user to Pro via Stripe webhook.
+async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str) {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let payload = format!(
+        r#"{{"type":"checkout.session.completed","data":{{"object":{{"client_reference_id":"{}","customer":"cus_gem_{}","subscription":"sub_gem_{}","metadata":{{"plan":"flat"}}}}}}}}"#,
+        user_id, user_id, user_id
+    );
+    let timestamp = "1234567890";
+    let signed_payload = format!("{}.{}", timestamp, payload);
+    let mut mac = Hmac::<Sha256>::new_from_slice(STRIPE_SECRET.as_bytes()).unwrap();
+    mac.update(signed_payload.as_bytes());
+    let sig = hex::encode(mac.finalize().into_bytes());
+    let signature = format!("t={},v1={}", timestamp, sig);
+
+    let resp = client
+        .client
+        .post(format!("{}/api/stripe/webhook", base_url))
+        .header("stripe-signature", &signature)
+        .header("content-type", "application/json")
+        .body(payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200, "Flat upgrade webhook should succeed");
+}
+
 /// Test that installing the Gemini hook produces correct script content:
 /// - Session capture script must output JSON to stdout (Gemini CLI requirement)
 /// - Config timeout must be in milliseconds (5000, not 5)
@@ -70,12 +100,13 @@ async fn test_gemini_hook_script_content() {
 /// Install hook, simulate Gemini session, push, verify AI activity.
 #[tokio::test]
 async fn test_gemini_trailers_produce_ai_activity() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_with_stripe(STRIPE_SECRET).await;
     let client = server.client();
 
     client
         .register("gemi", "gemi@test.com", "password123")
         .await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1").await;
     client.login("gemi", "password123").await;
     client
         .create_repo("gemflow", "Gemini flow test", false)

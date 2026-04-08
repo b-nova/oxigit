@@ -30,7 +30,7 @@ async fn pricing_page_renders() {
 
     let body = resp.text().await.unwrap();
     assert!(body.contains("Free"), "pricing page should show Free plan: {body}");
-    assert!(body.contains("Pro"), "pricing page should show Pro plan: {body}");
+    assert!(body.contains("Flat"), "pricing page should show Flat plan: {body}");
     assert!(body.contains("Team"), "pricing page should show Team plan: {body}");
     assert!(body.contains("Founding Member"), "pricing page should show Founding Member: {body}");
 }
@@ -122,7 +122,7 @@ async fn webhook_processes_checkout_completed() {
     // Register a user first (user_id will be 1)
     client.register("alice", "alice@test.com", "password123").await;
 
-    let payload = r#"{"type":"checkout.session.completed","data":{"object":{"client_reference_id":"1","customer":"cus_test123","subscription":"sub_test123","metadata":{"plan":"pro"}}}}"#;
+    let payload = r#"{"type":"checkout.session.completed","data":{"object":{"client_reference_id":"1","customer":"cus_test123","subscription":"sub_test123","metadata":{"plan":"flat"}}}}"#;
     let timestamp = "1234567890";
     let signature = sign_webhook(payload, secret, timestamp);
 
@@ -138,7 +138,7 @@ async fn webhook_processes_checkout_completed() {
 
     assert_eq!(resp.status().as_u16(), 200);
 
-    // Verify the billing page now shows Pro plan
+    // Verify the billing page now shows Flat plan
     client.login("alice", "password123").await;
     let resp = client
         .client
@@ -147,7 +147,7 @@ async fn webhook_processes_checkout_completed() {
         .await
         .unwrap();
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Pro"), "billing page should show Pro plan after checkout: {body}");
+    assert!(body.contains("Flat"), "billing page should show Flat plan after checkout: {body}");
 }
 
 /// Test: webhook handles subscription.deleted by canceling.
@@ -160,7 +160,7 @@ async fn webhook_handles_subscription_deleted() {
     client.register("alice", "alice@test.com", "password123").await;
 
     // First create a subscription via checkout
-    let payload = r#"{"type":"checkout.session.completed","data":{"object":{"client_reference_id":"1","customer":"cus_test456","subscription":"sub_test456","metadata":{"plan":"pro"}}}}"#;
+    let payload = r#"{"type":"checkout.session.completed","data":{"object":{"client_reference_id":"1","customer":"cus_test456","subscription":"sub_test456","metadata":{"plan":"flat"}}}}"#;
     let timestamp = "1234567890";
     let signature = sign_webhook(payload, secret, timestamp);
 

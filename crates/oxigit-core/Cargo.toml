@@ -20,4 +20,5 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true }
+lettre = { workspace = true }
 lru = "0.16.3"

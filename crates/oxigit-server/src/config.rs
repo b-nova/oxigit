@@ -50,9 +50,9 @@ pub struct Config {
     #[arg(long, env = "STRIPE_PUBLISHABLE_KEY")]
     pub stripe_publishable_key: Option<String>,
 
-    /// Stripe Price ID for Pro plan
-    #[arg(long, env = "STRIPE_PRICE_PRO")]
-    pub stripe_price_pro: Option<String>,
+    /// Stripe Price ID for Flat plan
+    #[arg(long, env = "STRIPE_PRICE_FLAT")]
+    pub stripe_price_flat: Option<String>,
 
     /// Stripe Price ID for Team plan
     #[arg(long, env = "STRIPE_PRICE_TEAM")]
@@ -61,4 +61,28 @@ pub struct Config {
     /// Stripe Price ID for Founding Member plan
     #[arg(long, env = "STRIPE_PRICE_FOUNDING")]
     pub stripe_price_founding: Option<String>,
+
+    /// SMTP host for sending notification emails
+    #[arg(long, env = "OXIGIT_SMTP_HOST")]
+    pub smtp_host: Option<String>,
+
+    /// SMTP port (default 587)
+    #[arg(long, env = "OXIGIT_SMTP_PORT", default_value = "587")]
+    pub smtp_port: u16,
+
+    /// SMTP username
+    #[arg(long, env = "OXIGIT_SMTP_USER")]
+    pub smtp_user: Option<String>,
+
+    /// SMTP password
+    #[arg(long, env = "OXIGIT_SMTP_PASSWORD")]
+    pub smtp_password: Option<String>,
+
+    /// From address for outgoing emails
+    #[arg(long, env = "OXIGIT_SMTP_FROM")]
+    pub smtp_from: Option<String>,
+
+    /// Email address to receive contact form inquiries
+    #[arg(long, env = "OXIGIT_CONTACT_EMAIL")]
+    pub contact_email: Option<String>,
 }

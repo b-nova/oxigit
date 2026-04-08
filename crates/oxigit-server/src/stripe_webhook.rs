@@ -65,7 +65,7 @@ pub async fn handle_webhook(
             };
 
             // Determine plan from metadata
-            let plan = obj["metadata"]["plan"].as_str().unwrap_or("pro");
+            let plan = obj["metadata"]["plan"].as_str().unwrap_or("flat");
 
             // For founding members, try to claim a slot
             if plan == "founding" {
@@ -74,11 +74,11 @@ pub async fn handle_webhook(
                         tracing::info!("Founding member slot {slot} claimed by user {user_id}");
                     }
                     Ok(None) => {
-                        tracing::warn!("Founding member slots full, user {user_id} gets pro instead");
-                        // Fall through — will create subscription as pro instead
+                        tracing::warn!("Founding member slots full, user {user_id} gets flat instead");
+                        // Fall through — will create subscription as flat instead
                         if let Err(e) = db::upsert_subscription(
                             pool, user_id, customer_id, subscription_id,
-                            "pro", "active", None, 1,
+                            "flat", "active", None, 1,
                         ).await {
                             tracing::error!("Failed to upsert subscription: {e}");
                         }

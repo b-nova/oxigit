@@ -55,6 +55,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
 
+# Email
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
+
 # Config
 clap = { version = "4", features = ["derive", "env"] }
 

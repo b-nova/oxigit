@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod billing;
 pub mod db;
+pub mod email;
 pub mod entitlements;
 pub mod error;
 pub mod git;

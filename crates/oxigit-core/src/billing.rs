@@ -43,6 +43,7 @@ pub async fn create_checkout_session(
     success_url: &str,
     cancel_url: &str,
     client_reference_id: &str,
+    plan: &str,
 ) -> Result<String> {
     let client = reqwest::Client::new();
     let resp = client
@@ -56,6 +57,7 @@ pub async fn create_checkout_session(
             ("success_url", success_url),
             ("cancel_url", cancel_url),
             ("client_reference_id", client_reference_id),
+            ("metadata[plan]", plan),
         ])
         .send()
         .await

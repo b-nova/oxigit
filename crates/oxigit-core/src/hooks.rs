@@ -15,6 +15,7 @@ pub async fn process_post_receive(
     pool: &SqlitePool,
     repo_path: &Path,
     repo_id: i64,
+    owner_id: i64,
     before_refs: &HashMap<String, String>,
     after_refs: &HashMap<String, String>,
     owner: &str,
@@ -146,8 +147,14 @@ pub async fn process_post_receive(
                     .map(|c| c.message)
                     .unwrap_or_default();
 
-                // Create pending deploy preview
-                let _ = db::create_deploy_preview(pool, repo_id, new_sha, branch).await;
+                // Create pending deploy preview (Pro+ only)
+                let owner_plan = db::get_user_plan(pool, owner_id)
+                    .await
+                    .unwrap_or_else(|_| "free".into());
+                let ent = crate::entitlements::for_plan(&owner_plan);
+                if ent.deploy_previews {
+                    let _ = db::create_deploy_preview(pool, repo_id, new_sha, branch).await;
+                }
 
                 webhook::fire_push_webhooks(
                     &webhooks, owner, repo_name, branch, new_sha, &commit_msg, callback_base_url,

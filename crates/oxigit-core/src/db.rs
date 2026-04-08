@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::auth::{hash_password, validate_repo_name, validate_username, verify_password};
 use crate::error::{OxigitError, Result};
-use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, DeployPreview, FoundingMember, GuardrailConfig, GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile, OrgMembership, Organization, PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, Subscription, User, UserSettings};
+use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, ContactInquiry, DeployPreview, FoundingMember, GuardrailConfig, GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile, OrgMembership, Organization, PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, Subscription, User, UserSettings};
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
@@ -1886,6 +1886,17 @@ pub async fn upsert_subscription(
     current_period_end: Option<&str>,
     seats: i64,
 ) -> Result<Subscription> {
+    let mut tx = pool.begin().await?;
+
+    // Remove any stale subscription holding this stripe_customer_id for a
+    // different user, so the INSERT below won't violate the unique index on
+    // stripe_customer_id (the ON CONFLICT clause only covers user_id).
+    sqlx::query("DELETE FROM subscriptions WHERE stripe_customer_id = ? AND user_id != ?")
+        .bind(stripe_customer_id)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
     let sub = sqlx::query_as::<_, Subscription>(
         "INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_end, seats) \
          VALUES (?, ?, ?, ?, ?, ?, ?) \
@@ -1901,7 +1912,9 @@ pub async fn upsert_subscription(
     )
     .bind(user_id).bind(stripe_customer_id).bind(stripe_subscription_id)
     .bind(plan).bind(status).bind(current_period_end).bind(seats)
-    .fetch_one(pool).await?;
+    .fetch_one(&mut *tx).await?;
+
+    tx.commit().await?;
     Ok(sub)
 }
 
@@ -1956,6 +1969,39 @@ pub async fn claim_founding_slot(pool: &SqlitePool, user_id: i64) -> Result<Opti
     )
     .bind(user_id).fetch_optional(pool).await?;
     Ok(result.map(|fm| fm.slot_number))
+}
+
+pub async fn is_founding_member(pool: &SqlitePool, user_id: i64) -> Result<bool> {
+    let (count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM founding_members WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+    Ok(count > 0)
+}
+
+pub async fn get_founding_member_slot(pool: &SqlitePool, user_id: i64) -> Result<Option<i64>> {
+    let result: Option<(i64,)> =
+        sqlx::query_as("SELECT slot_number FROM founding_members WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(result.map(|(n,)| n))
+}
+
+pub async fn get_founding_member_slot_by_username(
+    pool: &SqlitePool,
+    username: &str,
+) -> Result<Option<i64>> {
+    let result: Option<(i64,)> = sqlx::query_as(
+        "SELECT fm.slot_number FROM founding_members fm \
+         JOIN users u ON u.id = fm.user_id \
+         WHERE u.username = ?",
+    )
+    .bind(username)
+    .fetch_optional(pool)
+    .await?;
+    Ok(result.map(|(n,)| n))
 }
 
 // --- Admin queries ---
@@ -2218,4 +2264,34 @@ pub async fn remove_repo_from_index(pool: &SqlitePool, owner_username: &str, rep
         .execute(pool)
         .await?;
     Ok(())
+}
+
+// --- Contact inquiries ---
+
+pub async fn insert_contact_inquiry(
+    pool: &SqlitePool,
+    name: &str,
+    email: &str,
+    company: &str,
+    message: &str,
+) -> Result<i64> {
+    let row = sqlx::query_scalar::<_, i64>(
+        "INSERT INTO contact_inquiries (name, email, company, message) VALUES (?, ?, ?, ?) RETURNING id"
+    )
+        .bind(name)
+        .bind(email)
+        .bind(company)
+        .bind(message)
+        .fetch_one(pool)
+        .await?;
+    Ok(row)
+}
+
+pub async fn list_contact_inquiries(pool: &SqlitePool) -> Result<Vec<ContactInquiry>> {
+    let rows = sqlx::query_as::<_, ContactInquiry>(
+        "SELECT id, name, email, company, message, created_at FROM contact_inquiries ORDER BY created_at DESC"
+    )
+        .fetch_all(pool)
+        .await?;
+    Ok(rows)
 }

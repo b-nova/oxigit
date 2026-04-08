@@ -12,6 +12,7 @@ use oxigit_app::server_fns::AppState;
 use oxigit_core::db;
 use oxigit_core::tenant::TenantPoolManager;
 
+mod badge;
 mod config;
 mod git_http;
 mod stripe_webhook;
@@ -77,9 +78,15 @@ async fn main() {
         stripe_secret_key: config.stripe_secret_key.clone(),
         stripe_publishable_key: config.stripe_publishable_key.clone(),
         stripe_webhook_secret: config.stripe_webhook_secret.clone(),
-        stripe_price_pro: config.stripe_price_pro.clone(),
+        stripe_price_flat: config.stripe_price_flat.clone(),
         stripe_price_team: config.stripe_price_team.clone(),
         stripe_price_founding: config.stripe_price_founding.clone(),
+        smtp_host: config.smtp_host.clone(),
+        smtp_port: config.smtp_port,
+        smtp_user: config.smtp_user.clone(),
+        smtp_password: config.smtp_password.clone(),
+        smtp_from: config.smtp_from.clone(),
+        contact_email: config.contact_email.clone(),
     };
 
     // Git Smart HTTP routes + deploy callback (must be before Leptos routes)
@@ -90,6 +97,7 @@ async fn main() {
         .route("/api/deploy-callback/{commit_sha}", post(git_http::deploy_callback))
         .route("/internal/guardrail-check", post(git_http::guardrail_check))
         .route("/api/stripe/webhook", post(stripe_webhook::handle_webhook))
+        .route("/api/badge/{username_svg}", get(badge::founding_badge))
         .with_state(state.clone());
 
     // Build router — use Shell for SSR, App for hydration

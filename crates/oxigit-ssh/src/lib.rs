@@ -154,6 +154,7 @@ impl Handler for OxigitSshHandler {
 
         // For push, verify the user has write access (owner or collaborator)
         let mut repo_db_id: Option<i64> = None;
+        let mut repo_owner_id: Option<i64> = None;
         if service == "git-receive-pack" {
             match db::get_repository(&self.pool, &owner, &repo_name).await {
                 Ok((_, repo_db)) => {
@@ -168,6 +169,7 @@ impl Handler for OxigitSshHandler {
                         return Ok(());
                     }
                     repo_db_id = Some(repo_db.id);
+                    repo_owner_id = Some(repo_db.owner_id);
                 }
                 Err(_) => {
                     let _ = session.channel_failure(channel_id);
@@ -195,7 +197,7 @@ impl Handler for OxigitSshHandler {
         let ssh_owner = owner.clone();
         let ssh_repo = repo_name.clone();
         tokio::spawn(async move {
-            if let Err(e) = run_git_over_channel(&service, &path, &mut channel, is_receive, repo_db_id, &pool, &ssh_owner, &ssh_repo).await {
+            if let Err(e) = run_git_over_channel(&service, &path, &mut channel, is_receive, repo_db_id, repo_owner_id, &pool, &ssh_owner, &ssh_repo).await {
                 tracing::error!("Git SSH error: {}", e);
             }
         });
@@ -210,6 +212,7 @@ async fn run_git_over_channel(
     channel: &mut Channel<Msg>,
     is_receive: bool,
     repo_db_id: Option<i64>,
+    repo_owner_id: Option<i64>,
     pool: &SqlitePool,
     owner: &str,
     repo_name: &str,
@@ -324,6 +327,7 @@ async fn run_git_over_channel(
                                     pool,
                                     repo_path,
                                     rid,
+                                    repo_owner_id.unwrap_or(0),
                                     &before_refs,
                                     &after_refs,
                                     owner,

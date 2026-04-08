@@ -288,6 +288,16 @@ pub struct FoundingMember {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ContactInquiry {
+    pub id: i64,
+    pub name: String,
+    pub email: String,
+    pub company: String,
+    pub message: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Organization {
     pub id: i64,
     pub slug: String,

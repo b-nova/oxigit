@@ -156,6 +156,7 @@ pub async fn receive_pack(
 
     // Require auth for push — owner or collaborator
     let repo_db_id;
+    let repo_owner_id;
     match extract_basic_auth(&headers) {
         Some((username, password)) => {
             let auth_user = match db::authenticate_user(pool, &username, &password).await {
@@ -167,6 +168,7 @@ pub async fn receive_pack(
                 Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
             };
             repo_db_id = repo_db.id;
+            repo_owner_id = repo_db.owner_id;
             if let Ok(can) = db::can_push_repo(pool, &repo_db, auth_user.id).await {
                 if !can {
                     return (StatusCode::FORBIDDEN, "Access denied").into_response();
@@ -207,6 +209,7 @@ pub async fn receive_pack(
             &pool_clone,
             &path_clone,
             repo_db_id,
+            repo_owner_id,
             &before_refs,
             &after_refs,
             &owner_clone,
@@ -231,6 +234,15 @@ pub async fn deploy_callback(
         Ok(r) => r,
         Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
     };
+
+    // Gate deploy previews to Pro+ plans
+    let owner_plan = db::get_user_plan(pool, repo_db.owner_id)
+        .await
+        .unwrap_or_else(|_| "free".into());
+    let ent = oxigit_core::entitlements::for_plan(&owner_plan);
+    if !ent.deploy_previews {
+        return (StatusCode::FORBIDDEN, "Deploy previews require a Pro or higher plan").into_response();
+    }
 
     match db::update_deploy_preview(
         pool,

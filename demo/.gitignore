@@ -1,0 +1,5 @@
+node_modules/
+videos/
+test-results/
+tmp/
+dist/

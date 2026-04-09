@@ -42,6 +42,21 @@ pub struct Repository {
     pub updated_at: String,
 }
 
+/// Lightweight repository entry from the global index (control DB).
+/// Used for cross-tenant listing/search without loading full tenant DBs.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct RepositoryIndexEntry {
+    pub id: i64,
+    pub org_slug: String,
+    pub owner_id: i64,
+    pub owner_username: String,
+    pub repo_name: String,
+    pub description: String,
+    pub is_private: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct SshKey {
     pub id: i64,

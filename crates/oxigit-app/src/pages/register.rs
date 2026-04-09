@@ -12,7 +12,7 @@ async fn register_user(
     password: String,
     plan: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_control_pool, get_stripe_config, set_session_user};
+    use crate::server_fns::{get_control_pool, get_stripe_config, get_tenant_mgr, is_multi_tenant, set_session_user};
     use oxigit_core::db;
 
     let pool = get_control_pool().await?;
@@ -39,6 +39,15 @@ async fn register_user(
     db::add_org_member(&pool, org.id, user.id, "owner")
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    // Provision tenant database and directory structure in multi-tenant mode
+    if is_multi_tenant().await? {
+        let tenant_mgr = get_tenant_mgr().await?;
+        tenant_mgr
+            .provision_tenant(&username)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+    }
 
     set_session_user(user.id, &user.username, Some(&username)).await;
 

@@ -12,6 +12,7 @@ use crate::pages::UserInfo;
 #[derive(Clone)]
 pub struct AppState {
     pub tenant_mgr: Arc<oxigit_core::tenant::TenantPoolManager>,
+    pub multi_tenant: bool,
     pub data_dir: PathBuf,
     pub secret_key: Vec<u8>,
     pub leptos_options: LeptosOptions,
@@ -75,10 +76,34 @@ pub async fn get_tenant_pool() -> Result<SqlitePool, ServerFnError> {
         .map_err(|e| ServerFnError::new(e.to_string()))
 }
 
+/// Get the tenant pool for a specific repo by looking up its org in the repository index.
+/// In legacy (single-DB) mode, returns the control pool for backward compatibility.
+pub async fn get_repo_pool(owner: &str, repo: &str) -> Result<SqlitePool, ServerFnError> {
+    let Extension(state): Extension<AppState> = extract().await?;
+    if !state.multi_tenant {
+        return Ok(state.pool());
+    }
+    let control = state.pool();
+    let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    state
+        .tenant_mgr
+        .get_tenant_pool(&org_slug)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))
+}
+
 /// Get the TenantPoolManager for advanced operations (provisioning, etc.).
 pub async fn get_tenant_mgr() -> Result<Arc<oxigit_core::tenant::TenantPoolManager>, ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
     Ok(state.tenant_mgr.clone())
+}
+
+/// Check if multi-tenant mode is active.
+pub async fn is_multi_tenant() -> Result<bool, ServerFnError> {
+    let Extension(state): Extension<AppState> = extract().await?;
+    Ok(state.multi_tenant)
 }
 
 pub async fn get_data_dir() -> Result<PathBuf, ServerFnError> {

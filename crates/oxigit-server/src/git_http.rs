@@ -7,10 +7,42 @@ use axum::{
 use tokio::process::Command;
 use tracing;
 
+use sqlx::SqlitePool;
+
 use oxigit_core::{db, guardrail};
 use oxigit_core::git::repo_path;
 
 use crate::AppState;
+
+/// Resolve the repo pool and filesystem path for an owner/repo pair.
+/// In multi-tenant mode, looks up org_slug via repository_index, returns
+/// the tenant pool and tenant-specific repo path.
+/// In legacy mode, returns the control pool and standard repo path.
+async fn resolve_repo(
+    state: &AppState,
+    owner: &str,
+    repo_name: &str,
+) -> Result<(SqlitePool, std::path::PathBuf), (StatusCode, &'static str)> {
+    let control_pool = state.pool();
+    if state.multi_tenant {
+        let org_slug = db::lookup_repo_org(&control_pool, owner, repo_name)
+            .await
+            .map_err(|_| (StatusCode::NOT_FOUND, "Repository not found"))?;
+        let pool = state
+            .tenant_mgr
+            .get_tenant_pool(&org_slug)
+            .await
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to load tenant"))?;
+        let path = state
+            .tenant_mgr
+            .tenant_repos_dir(&org_slug)
+            .join(format!("{}/{}.git", owner, repo_name));
+        Ok((pool, path))
+    } else {
+        let path = repo_path(&state.data_dir, owner, repo_name);
+        Ok((control_pool, path))
+    }
+}
 
 /// Extract HTTP Basic Auth credentials from headers.
 fn extract_basic_auth(headers: &HeaderMap) -> Option<(String, String)> {
@@ -50,9 +82,15 @@ pub async fn info_refs(
         }
     };
 
+    // Resolve repo pool and path
+    let control_pool = state.pool();
+    let (repo_pool, path) = match resolve_repo(&state, &owner, repo_name).await {
+        Ok(r) => r,
+        Err((status, msg)) => return (status, msg).into_response(),
+    };
+
     // Verify repo exists and check access
-    let pool = &state.pool();
-    let (_, repo_db) = match db::get_repository(pool, &owner, repo_name).await {
+    let (_, repo_db) = match db::get_repository(&repo_pool, &owner, repo_name).await {
         Ok(r) => r,
         Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
     };
@@ -61,13 +99,13 @@ pub async fn info_refs(
     if repo_db.is_private || service == "git-receive-pack" {
         match extract_basic_auth(&headers) {
             Some((username, password)) => {
-                let auth_user = match db::authenticate_user(pool, &username, &password).await {
+                let auth_user = match db::authenticate_user(&control_pool, &username, &password).await {
                     Ok(u) => u,
                     Err(_) => return auth_required(),
                 };
                 // For push: check owner or collaborator
                 if service == "git-receive-pack" {
-                    if let Ok(can) = db::can_push_repo(pool, &repo_db, auth_user.id).await {
+                    if let Ok(can) = db::can_push_repo(&repo_pool, &repo_db, auth_user.id).await {
                         if !can {
                             return (StatusCode::FORBIDDEN, "Access denied").into_response();
                         }
@@ -79,8 +117,6 @@ pub async fn info_refs(
             None => return auth_required(),
         }
     }
-
-    let path = repo_path(&state.data_dir, &owner, repo_name);
     if !path.exists() {
         return (StatusCode::NOT_FOUND, "Repository not found on disk").into_response();
     }
@@ -135,7 +171,10 @@ pub async fn upload_pack(
     body: axum::body::Bytes,
 ) -> Response {
     let repo_name = repo.strip_suffix(".git").unwrap_or(&repo);
-    let path = repo_path(&state.data_dir, &owner, repo_name);
+    let (_, path) = match resolve_repo(&state, &owner, repo_name).await {
+        Ok(r) => r,
+        Err((status, msg)) => return (status, msg).into_response(),
+    };
 
     if !path.exists() {
         return (StatusCode::NOT_FOUND, "Repository not found").into_response();
@@ -152,24 +191,28 @@ pub async fn receive_pack(
     body: axum::body::Bytes,
 ) -> Response {
     let repo_name = repo.strip_suffix(".git").unwrap_or(&repo);
-    let pool = &state.pool();
+    let control_pool = state.pool();
+    let (repo_pool, path) = match resolve_repo(&state, &owner, repo_name).await {
+        Ok(r) => r,
+        Err((status, msg)) => return (status, msg).into_response(),
+    };
 
     // Require auth for push — owner or collaborator
     let repo_db_id;
     let repo_owner_id;
     match extract_basic_auth(&headers) {
         Some((username, password)) => {
-            let auth_user = match db::authenticate_user(pool, &username, &password).await {
+            let auth_user = match db::authenticate_user(&control_pool, &username, &password).await {
                 Ok(u) => u,
                 Err(_) => return auth_required(),
             };
-            let (_, repo_db) = match db::get_repository(pool, &owner, repo_name).await {
+            let (_, repo_db) = match db::get_repository(&repo_pool, &owner, repo_name).await {
                 Ok(r) => r,
                 Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
             };
             repo_db_id = repo_db.id;
             repo_owner_id = repo_db.owner_id;
-            if let Ok(can) = db::can_push_repo(pool, &repo_db, auth_user.id).await {
+            if let Ok(can) = db::can_push_repo(&repo_pool, &repo_db, auth_user.id).await {
                 if !can {
                     return (StatusCode::FORBIDDEN, "Access denied").into_response();
                 }
@@ -177,8 +220,6 @@ pub async fn receive_pack(
         }
         None => return auth_required(),
     }
-
-    let path = repo_path(&state.data_dir, &owner, repo_name);
     if !path.exists() {
         return (StatusCode::NOT_FOUND, "Repository not found").into_response();
     }
@@ -198,7 +239,6 @@ pub async fn receive_pack(
     let response = run_git_service_with_env("git-receive-pack", &path, &body, &env_vars).await;
 
     // After push: capture refs again and process AI trailers + webhooks in background
-    let pool_clone = pool.clone();
     let path_clone = path.clone();
     let owner_clone = owner.clone();
     let repo_name_clone = repo_name.to_string();
@@ -206,7 +246,8 @@ pub async fn receive_pack(
     tokio::spawn(async move {
         let after_refs = oxigit_core::git::capture_refs(&path_clone).unwrap_or_default();
         oxigit_core::hooks::process_post_receive(
-            &pool_clone,
+            &repo_pool,
+            &control_pool,
             &path_clone,
             repo_db_id,
             repo_owner_id,
@@ -228,15 +269,19 @@ pub async fn deploy_callback(
     axum::extract::State(state): axum::extract::State<AppState>,
     axum::Json(payload): axum::Json<DeployCallbackPayload>,
 ) -> Response {
-    let pool = &state.pool();
+    let control_pool = state.pool();
+    let (repo_pool, _) = match resolve_repo(&state, &payload.repo_owner, &payload.repo_name).await {
+        Ok(r) => r,
+        Err((status, msg)) => return (status, msg).into_response(),
+    };
 
-    let (_, repo_db) = match db::get_repository(pool, &payload.repo_owner, &payload.repo_name).await {
+    let (_, repo_db) = match db::get_repository(&repo_pool, &payload.repo_owner, &payload.repo_name).await {
         Ok(r) => r,
         Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
     };
 
     // Gate deploy previews to Pro+ plans
-    let owner_plan = db::get_user_plan(pool, repo_db.owner_id)
+    let owner_plan = db::get_user_plan(&control_pool, repo_db.owner_id)
         .await
         .unwrap_or_else(|_| "free".into());
     let ent = oxigit_core::entitlements::for_plan(&owner_plan);
@@ -245,7 +290,7 @@ pub async fn deploy_callback(
     }
 
     match db::update_deploy_preview(
-        pool,
+        &repo_pool,
         repo_db.id,
         &commit_sha,
         &payload.preview_url,
@@ -366,10 +411,17 @@ pub async fn guardrail_check(
     let commit_ref = params.get("ref").cloned().unwrap_or_default();
     let new_sha = params.get("new").cloned().unwrap_or_default();
 
-    let pool = &state.pool();
+    // Guardrail check uses repo_id directly — we need to find which tenant pool has it.
+    // The repo_id comes from the pre-receive hook env, so in multi-tenant mode we need
+    // to look up by repo_id. For now, use the control pool in legacy mode or search
+    // by the repo_owner/repo_name params if available. Since the pre-receive hook only
+    // passes repo_id, we use the control pool for guardrail queries in legacy mode,
+    // and in multi-tenant mode we'd need the repo_owner/repo_name from the hook.
+    // TODO: Pass owner/repo through pre-receive hook env for multi-tenant guardrail lookup.
+    let pool = state.pool();
 
     // Load block rules only
-    let rules = match db::get_guardrail_rules(pool, repo_id).await {
+    let rules = match db::get_guardrail_rules(&pool, repo_id).await {
         Ok(r) => r,
         Err(_) => return (StatusCode::OK, "OK").into_response(),
     };
@@ -379,7 +431,7 @@ pub async fn guardrail_check(
         return (StatusCode::OK, "OK").into_response();
     }
 
-    let config = db::get_guardrail_config(pool, repo_id).await.ok().flatten();
+    let config = db::get_guardrail_config(&pool, repo_id).await.ok().flatten();
 
     let violations = guardrail::evaluate_diff(&block_rules, &config, &diff, file_count);
     let blocking = violations.iter().filter(|v| v.action == "block").collect::<Vec<_>>();
@@ -391,7 +443,7 @@ pub async fn guardrail_check(
     // Log violations
     for v in &blocking {
         let _ = db::insert_guardrail_violation(
-            pool, repo_id, &new_sha, Some(&commit_ref),
+            &pool, repo_id, &new_sha, Some(&commit_ref),
             &v.category, "blocked", &v.severity, &v.message,
             v.file_path.as_deref(), None,
         ).await;

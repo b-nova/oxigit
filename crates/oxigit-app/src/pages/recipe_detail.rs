@@ -112,7 +112,7 @@ async fn replay_recipe(
     target_branch: String,
     mode: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
@@ -125,7 +125,7 @@ async fn replay_recipe(
         ));
     }
 
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&target_owner, &target_repo).await?;
     let data_dir = get_data_dir().await?;
 
     let (_, target_repo_db) = db::get_repository(&pool, &target_owner, &target_repo)

@@ -32,10 +32,10 @@ async fn get_pr(
     repo: String,
     number: i64,
 ) -> Result<PrDetail, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
     use oxigit_core::{db, git};
 
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
     let current_user = extract_session_user().await;
 
@@ -160,13 +160,13 @@ async fn merge_pr(
     repo: String,
     number: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
@@ -202,13 +202,13 @@ async fn close_pr(
     repo: String,
     number: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
@@ -236,10 +236,10 @@ async fn get_pr_diff_review(
     repo: String,
     number: i64,
 ) -> Result<DiffReviewData, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_effective_llm_config};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_effective_llm_config};
     use oxigit_core::{db, git, llm, risk};
 
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
     let current_user = extract_session_user().await;
     let (llm_provider, api_key, model, base_url) = get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
@@ -324,13 +324,13 @@ async fn generate_pr_diff_summary(
     repo: String,
     number: i64,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_effective_llm_config};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_effective_llm_config};
     use oxigit_core::{db, git, llm, risk};
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
     let (provider, api_key, model, base_url) = get_effective_llm_config(Some(user.id)).await?;
 

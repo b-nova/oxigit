@@ -85,4 +85,8 @@ pub struct Config {
     /// Email address to receive contact form inquiries
     #[arg(long, env = "OXIGIT_CONTACT_EMAIL")]
     pub contact_email: Option<String>,
+
+    /// Force legacy single-database mode even if control.db exists.
+    #[arg(long, env = "OXIGIT_LEGACY_MODE")]
+    pub legacy_mode: bool,
 }

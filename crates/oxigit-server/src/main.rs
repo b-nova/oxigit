@@ -31,22 +31,44 @@ async fn main() {
 
     // Ensure data directories exist
     std::fs::create_dir_all(&config.data_dir).expect("Failed to create data directory");
-    std::fs::create_dir_all(config.data_dir.join("repos"))
-        .expect("Failed to create repos directory");
 
-    // Database setup — use legacy single DB for now, wrapped in TenantPoolManager
-    let db_path = config.data_dir.join("oxigit.db");
-    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let pool = db::create_pool(&database_url)
-        .await
-        .expect("Failed to create database pool");
-    db::run_migrations(&pool)
-        .await
-        .expect("Failed to run migrations");
+    // Detect database mode: multi-tenant vs legacy single-DB
+    let control_db_path = config.data_dir.join("control.db");
+    let legacy_db_path = config.data_dir.join("oxigit.db");
+    let multi_tenant = !config.legacy_mode
+        && (control_db_path.exists() || !legacy_db_path.exists());
 
-    tracing::info!("Database initialized at {}", db_path.display());
+    let pool = if multi_tenant {
+        // Multi-tenant mode (fresh install or already migrated)
+        let url = format!("sqlite:{}?mode=rwc", control_db_path.display());
+        let p = db::create_pool(&url)
+            .await
+            .expect("Failed to create control database pool");
+        db::run_control_migrations(&p)
+            .await
+            .expect("Failed to run control migrations");
+        tracing::info!("Multi-tenant mode: control DB at {}", control_db_path.display());
+        p
+    } else {
+        // Legacy single-DB mode
+        std::fs::create_dir_all(config.data_dir.join("repos"))
+            .expect("Failed to create repos directory");
+        let url = format!("sqlite:{}?mode=rwc", legacy_db_path.display());
+        let p = db::create_pool(&url)
+            .await
+            .expect("Failed to create database pool");
+        db::run_migrations(&p)
+            .await
+            .expect("Failed to run migrations");
+        if !control_db_path.exists() {
+            tracing::warn!(
+                "Running in legacy single-DB mode. Run `migrate-tenants` to enable multi-tenancy."
+            );
+        }
+        tracing::info!("Legacy mode: database at {}", legacy_db_path.display());
+        p
+    };
 
-    // Wrap pool in TenantPoolManager (control pool = legacy single DB during transition)
     let tenant_mgr = Arc::new(TenantPoolManager::new(pool.clone(), config.data_dir.clone(), 50));
 
     // SSH host key
@@ -68,6 +90,7 @@ async fn main() {
 
     let state = AppState {
         tenant_mgr: tenant_mgr.clone(),
+        multi_tenant,
         data_dir: config.data_dir.clone(),
         secret_key,
         leptos_options: leptos_options.clone(),
@@ -130,10 +153,10 @@ async fn main() {
 
     // Start SSH server in background
     let ssh_addr: std::net::SocketAddr = config.ssh_addr.parse().expect("Invalid SSH address");
-    let ssh_pool = pool.clone();
+    let ssh_tenant_mgr = tenant_mgr.clone();
     let ssh_data_dir = config.data_dir.clone();
     tokio::spawn(async move {
-        if let Err(e) = oxigit_ssh::run_ssh_server(ssh_addr, ssh_pool, ssh_data_dir, host_key).await {
+        if let Err(e) = oxigit_ssh::run_ssh_server(ssh_addr, ssh_tenant_mgr, ssh_data_dir, host_key, multi_tenant).await {
             tracing::error!("SSH server error: {}", e);
         }
     });

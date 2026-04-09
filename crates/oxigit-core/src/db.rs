@@ -167,6 +167,39 @@ pub async fn create_repository(
     Ok(repo)
 }
 
+/// Create a repository in a tenant DB where the `users` table is not available.
+/// The caller provides the owner username and the repos directory directly.
+pub async fn create_repository_in_tenant(
+    pool: &SqlitePool,
+    owner_id: i64,
+    owner_username: &str,
+    name: &str,
+    description: &str,
+    is_private: bool,
+    repos_dir: &Path,
+) -> Result<Repository> {
+    validate_repo_name(name)?;
+
+    let repo_path = repos_dir
+        .join(owner_username)
+        .join(format!("{name}.git"));
+
+    std::fs::create_dir_all(&repo_path)?;
+    crate::git::init_bare_repo(&repo_path)?;
+
+    let repo = sqlx::query_as::<_, Repository>(
+        "INSERT INTO repositories (owner_id, name, description, is_private) VALUES (?, ?, ?, ?) RETURNING *",
+    )
+    .bind(owner_id)
+    .bind(name)
+    .bind(description)
+    .bind(is_private)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(repo)
+}
+
 pub async fn list_user_repositories(pool: &SqlitePool, owner_id: i64) -> Result<Vec<Repository>> {
     let repos = sqlx::query_as::<_, Repository>(
         "SELECT * FROM repositories WHERE owner_id = ? ORDER BY updated_at DESC",
@@ -2271,6 +2304,43 @@ pub async fn register_repo_in_index(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// List repos owned by a user from the global index (for multi-tenant repo listing).
+pub async fn list_user_repos_from_index(pool: &SqlitePool, owner_id: i64) -> Result<Vec<crate::models::RepositoryIndexEntry>> {
+    let rows = sqlx::query_as::<_, crate::models::RepositoryIndexEntry>(
+        "SELECT id, org_slug, owner_id, owner_username, repo_name, description, is_private, created_at, updated_at \
+         FROM repository_index WHERE owner_id = ? ORDER BY updated_at DESC",
+    )
+    .bind(owner_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// Search public repos from the global index (for multi-tenant explore page).
+pub async fn search_public_repos_from_index(pool: &SqlitePool, query: &str) -> Result<Vec<crate::models::RepositoryIndexEntry>> {
+    let rows = if query.is_empty() {
+        sqlx::query_as::<_, crate::models::RepositoryIndexEntry>(
+            "SELECT id, org_slug, owner_id, owner_username, repo_name, description, is_private, created_at, updated_at \
+             FROM repository_index WHERE is_private = 0 ORDER BY updated_at DESC LIMIT 50",
+        )
+        .fetch_all(pool)
+        .await?
+    } else {
+        let pattern = format!("%{}%", query);
+        sqlx::query_as::<_, crate::models::RepositoryIndexEntry>(
+            "SELECT id, org_slug, owner_id, owner_username, repo_name, description, is_private, created_at, updated_at \
+             FROM repository_index WHERE is_private = 0 AND (repo_name LIKE ? OR description LIKE ? OR owner_username LIKE ?) \
+             ORDER BY updated_at DESC LIMIT 50",
+        )
+        .bind(&pattern)
+        .bind(&pattern)
+        .bind(&pattern)
+        .fetch_all(pool)
+        .await?
+    };
+    Ok(rows)
 }
 
 /// Remove a repository from the global index.

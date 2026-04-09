@@ -13,6 +13,7 @@ use crate::webhook;
 /// Compares before/after ref snapshots to find new commits, reads context files, and auto-detects changed files.
 pub async fn process_post_receive(
     pool: &SqlitePool,
+    control_pool: &SqlitePool,
     repo_path: &Path,
     repo_id: i64,
     owner_id: i64,
@@ -148,7 +149,7 @@ pub async fn process_post_receive(
                     .unwrap_or_default();
 
                 // Create pending deploy preview (Pro+ only)
-                let owner_plan = db::get_user_plan(pool, owner_id)
+                let owner_plan = db::get_user_plan(control_pool, owner_id)
                     .await
                     .unwrap_or_else(|_| "free".into());
                 let ent = crate::entitlements::for_plan(&owner_plan);

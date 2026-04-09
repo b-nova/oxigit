@@ -14,10 +14,10 @@ async fn fetch_session_detail(
     repo: String,
     session_id: String,
 ) -> Result<SessionDetailResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_effective_llm_config, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_effective_llm_config, get_user_entitlements};
     use oxigit_core::{db, git, llm, risk};
 
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
     let current_user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
@@ -190,7 +190,7 @@ async fn revert_session(
     repo: String,
     session_id: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
@@ -203,7 +203,7 @@ async fn revert_session(
         ));
     }
 
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
@@ -247,7 +247,7 @@ async fn squash_session_action(
     session_id: String,
     message: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
@@ -260,7 +260,7 @@ async fn squash_session_action(
         ));
     }
 
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
@@ -301,7 +301,7 @@ async fn cherry_pick_session_action(
     session_id: String,
     target_branch: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
@@ -314,7 +314,7 @@ async fn cherry_pick_session_action(
         ));
     }
 
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)

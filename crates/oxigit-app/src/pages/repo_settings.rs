@@ -26,13 +26,13 @@ async fn list_collaborators(
     owner: String,
     repo: String,
 ) -> Result<Vec<CollaboratorInfo>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
 
     let (_repo_owner, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
@@ -63,13 +63,13 @@ async fn add_collaborator(
     repo: String,
     username: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
@@ -100,13 +100,13 @@ async fn remove_collaborator(
     repo: String,
     user_id: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
@@ -417,13 +417,13 @@ async fn install_ai_hook(
     repo: String,
     tool_id: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
@@ -544,13 +544,13 @@ async fn list_repo_webhooks(
     owner: String,
     repo: String,
 ) -> Result<Vec<WebhookInfo>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
@@ -576,13 +576,13 @@ async fn add_webhook(
     url: String,
     secret: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
@@ -602,13 +602,13 @@ async fn fetch_repo_visibility(
     owner: String,
     repo: String,
 ) -> Result<bool, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
@@ -627,13 +627,13 @@ async fn update_visibility(
     repo: String,
     is_private: bool,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
@@ -656,13 +656,13 @@ async fn delete_webhook(
     repo: String,
     webhook_id: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
@@ -681,7 +681,7 @@ async fn get_guardrail_settings(
     owner: String,
     repo: String,
 ) -> Result<GuardrailSettingsInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_repo_pool, get_user_entitlements};
     use oxigit_core::db;
     use super::GuardrailRuleInfo;
 
@@ -695,7 +695,7 @@ async fn get_guardrail_settings(
         ));
     }
 
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
@@ -736,7 +736,7 @@ async fn save_guardrail_settings(
     min_vibe_score: Option<i64>,
     max_files_per_push: Option<i64>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
@@ -749,7 +749,7 @@ async fn save_guardrail_settings(
         ));
     }
 
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
 
     let (_, repo_db) = db::get_repository(&pool, &owner, &repo)

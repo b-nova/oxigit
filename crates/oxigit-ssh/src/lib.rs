@@ -12,13 +12,15 @@ use tokio::process::Command;
 
 use oxigit_core::db;
 use oxigit_core::git::repo_path;
+use oxigit_core::tenant::TenantPoolManager;
 
 /// Start the SSH server on the given address.
 pub async fn run_ssh_server(
     addr: SocketAddr,
-    pool: SqlitePool,
+    tenant_mgr: Arc<TenantPoolManager>,
     data_dir: PathBuf,
     host_key: PrivateKey,
+    multi_tenant: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = russh::server::Config {
         keys: vec![host_key],
@@ -34,7 +36,8 @@ pub async fn run_ssh_server(
         tracing::debug!("SSH connection from {}", peer_addr);
 
         let handler = OxigitSshHandler {
-            pool: pool.clone(),
+            tenant_mgr: tenant_mgr.clone(),
+            multi_tenant,
             data_dir: data_dir.clone(),
             authenticated_user: None,
             channels: HashMap::new(),
@@ -76,7 +79,8 @@ pub fn load_or_generate_host_key(data_dir: &std::path::Path) -> PrivateKey {
 }
 
 struct OxigitSshHandler {
-    pool: SqlitePool,
+    tenant_mgr: Arc<TenantPoolManager>,
+    multi_tenant: bool,
     data_dir: PathBuf,
     authenticated_user: Option<String>,
     channels: HashMap<ChannelId, Channel<Msg>>,
@@ -93,7 +97,7 @@ impl Handler for OxigitSshHandler {
         let fingerprint = public_key.fingerprint(HashAlg::Sha256).to_string();
         tracing::debug!("SSH auth attempt with fingerprint: {}", fingerprint);
 
-        match db::find_user_by_ssh_fingerprint(&self.pool, &fingerprint).await {
+        match db::find_user_by_ssh_fingerprint(self.tenant_mgr.control_pool(), &fingerprint).await {
             Ok(user) => {
                 tracing::info!("SSH authenticated user: {}", user.username);
                 self.authenticated_user = Some(user.username);
@@ -152,15 +156,35 @@ impl Handler for OxigitSshHandler {
             }
         };
 
+        // Resolve the appropriate pool for repo operations
+        let control_pool = self.tenant_mgr.control_pool().clone();
+        let repo_pool = if self.multi_tenant {
+            match db::lookup_repo_org(&control_pool, &owner, &repo_name).await {
+                Ok(org_slug) => match self.tenant_mgr.get_tenant_pool(&org_slug).await {
+                    Ok(p) => p,
+                    Err(_) => {
+                        let _ = session.channel_failure(channel_id);
+                        return Ok(());
+                    }
+                },
+                Err(_) => {
+                    let _ = session.channel_failure(channel_id);
+                    return Ok(());
+                }
+            }
+        } else {
+            control_pool.clone()
+        };
+
         // For push, verify the user has write access (owner or collaborator)
         let mut repo_db_id: Option<i64> = None;
         let mut repo_owner_id: Option<i64> = None;
         if service == "git-receive-pack" {
-            match db::get_repository(&self.pool, &owner, &repo_name).await {
+            match db::get_repository(&repo_pool, &owner, &repo_name).await {
                 Ok((_, repo_db)) => {
-                    let push_user = db::get_user_by_username(&self.pool, &username).await;
+                    let push_user = db::get_user_by_username(&control_pool, &username).await;
                     let can_push = match push_user {
-                        Ok(u) => db::can_push_repo(&self.pool, &repo_db, u.id).await.unwrap_or(false),
+                        Ok(u) => db::can_push_repo(&repo_pool, &repo_db, u.id).await.unwrap_or(false),
                         Err(_) => false,
                     };
                     if !can_push {
@@ -178,7 +202,15 @@ impl Handler for OxigitSshHandler {
             }
         }
 
-        let path = repo_path(&self.data_dir, &owner, &repo_name);
+        // Resolve repo path based on mode
+        let path = if self.multi_tenant {
+            let org_slug = db::lookup_repo_org(&control_pool, &owner, &repo_name)
+                .await
+                .unwrap_or_else(|_| owner.clone());
+            self.tenant_mgr.tenant_repos_dir(&org_slug).join(format!("{}/{}.git", owner, repo_name))
+        } else {
+            repo_path(&self.data_dir, &owner, &repo_name)
+        };
         if !path.exists() {
             let _ = session.channel_failure(channel_id);
             return Ok(());
@@ -192,12 +224,13 @@ impl Handler for OxigitSshHandler {
             None => return Ok(()),
         };
 
-        let pool = self.pool.clone();
         let is_receive = service == "git-receive-pack";
         let ssh_owner = owner.clone();
         let ssh_repo = repo_name.clone();
+        let spawn_repo_pool = repo_pool.clone();
+        let spawn_control_pool = control_pool.clone();
         tokio::spawn(async move {
-            if let Err(e) = run_git_over_channel(&service, &path, &mut channel, is_receive, repo_db_id, repo_owner_id, &pool, &ssh_owner, &ssh_repo).await {
+            if let Err(e) = run_git_over_channel(&service, &path, &mut channel, is_receive, repo_db_id, repo_owner_id, &spawn_repo_pool, &spawn_control_pool, &ssh_owner, &ssh_repo).await {
                 tracing::error!("Git SSH error: {}", e);
             }
         });
@@ -213,7 +246,8 @@ async fn run_git_over_channel(
     is_receive: bool,
     repo_db_id: Option<i64>,
     repo_owner_id: Option<i64>,
-    pool: &SqlitePool,
+    tenant_pool: &SqlitePool,
+    control_pool: &SqlitePool,
     owner: &str,
     repo_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -324,7 +358,8 @@ async fn run_git_over_channel(
                             if let Some(rid) = repo_db_id {
                                 let after_refs = oxigit_core::git::capture_refs(repo_path).unwrap_or_default();
                                 oxigit_core::hooks::process_post_receive(
-                                    pool,
+                                    tenant_pool,
+                                    control_pool,
                                     repo_path,
                                     rid,
                                     repo_owner_id.unwrap_or(0),

@@ -21,10 +21,10 @@ async fn get_blob(
     path: String,
     git_ref: String,
 ) -> Result<BlobResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
     use oxigit_core::{db, git};
 
-    let pool = get_pool().await?;
+    let pool = get_repo_pool(&owner, &repo).await?;
     let data_dir = get_data_dir().await?;
     let current_user = extract_session_user().await;
 

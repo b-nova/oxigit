@@ -47,6 +47,7 @@ const API_LIST_COLLABORATORS: &str = "/api/list_collaborators2543744637116902123
 const API_FETCH_AI_TIMELINE: &str = "/api/fetch_ai_timeline4144953925164700098";
 const API_ATTACH_AI_METADATA: &str = "/api/attach_ai_metadata7316923189440040834";
 const API_INSTALL_AI_HOOK: &str = "/api/install_ai_hook2543744637116902123";
+const API_CHECK_INSTALLED_HOOKS: &str = "/api/check_installed_hooks2543744637116902123";
 
 // Smart Diff Review
 const API_GET_DIFF_REVIEW: &str = "/api/get_diff_review7316923189440040834";
@@ -692,6 +693,20 @@ impl TestClient {
             .send()
             .await
             .expect("install_ai_hook request failed")
+    }
+
+    pub async fn check_installed_hooks(&self, owner: &str, repo: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_CHECK_INSTALLED_HOOKS))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}",
+                urlencoded(owner),
+                urlencoded(repo)
+            ))
+            .send()
+            .await
+            .expect("check_installed_hooks request failed")
     }
 
     pub async fn fetch_ai_timeline(&self, owner: &str, repo: &str) -> reqwest::Response {

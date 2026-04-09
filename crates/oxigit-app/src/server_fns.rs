@@ -94,6 +94,42 @@ pub async fn get_repo_pool(owner: &str, repo: &str) -> Result<SqlitePool, Server
         .map_err(|e| ServerFnError::new(e.to_string()))
 }
 
+/// Get both the control pool and tenant pool for a repo.
+/// Callers should use `db::get_repository_cross(&control, &tenant, owner, repo)` to look up
+/// a repo when the users table is in the control DB and repositories in the tenant DB.
+/// In legacy mode both pools are the same.
+pub async fn get_repo_pools(owner: &str, repo: &str) -> Result<(SqlitePool, SqlitePool), ServerFnError> {
+    let Extension(state): Extension<AppState> = extract().await?;
+    let control = state.pool();
+    if !state.multi_tenant {
+        return Ok((control.clone(), control));
+    }
+    let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    let tenant = state
+        .tenant_mgr
+        .get_tenant_pool(&org_slug)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    Ok((control, tenant))
+}
+
+/// Resolve the filesystem path to a bare repository.
+/// In multi-tenant mode, looks up the org via repository_index and returns the tenant-specific path.
+/// In legacy mode, returns the standard `{data_dir}/repos/{owner}/{repo}.git` path.
+pub async fn get_repo_path(owner: &str, repo: &str) -> Result<std::path::PathBuf, ServerFnError> {
+    let Extension(state): Extension<AppState> = extract().await?;
+    if !state.multi_tenant {
+        return Ok(oxigit_core::git::repo_path(&state.data_dir, owner, repo));
+    }
+    let control = state.pool();
+    let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    Ok(state.tenant_mgr.tenant_repos_dir(&org_slug).join(owner).join(format!("{repo}.git")))
+}
+
 /// Get the TenantPoolManager for advanced operations (provisioning, etc.).
 pub async fn get_tenant_mgr() -> Result<Arc<oxigit_core::tenant::TenantPoolManager>, ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;

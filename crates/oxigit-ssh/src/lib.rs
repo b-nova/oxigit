@@ -180,7 +180,7 @@ impl Handler for OxigitSshHandler {
         let mut repo_db_id: Option<i64> = None;
         let mut repo_owner_id: Option<i64> = None;
         if service == "git-receive-pack" {
-            match db::get_repository(&repo_pool, &owner, &repo_name).await {
+            match db::get_repository_cross(&control_pool, &repo_pool, &owner, &repo_name).await {
                 Ok((_, repo_db)) => {
                     let push_user = db::get_user_by_username(&control_pool, &username).await;
                     let can_push = match push_user {

@@ -12,15 +12,15 @@ async fn fetch_conflict_detail(
     repo: String,
     conflict_id: i64,
 ) -> Result<ConflictDetailResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pools};
     use oxigit_core::db;
     use super::ConflictFileInfo;
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let conflict = db::get_merge_conflict(&pool, conflict_id)
@@ -64,15 +64,14 @@ async fn fetch_conflict_file_content(
     conflict_id: i64,
     file_path: String,
 ) -> Result<ConflictFileContentResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let conflict = db::get_merge_conflict(&pool, conflict_id)
@@ -83,7 +82,7 @@ async fn fetch_conflict_file_content(
         return Err(ServerFnError::new("Access denied"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
 
     let ours = git::read_blob(&repo_path, &conflict.target_ref, &file_path)
         .ok().map(|b| String::from_utf8_lossy(&b).to_string());
@@ -115,15 +114,14 @@ async fn resolve_file(
     resolution: String,
     manual_content: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let conflict = db::get_merge_conflict(&pool, conflict_id)
@@ -140,7 +138,7 @@ async fn resolve_file(
     let file_record = files.iter().find(|f| f.id == file_id)
         .ok_or_else(|| ServerFnError::new("File not found"))?;
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
 
     let content: Option<String> = match resolution.as_str() {
         "ours" => git::read_blob(&repo_path, &conflict.target_ref, &file_record.file_path)
@@ -164,15 +162,14 @@ async fn complete_resolution(
     repo: String,
     conflict_id: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let conflict = db::get_merge_conflict(&pool, conflict_id)
@@ -201,7 +198,7 @@ async fn complete_resolution(
         })
         .collect();
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
 
     // Determine parents based on operation type
     let message = format!("Resolve {} conflicts: {} -> {}",
@@ -250,14 +247,14 @@ async fn cancel_resolution(
     repo: String,
     conflict_id: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let conflict = db::get_merge_conflict(&pool, conflict_id)

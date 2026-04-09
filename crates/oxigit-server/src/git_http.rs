@@ -89,8 +89,8 @@ pub async fn info_refs(
         Err((status, msg)) => return (status, msg).into_response(),
     };
 
-    // Verify repo exists and check access
-    let (_, repo_db) = match db::get_repository(&repo_pool, &owner, repo_name).await {
+    // Verify repo exists and check access (users in control DB, repos in tenant DB)
+    let (_, repo_db) = match db::get_repository_cross(&control_pool, &repo_pool, &owner, repo_name).await {
         Ok(r) => r,
         Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
     };
@@ -206,7 +206,7 @@ pub async fn receive_pack(
                 Ok(u) => u,
                 Err(_) => return auth_required(),
             };
-            let (_, repo_db) = match db::get_repository(&repo_pool, &owner, repo_name).await {
+            let (_, repo_db) = match db::get_repository_cross(&control_pool, &repo_pool, &owner, repo_name).await {
                 Ok(r) => r,
                 Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
             };
@@ -275,7 +275,7 @@ pub async fn deploy_callback(
         Err((status, msg)) => return (status, msg).into_response(),
     };
 
-    let (_, repo_db) = match db::get_repository(&repo_pool, &payload.repo_owner, &payload.repo_name).await {
+    let (_, repo_db) = match db::get_repository_cross(&control_pool, &repo_pool, &payload.repo_owner, &payload.repo_name).await {
         Ok(r) => r,
         Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
     };

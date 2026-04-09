@@ -24,14 +24,13 @@ async fn fetch_commit_diff(
     repo: String,
     sha: String,
 ) -> Result<CommitDetail, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_ai_access_level, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -39,7 +38,7 @@ async fn fetch_commit_diff(
         return Err(ServerFnError::new("Repository not found"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let (commit_info, diff) = git::show_commit_diff(&repo_path, &sha)
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -97,15 +96,15 @@ async fn attach_ai_metadata(
     ai_session_id: Option<String>,
     ai_files_touched: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -146,15 +145,14 @@ async fn get_diff_review(
     repo: String,
     sha: String,
 ) -> Result<DiffReviewData, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_effective_llm_config, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git, llm, risk};
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await;
     let (llm_provider, api_key, model, base_url) = get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -162,7 +160,7 @@ async fn get_diff_review(
         return Err(ServerFnError::new("Repository not found"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let (_, diff) = git::show_commit_diff(&repo_path, &sha)
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -226,7 +224,7 @@ async fn generate_diff_summary(
     repo: String,
     sha: String,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_effective_llm_config, get_repo_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools, get_user_entitlements};
     use oxigit_core::{db, git, llm, risk};
 
     let user = extract_session_user()
@@ -240,15 +238,14 @@ async fn generate_diff_summary(
         ));
     }
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let (provider, api_key, model, base_url) = get_effective_llm_config(Some(user.id)).await?;
 
     if provider == "none" {
         return Err(ServerFnError::new("LLM not configured"));
     }
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -256,7 +253,7 @@ async fn generate_diff_summary(
         return Err(ServerFnError::new("Repository not found"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let (_, diff) = git::show_commit_diff(&repo_path, &sha)
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 

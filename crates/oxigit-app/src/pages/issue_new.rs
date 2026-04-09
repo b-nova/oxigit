@@ -10,15 +10,15 @@ async fn create_issue(
     title: String,
     description: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 

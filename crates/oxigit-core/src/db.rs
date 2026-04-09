@@ -423,6 +423,62 @@ pub async fn fork_repository(
     Ok(repo)
 }
 
+/// Cross-pool variant: users from control pool, repos from tenant pool.
+/// `repos_dir` is the directory where bare repos live (tenant-specific or legacy).
+pub async fn fork_repository_cross(
+    control_pool: &SqlitePool,
+    tenant_pool: &SqlitePool,
+    source_owner: &str,
+    source_name: &str,
+    fork_user_id: i64,
+    repos_dir: &Path,
+) -> Result<Repository> {
+    let (source_owner_user, source_repo) = get_repository_cross(control_pool, tenant_pool, source_owner, source_name).await?;
+
+    if source_repo.owner_id == fork_user_id {
+        return Err(OxigitError::InvalidInput("Cannot fork your own repository".into()));
+    }
+
+    if source_repo.is_private && !can_access_repo(&source_repo, Some(fork_user_id)) {
+        return Err(OxigitError::NotFound("Repository not found".into()));
+    }
+
+    let fork_user = get_user_by_id(control_pool, fork_user_id).await?;
+
+    if get_repository_cross(control_pool, tenant_pool, &fork_user.username, source_name).await.is_ok() {
+        return Err(OxigitError::InvalidInput("You already have a repository with this name".into()));
+    }
+
+    let source_path = repos_dir.join(&source_owner_user.username).join(format!("{source_name}.git"));
+    let fork_path = repos_dir.join(&fork_user.username).join(format!("{source_name}.git"));
+
+    std::fs::create_dir_all(fork_path.parent().unwrap())?;
+    let output = std::process::Command::new("git")
+        .args(["clone", "--bare"])
+        .arg(&source_path)
+        .arg(&fork_path)
+        .output()?;
+
+    if !output.status.success() {
+        return Err(OxigitError::Git(format!(
+            "Failed to fork: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    let repo = sqlx::query_as::<_, Repository>(
+        "INSERT INTO repositories (owner_id, name, description, is_private, forked_from) VALUES (?, ?, ?, 0, ?) RETURNING *",
+    )
+    .bind(fork_user_id)
+    .bind(source_name)
+    .bind(&source_repo.description)
+    .bind(source_repo.id)
+    .fetch_one(tenant_pool)
+    .await?;
+
+    Ok(repo)
+}
+
 /// Get the source repo info for a fork.
 pub async fn get_fork_source(pool: &SqlitePool, repo: &Repository) -> Result<Option<(User, Repository)>> {
     match repo.forked_from {
@@ -434,6 +490,30 @@ pub async fn get_fork_source(pool: &SqlitePool, repo: &Repository) -> Result<Opt
             match source {
                 Some(source_repo) => {
                     let owner = get_user_by_id(pool, source_repo.owner_id).await?;
+                    Ok(Some((owner, source_repo)))
+                }
+                None => Ok(None),
+            }
+        }
+        None => Ok(None),
+    }
+}
+
+/// Cross-pool variant: repos from tenant pool, users from control pool.
+pub async fn get_fork_source_cross(
+    control_pool: &SqlitePool,
+    tenant_pool: &SqlitePool,
+    repo: &Repository,
+) -> Result<Option<(User, Repository)>> {
+    match repo.forked_from {
+        Some(source_id) => {
+            let source = sqlx::query_as::<_, Repository>("SELECT * FROM repositories WHERE id = ?")
+                .bind(source_id)
+                .fetch_optional(tenant_pool)
+                .await?;
+            match source {
+                Some(source_repo) => {
+                    let owner = get_user_by_id(control_pool, source_repo.owner_id).await?;
                     Ok(Some((owner, source_repo)))
                 }
                 None => Ok(None),
@@ -488,6 +568,27 @@ pub async fn list_collaborators(pool: &SqlitePool, repo_id: i64) -> Result<Vec<(
             )
         })
         .collect())
+}
+
+/// Cross-pool variant: collaborators from tenant pool, users from control pool.
+pub async fn list_collaborators_cross(
+    control_pool: &SqlitePool,
+    tenant_pool: &SqlitePool,
+    repo_id: i64,
+) -> Result<Vec<(User, Collaborator)>> {
+    let collabs = sqlx::query_as::<_, Collaborator>(
+        "SELECT * FROM collaborators WHERE repo_id = ? ORDER BY created_at",
+    )
+    .bind(repo_id)
+    .fetch_all(tenant_pool)
+    .await?;
+
+    let mut result = Vec::new();
+    for c in collabs {
+        let user = get_user_by_id(control_pool, c.user_id).await?;
+        result.push((user, c));
+    }
+    Ok(result)
 }
 
 pub async fn remove_collaborator(pool: &SqlitePool, repo_id: i64, user_id: i64) -> Result<()> {
@@ -586,6 +687,38 @@ pub async fn list_pull_requests(
     let mut result = Vec::new();
     for pr in prs {
         let author = get_user_by_id(pool, pr.author_id).await?;
+        result.push((pr, author));
+    }
+    Ok(result)
+}
+
+/// Cross-pool variant: PRs from tenant pool, authors from control pool.
+pub async fn list_pull_requests_cross(
+    control_pool: &SqlitePool,
+    tenant_pool: &SqlitePool,
+    repo_id: i64,
+    status: Option<&str>,
+) -> Result<Vec<(PullRequest, User)>> {
+    let prs = if let Some(status) = status {
+        sqlx::query_as::<_, PullRequest>(
+            "SELECT * FROM pull_requests WHERE repo_id = ? AND status = ? ORDER BY updated_at DESC",
+        )
+        .bind(repo_id)
+        .bind(status)
+        .fetch_all(tenant_pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, PullRequest>(
+            "SELECT * FROM pull_requests WHERE repo_id = ? ORDER BY updated_at DESC",
+        )
+        .bind(repo_id)
+        .fetch_all(tenant_pool)
+        .await?
+    };
+
+    let mut result = Vec::new();
+    for pr in prs {
+        let author = get_user_by_id(control_pool, pr.author_id).await?;
         result.push((pr, author));
     }
     Ok(result)
@@ -722,6 +855,38 @@ pub async fn list_issues(
     Ok(result)
 }
 
+/// Cross-pool variant: issues from tenant pool, authors from control pool.
+pub async fn list_issues_cross(
+    control_pool: &SqlitePool,
+    tenant_pool: &SqlitePool,
+    repo_id: i64,
+    status: Option<&str>,
+) -> Result<Vec<(Issue, User)>> {
+    let issues = if let Some(status) = status {
+        sqlx::query_as::<_, Issue>(
+            "SELECT * FROM issues WHERE repo_id = ? AND status = ? ORDER BY updated_at DESC",
+        )
+        .bind(repo_id)
+        .bind(status)
+        .fetch_all(tenant_pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, Issue>(
+            "SELECT * FROM issues WHERE repo_id = ? ORDER BY updated_at DESC",
+        )
+        .bind(repo_id)
+        .fetch_all(tenant_pool)
+        .await?
+    };
+
+    let mut result = Vec::new();
+    for issue in issues {
+        let author = get_user_by_id(control_pool, issue.author_id).await?;
+        result.push((issue, author));
+    }
+    Ok(result)
+}
+
 pub async fn get_issue(pool: &SqlitePool, repo_id: i64, number: i64) -> Result<Issue> {
     sqlx::query_as::<_, Issue>(
         "SELECT * FROM issues WHERE repo_id = ? AND number = ?",
@@ -788,6 +953,27 @@ pub async fn list_issue_comments(pool: &SqlitePool, issue_id: i64) -> Result<Vec
     let mut result = Vec::new();
     for comment in comments {
         let author = get_user_by_id(pool, comment.author_id).await?;
+        result.push((comment, author));
+    }
+    Ok(result)
+}
+
+/// Cross-pool variant: comments from tenant pool, authors from control pool.
+pub async fn list_issue_comments_cross(
+    control_pool: &SqlitePool,
+    tenant_pool: &SqlitePool,
+    issue_id: i64,
+) -> Result<Vec<(IssueComment, User)>> {
+    let comments = sqlx::query_as::<_, IssueComment>(
+        "SELECT * FROM issue_comments WHERE issue_id = ? ORDER BY created_at ASC",
+    )
+    .bind(issue_id)
+    .fetch_all(tenant_pool)
+    .await?;
+
+    let mut result = Vec::new();
+    for comment in comments {
+        let author = get_user_by_id(control_pool, comment.author_id).await?;
         result.push((comment, author));
     }
     Ok(result)
@@ -2108,6 +2294,16 @@ pub async fn count_indexed_repositories(pool: &SqlitePool) -> Result<i64> {
 pub async fn count_private_repositories(pool: &SqlitePool, owner_id: i64) -> Result<i64> {
     let (count,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM repositories WHERE owner_id = ? AND is_private = 1",
+    )
+    .bind(owner_id).fetch_one(pool).await?;
+    Ok(count)
+}
+
+/// Count private repositories for a user via the repository_index table (control DB).
+/// Use this in multi-tenant mode where repos table is in tenant DBs.
+pub async fn count_private_repos_from_index(pool: &SqlitePool, owner_id: i64) -> Result<i64> {
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM repository_index WHERE owner_id = ? AND is_private = 1",
     )
     .bind(owner_id).fetch_one(pool).await?;
     Ok(count)

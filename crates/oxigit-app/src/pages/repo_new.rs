@@ -20,8 +20,12 @@ async fn create_repo(
     if is_private {
         let entitlements = get_user_entitlements(user.id).await?;
         if let Some(max) = entitlements.max_private_repos {
-            let count = db::count_private_repositories(&control_pool, user.id)
-                .await
+            let multi = is_multi_tenant().await?;
+            let count = if multi {
+                db::count_private_repos_from_index(&control_pool, user.id).await
+            } else {
+                db::count_private_repositories(&control_pool, user.id).await
+            }
                 .map_err(|e| ServerFnError::new(e.to_string()))?;
             if count as usize >= max {
                 return Err(ServerFnError::new(format!(

@@ -5,16 +5,15 @@ use crate::components::error_display::ErrorDisplay;
 
 #[server]
 async fn get_branches(owner: String, repo: String) -> Result<Vec<String>, ServerFnError> {
-    use crate::server_fns::{get_data_dir, get_repo_pool};
+    use crate::server_fns::{get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
-    db::get_repository(&pool, &owner, &repo)
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
+    db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     Ok(git::list_branches(&repo_path).unwrap_or_default())
 }
 
@@ -27,21 +26,20 @@ async fn create_pr(
     source_branch: String,
     target_branch: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
     // Verify branches exist
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     if !git::branch_exists(&repo_path, &source_branch) {
         return Err(ServerFnError::new(format!("Branch '{}' not found", source_branch)));
     }

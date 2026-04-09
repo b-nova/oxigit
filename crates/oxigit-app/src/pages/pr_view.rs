@@ -32,14 +32,13 @@ async fn get_pr(
     repo: String,
     number: i64,
 ) -> Result<PrDetail, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -51,17 +50,17 @@ async fn get_pr(
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    let author = db::get_user_by_id(&pool, pr.author_id)
+    let author = db::get_user_by_id(&control_pool, pr.author_id)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let merged_by = if let Some(uid) = pr.merged_by {
-        Some(db::get_user_by_id(&pool, uid).await.map(|u| u.username).unwrap_or_default())
+        Some(db::get_user_by_id(&control_pool, uid).await.map(|u| u.username).unwrap_or_default())
     } else {
         None
     };
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
 
     // Get commits and diff (only for open PRs with existing branches)
     let (commits, diff_html, mergeable) = if pr.status == "open"
@@ -160,16 +159,15 @@ async fn merge_pr(
     repo: String,
     number: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -182,7 +180,7 @@ async fn merge_pr(
         return Err(ServerFnError::new("Not authorized to merge"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let message = format!("Merge pull request #{} from {}\n\n{}", pr.number, pr.source_branch, pr.title);
 
     git::merge_branches(&repo_path, &pr.target_branch, &pr.source_branch, &message)
@@ -202,15 +200,15 @@ async fn close_pr(
     repo: String,
     number: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -236,15 +234,14 @@ async fn get_pr_diff_review(
     repo: String,
     number: i64,
 ) -> Result<DiffReviewData, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_effective_llm_config};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, get_effective_llm_config};
     use oxigit_core::{db, git, llm, risk};
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await;
     let (llm_provider, api_key, model, base_url) = get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -256,7 +253,7 @@ async fn get_pr_diff_review(
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let diff = if pr.status == "open"
         && git::branch_exists(&repo_path, &pr.source_branch)
         && git::branch_exists(&repo_path, &pr.target_branch)
@@ -324,21 +321,20 @@ async fn generate_pr_diff_summary(
     repo: String,
     number: i64,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_effective_llm_config};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, get_effective_llm_config};
     use oxigit_core::{db, git, llm, risk};
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let (provider, api_key, model, base_url) = get_effective_llm_config(Some(user.id)).await?;
 
     if provider == "none" {
         return Err(ServerFnError::new("LLM not configured"));
     }
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -350,7 +346,7 @@ async fn generate_pr_diff_summary(
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let diff = git::branch_diff(&repo_path, &pr.target_branch, &pr.source_branch)
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 

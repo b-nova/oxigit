@@ -17,15 +17,14 @@ async fn fetch_remix_guide(
     owner: String,
     repo: String,
 ) -> Result<RemixGuideData, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_base_url, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_base_url, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await;
     let base_url = get_base_url().await;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -33,7 +32,7 @@ async fn fetch_remix_guide(
         return Err(ServerFnError::new("Repository not found"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let default_ref = git::default_branch(&repo_path)
         .unwrap_or(None)
         .unwrap_or_else(|| "main".to_string());
@@ -52,7 +51,7 @@ async fn fetch_remix_guide(
         String::new()
     };
 
-    let source_name = db::get_fork_source(&pool, &repo_db)
+    let source_name = db::get_fork_source_cross(&control_pool, &pool, &repo_db)
         .await
         .ok()
         .flatten()

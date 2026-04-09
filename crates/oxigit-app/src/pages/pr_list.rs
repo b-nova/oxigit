@@ -23,13 +23,13 @@ pub async fn list_prs(
     repo: String,
     status: String,
 ) -> Result<Vec<PrSummary>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
-    let pool = get_repo_pool(&owner, &repo).await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -38,7 +38,7 @@ pub async fn list_prs(
     }
 
     let filter = if status.is_empty() { None } else { Some(status.as_str()) };
-    let prs = db::list_pull_requests(&pool, repo_db.id, filter)
+    let prs = db::list_pull_requests_cross(&control_pool, &pool, repo_db.id, filter)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 

@@ -13,12 +13,17 @@ async fn fetch_recipe_marketplace(
     sort: String,
     page: i64,
 ) -> Result<RecipeMarketplaceResponse, ServerFnError> {
-    use crate::server_fns::get_pool;
+    use crate::server_fns::{get_pool, is_multi_tenant};
     use oxigit_core::db;
 
     let pool = get_pool().await?;
     let limit = 20i64;
     let offset = page * limit;
+
+    // In multi-tenant mode, recipes are in tenant DBs and not globally indexed yet.
+    if is_multi_tenant().await? {
+        return Ok(RecipeMarketplaceResponse { recipes: vec![], total: 0, has_more: false });
+    }
 
     let total = db::count_public_recipes(&pool, &query)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;

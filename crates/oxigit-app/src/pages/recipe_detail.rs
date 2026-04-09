@@ -9,11 +9,10 @@ use super::{RecipeDetailResponse, RecipeFileInfo, RecipeStepInfo, ReplayTargetRe
 
 #[server]
 async fn fetch_recipe_detail(recipe_id: i64) -> Result<RecipeDetailResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool};
+    use crate::server_fns::{extract_session_user, get_pool, get_repo_path};
     use oxigit_core::{db, git};
 
     let pool = get_pool().await?;
-    let data_dir = get_data_dir().await?;
     let current_user = extract_session_user().await;
 
     let recipe = db::get_recipe_by_id(&pool, recipe_id)
@@ -71,15 +70,16 @@ async fn fetch_recipe_detail(recipe_id: i64) -> Result<RecipeDetailResponse, Ser
     let (can_replay, user_repos) = if let Some(ref user) = current_user {
         let repos = db::list_user_repositories(&pool, user.id)
             .await.unwrap_or_default();
-        let targets: Vec<ReplayTargetRepo> = repos.into_iter().map(|r| {
-            let rp = git::repo_path(&data_dir, &user.username, &r.name);
+        let mut targets: Vec<ReplayTargetRepo> = Vec::new();
+        for r in repos {
+            let rp = get_repo_path(&user.username, &r.name).await?;
             let branches = git::list_branches(&rp).unwrap_or_default();
-            ReplayTargetRepo {
+            targets.push(ReplayTargetRepo {
                 owner: user.username.clone(),
                 name: r.name,
                 branches,
-            }
-        }).collect();
+            });
+        }
         (true, targets)
     } else {
         (false, vec![])
@@ -112,7 +112,7 @@ async fn replay_recipe(
     target_branch: String,
     mode: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
@@ -125,10 +125,9 @@ async fn replay_recipe(
         ));
     }
 
-    let pool = get_repo_pool(&target_owner, &target_repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&target_owner, &target_repo).await?;
 
-    let (_, target_repo_db) = db::get_repository(&pool, &target_owner, &target_repo)
+    let (_, target_repo_db) = db::get_repository_cross(&control_pool, &pool, &target_owner, &target_repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let can_push = db::can_push_repo(&pool, &target_repo_db, user.id)
@@ -145,7 +144,7 @@ async fn replay_recipe(
         let steps = db::get_recipe_steps(&pool, recipe_id)
             .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
-        let repo_path = git::repo_path(&data_dir, &target_owner, &target_repo);
+        let repo_path = get_repo_path(&target_owner, &target_repo).await?;
         let mut steps_applied = 0i64;
 
         for step in &steps {

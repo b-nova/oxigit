@@ -12,15 +12,14 @@ async fn share_session_as_recipe(
     description: String,
     tags: String,
 ) -> Result<i64, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git, vibe};
 
     let user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
@@ -34,7 +33,7 @@ async fn share_session_as_recipe(
         return Err(ServerFnError::new("This session is already shared as a recipe"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
 
     let metas = db::get_ai_metadata_by_session(&pool, repo_db.id, &session_id)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;

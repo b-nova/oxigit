@@ -31,13 +31,13 @@ async fn get_issue(
     repo: String,
     number: i64,
 ) -> Result<IssueDetail, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
-    let pool = get_repo_pool(&owner, &repo).await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -49,11 +49,11 @@ async fn get_issue(
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    let author = db::get_user_by_id(&pool, issue.author_id)
+    let author = db::get_user_by_id(&control_pool, issue.author_id)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    let comments = db::list_issue_comments(&pool, issue.id)
+    let comments = db::list_issue_comments_cross(&control_pool, &pool, issue.id)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?
         .into_iter()
@@ -82,12 +82,12 @@ async fn get_issue(
 
 #[server]
 async fn close_issue_action(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user().await.ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo).await.map_err(|e| ServerFnError::new(e.to_string()))?;
     let issue = db::get_issue(&pool, repo_db.id, number).await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     if user.id != repo_db.owner_id && user.id != issue.author_id {
@@ -101,12 +101,12 @@ async fn close_issue_action(owner: String, repo: String, number: i64) -> Result<
 
 #[server]
 async fn reopen_issue_action(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user().await.ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo).await.map_err(|e| ServerFnError::new(e.to_string()))?;
     let issue = db::get_issue(&pool, repo_db.id, number).await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     if user.id != repo_db.owner_id && user.id != issue.author_id {
@@ -120,12 +120,12 @@ async fn reopen_issue_action(owner: String, repo: String, number: i64) -> Result
 
 #[server]
 async fn add_comment(owner: String, repo: String, number: i64, body: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user().await.ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo).await.map_err(|e| ServerFnError::new(e.to_string()))?;
     let issue = db::get_issue(&pool, repo_db.id, number).await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     db::add_issue_comment(&pool, issue.id, user.id, &body).await.map_err(|e| ServerFnError::new(e.to_string()))?;

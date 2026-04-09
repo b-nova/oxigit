@@ -26,15 +26,14 @@ async fn fetch_repo_tree(
     git_ref: String,
     path: String,
 ) -> Result<RepoTreeResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_base_url, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_base_url, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await;
     let base_url = get_base_url().await;
 
-    let (_owner_user, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_owner_user, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -43,7 +42,7 @@ async fn fetch_repo_tree(
         return Err(ServerFnError::new("Repository not found"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
 
     let branches = git::list_branches(&repo_path)
         .unwrap_or_default();
@@ -75,7 +74,7 @@ async fn fetch_repo_tree(
         });
 
     // Fork info (before moving fields out of repo_db)
-    let forked_from = match db::get_fork_source(&pool, &repo_db).await.unwrap_or(None) {
+    let forked_from = match db::get_fork_source_cross(&control_pool, &pool, &repo_db).await.unwrap_or(None) {
         Some((fork_owner, fork_repo)) => Some(format!("{}/{}", fork_owner.username, fork_repo.name)),
         None => None,
     };
@@ -138,28 +137,78 @@ async fn fetch_repo_tree(
 
 #[server]
 async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_path, get_repo_pools, get_tenant_mgr, is_multi_tenant};
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     // Check if source repo has REMIX.md before forking
-    let source_path = git::repo_path(&data_dir, &owner, &repo);
+    let source_path = get_repo_path(&owner, &repo).await?;
     let default_ref = git::default_branch(&source_path).unwrap_or(None).unwrap_or_else(|| "main".to_string());
     let has_remix = git::read_blob(&source_path, &default_ref, "REMIX.md").is_ok();
 
-    let forked = db::fork_repository(&pool, &owner, &repo, user.id, &data_dir)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-
-    if has_remix {
-        leptos_axum::redirect(&format!("/{}/{}/remix-guide", user.username, forked.name));
+    let multi = is_multi_tenant().await?;
+    if multi {
+        // In multi-tenant mode, the fork user's tenant repos_dir is needed.
+        // Both source and fork live in the same tenant since the fork user
+        // is the active user whose org was used to resolve the tenant pool.
+        let tenant_mgr = get_tenant_mgr().await?;
+        let fork_repos_dir = tenant_mgr.tenant_repos_dir(&user.username);
+        // Ensure the fork target directory exists
+        std::fs::create_dir_all(&fork_repos_dir)
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        // Get the fork user's tenant pool for inserting the forked repo record
+        let fork_pool = tenant_mgr.get_tenant_pool(&user.username)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        // Source repo: resolve from source tenant
+        let (_, source_repo) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        if source_repo.owner_id == user.id {
+            return Err(ServerFnError::new("Cannot fork your own repository"));
+        }
+        if source_repo.is_private && !db::can_access_repo(&source_repo, Some(user.id)) {
+            return Err(ServerFnError::new("Repository not found"));
+        }
+        // Clone bare repo on disk
+        let fork_path = fork_repos_dir.join(&user.username).join(format!("{}.git", repo));
+        std::fs::create_dir_all(fork_path.parent().unwrap())
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        let output = std::process::Command::new("git")
+            .args(["clone", "--bare"])
+            .arg(&source_path)
+            .arg(&fork_path)
+            .output()
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        if !output.status.success() {
+            return Err(ServerFnError::new(format!("Failed to fork: {}", String::from_utf8_lossy(&output.stderr))));
+        }
+        // Insert into fork user's tenant DB
+        let forked = db::create_repository_in_tenant(
+            &fork_pool, user.id, &user.username, &repo, &source_repo.description, false, &fork_repos_dir,
+        ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        // Register in global index
+        db::register_repo_in_index(&control_pool, &user.username, user.id, &user.username, &repo, &source_repo.description, false)
+            .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        if has_remix {
+            leptos_axum::redirect(&format!("/{}/{}/remix-guide", user.username, forked.name));
+        } else {
+            leptos_axum::redirect(&format!("/{}/{}", user.username, forked.name));
+        }
     } else {
-        leptos_axum::redirect(&format!("/{}/{}", user.username, forked.name));
+        let data_dir = get_data_dir().await?;
+        let forked = db::fork_repository(&pool, &owner, &repo, user.id, &data_dir)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        if has_remix {
+            leptos_axum::redirect(&format!("/{}/{}/remix-guide", user.username, forked.name));
+        } else {
+            leptos_axum::redirect(&format!("/{}/{}", user.username, forked.name));
+        }
     }
     Ok(())
 }

@@ -14,12 +14,11 @@ async fn fetch_prompt_detail(
     session_id: String,
     prompt_index: i64,
 ) -> Result<PromptDetailResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_effective_llm_config, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, get_effective_llm_config, get_user_entitlements};
     use oxigit_core::{db, git, llm, risk};
     use super::{AiMetadataInfo, DiffSummaryInfo, RiskFlagInfo, VibeScoreInfo};
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
@@ -30,7 +29,7 @@ async fn fetch_prompt_detail(
         ));
     }
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -38,7 +37,7 @@ async fn fetch_prompt_detail(
         return Err(ServerFnError::new("Repository not found"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
 
     let metas = db::get_commits_for_prompt_group(&pool, repo_db.id, &session_id, prompt_index)
         .await
@@ -203,7 +202,7 @@ async fn revert_prompt(
     session_id: String,
     prompt_index: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
@@ -216,10 +215,9 @@ async fn revert_prompt(
         ));
     }
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
@@ -228,7 +226,7 @@ async fn revert_prompt(
         return Err(ServerFnError::new("Access denied"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let metas = db::get_commits_for_prompt_group(&pool, repo_db.id, &session_id, prompt_index)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -259,7 +257,7 @@ async fn cherry_pick_prompt(
     prompt_index: i64,
     target_branch: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
@@ -272,10 +270,9 @@ async fn cherry_pick_prompt(
         ));
     }
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
@@ -284,7 +281,7 @@ async fn cherry_pick_prompt(
         return Err(ServerFnError::new("Access denied"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let metas = db::get_commits_for_prompt_group(&pool, repo_db.id, &session_id, prompt_index)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -309,7 +306,7 @@ async fn squash_prompt(
     prompt_index: i64,
     message: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_pool, get_user_entitlements};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
@@ -322,10 +319,9 @@ async fn squash_prompt(
         ));
     }
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
@@ -334,7 +330,7 @@ async fn squash_prompt(
         return Err(ServerFnError::new("Access denied"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let metas = db::get_commits_for_prompt_group(&pool, repo_db.id, &session_id, prompt_index)
         .await.map_err(|e| ServerFnError::new(e.to_string()))?;
 

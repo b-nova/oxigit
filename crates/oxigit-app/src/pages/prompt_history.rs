@@ -14,22 +14,21 @@ async fn fetch_prompt_history(
     query: String,
     page: i64,
 ) -> Result<PromptHistoryResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_ai_access_level, get_data_dir, get_repo_pool};
+    use crate::server_fns::{extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
     use oxigit_core::{db, entitlements::AiAccessLevel, git};
     use super::PromptCommitInfo;
 
     const PAGE_SIZE: i64 = 20;
     const FREE_LIMIT: i64 = 10;
 
-    let pool = get_repo_pool(&owner, &repo).await?;
-    let data_dir = get_data_dir().await?;
+    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let ai_access = get_ai_access_level(current_user.id).await?;
     let is_limited = ai_access == AiAccessLevel::Limited;
 
-    let (_, repo_db) = db::get_repository(&pool, &owner, &repo)
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
@@ -37,7 +36,7 @@ async fn fetch_prompt_history(
         return Err(ServerFnError::new("Repository not found"));
     }
 
-    let repo_path = git::repo_path(&data_dir, &owner, &repo);
+    let repo_path = get_repo_path(&owner, &repo).await?;
     let (effective_page_size, offset) = if is_limited {
         (FREE_LIMIT, 0i64)
     } else {

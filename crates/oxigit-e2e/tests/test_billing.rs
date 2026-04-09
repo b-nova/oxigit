@@ -35,15 +35,15 @@ async fn pricing_page_renders() {
     assert!(body.contains("Founding Member"), "pricing page should show Founding Member: {body}");
 }
 
-/// Test: billing page redirects unauthenticated users (shows error or login prompt).
+/// Test: subscription page redirects unauthenticated users (shows error or login prompt).
 #[tokio::test]
-async fn billing_page_requires_auth() {
+async fn subscription_page_requires_auth() {
     let server = TestServer::start().await;
     let client = server.client();
 
     let resp = client
         .client
-        .get(format!("{}/billing", client.base_url))
+        .get(format!("{}/subscription", client.base_url))
         .send()
         .await
         .unwrap();
@@ -52,13 +52,13 @@ async fn billing_page_requires_auth() {
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("Not authenticated") || body.contains("Sign in"),
-        "billing page should indicate auth required: {body}"
+        "subscription page should indicate auth required: {body}"
     );
 }
 
-/// Test: billing page returns 200 for authenticated users.
+/// Test: subscription page returns 200 for authenticated users.
 #[tokio::test]
-async fn billing_page_shows_for_authenticated_user() {
+async fn subscription_page_shows_for_authenticated_user() {
     let server = TestServer::start().await;
     let client = server.client();
 
@@ -67,14 +67,14 @@ async fn billing_page_shows_for_authenticated_user() {
 
     let resp = client
         .client
-        .get(format!("{}/billing", client.base_url))
+        .get(format!("{}/subscription", client.base_url))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status().as_u16(), 200);
 
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Free") || body.contains("Billing"), "billing page should show plan info: {body}");
+    assert!(body.contains("Free") || body.contains("Subscription"), "subscription page should show plan info: {body}");
 }
 
 /// Test: webhook rejects requests without Stripe-Signature header.
@@ -138,16 +138,16 @@ async fn webhook_processes_checkout_completed() {
 
     assert_eq!(resp.status().as_u16(), 200);
 
-    // Verify the billing page now shows Flat plan
+    // Verify the subscription page now shows Flat plan
     client.login("alice", "password123").await;
     let resp = client
         .client
-        .get(format!("{}/billing", client.base_url))
+        .get(format!("{}/subscription", client.base_url))
         .send()
         .await
         .unwrap();
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Flat"), "billing page should show Flat plan after checkout: {body}");
+    assert!(body.contains("Flat"), "subscription page should show Flat plan after checkout: {body}");
 }
 
 /// Test: webhook handles subscription.deleted by canceling.
@@ -191,18 +191,18 @@ async fn webhook_handles_subscription_deleted() {
 
     assert_eq!(resp.status().as_u16(), 200);
 
-    // Verify billing shows canceled/free
+    // Verify subscription shows canceled/free
     client.login("alice", "password123").await;
     let resp = client
         .client
-        .get(format!("{}/billing", client.base_url))
+        .get(format!("{}/subscription", client.base_url))
         .send()
         .await
         .unwrap();
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("canceled") || body.contains("Free"),
-        "billing should show canceled status after deletion: {body}"
+        "subscription should show canceled status after deletion: {body}"
     );
 }
 

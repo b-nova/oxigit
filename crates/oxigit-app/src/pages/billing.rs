@@ -64,14 +64,14 @@ async fn create_portal_redirect() -> Result<String, ServerFnError> {
     let portal_url = billing::create_portal_session(
         &stripe.secret_key,
         &sub.stripe_customer_id,
-        &format!("{}/billing", base_url),
+        &format!("{}/subscription", base_url),
     ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
     Ok(portal_url)
 }
 
 #[component]
-pub fn BillingPage() -> impl IntoView {
+pub fn SubscriptionPage() -> impl IntoView {
     let billing = Resource::new(|| (), |_| fetch_billing_info());
 
     let portal_action = Action::new(move |_: &()| async move {
@@ -87,7 +87,7 @@ pub fn BillingPage() -> impl IntoView {
 
     view! {
         <div class="page-header">
-            <h1 class="page-title">"Billing"</h1>
+            <h1 class="page-title">"Subscription"</h1>
         </div>
 
         <Suspense fallback=|| view! { <LoadingCard /> }>

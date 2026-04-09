@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_location;
 
-use super::icons::{IconCheck, IconGear, IconLogout, IconMenu, IconUser, IconX};
+use super::icons::{IconCheck, IconCreditCard, IconGear, IconLogout, IconMenu, IconReceipt, IconTeam, IconUser, IconX};
 use super::theme_toggle::ThemeToggle;
 use crate::pages::{get_current_user, list_my_orgs, Logout, SwitchOrg};
 
@@ -117,18 +117,18 @@ pub fn Navbar() -> impl IntoView {
                 <Suspense fallback=|| ()>
                     {move || Suspend::new(async move {
                         match user.await {
-                            Ok(Some(u)) => {
-                                let profile_href = format!("/{}", &u.username);
+                            Ok(Some(_u)) => {
                                 view! {
                                     <a href="/repos" class="mobile-nav-link">"Repositories"</a>
                                     <div class="mobile-nav-divider"></div>
-                                    <a href="/billing" class="mobile-nav-link">"Billing"</a>
+                                    <a href="/profile" class="mobile-nav-link">"Profile"</a>
                                     <a href="/settings" class="mobile-nav-link">"Settings"</a>
-                                    <a href=profile_href class="mobile-nav-link">"Profile"</a>
+                                    <a href="/subscription" class="mobile-nav-link">"Subscription"</a>
+                                    <a href="/billing" class="mobile-nav-link">"Billing"</a>
                                     <div class="mobile-nav-divider"></div>
                                     <ActionForm action=logout_action>
                                         <button type="submit" class="mobile-nav-link w-full text-left" style="background: none; border: none; cursor: pointer; font: inherit;">
-                                            "Logout"
+                                            "Sign out"
                                         </button>
                                     </ActionForm>
                                 }.into_any()
@@ -163,7 +163,6 @@ fn UserDropdown(
         set_dropdown_open.set(false);
     });
 
-    let profile_href = format!("/{}", &username);
     let active_org = StoredValue::new(active_org);
 
     view! {
@@ -187,6 +186,12 @@ fn UserDropdown(
                             Suspend::new(async move {
                                 match orgs.await {
                                     Ok(orgs) if orgs.len() > 1 => {
+                                        let active_slug = active.clone();
+                                        let team_href = orgs.iter()
+                                            .find(|o| o.slug == active_slug)
+                                            .or_else(|| orgs.first())
+                                            .map(|o| format!("/orgs/{}/settings", o.slug))
+                                            .unwrap_or_default();
                                         view! {
                                             <div class="user-dropdown-label">"Organization"</div>
                                             {orgs.iter().map(|o| {
@@ -209,6 +214,14 @@ fn UserDropdown(
                                                     </ActionForm>
                                                 }
                                             }).collect::<Vec<_>>()}
+                                            <a
+                                                href=team_href
+                                                class="user-dropdown-item"
+                                                on:click=move |_| set_dropdown_open.set(false)
+                                            >
+                                                <IconTeam />
+                                                " Team"
+                                            </a>
                                             <div class="user-dropdown-divider"></div>
                                         }.into_any()
                                     }
@@ -221,7 +234,8 @@ fn UserDropdown(
                                                 class="user-dropdown-item"
                                                 on:click=move |_| set_dropdown_open.set(false)
                                             >
-                                                {org.display_name.clone()}
+                                                <IconTeam />
+                                                " Team"
                                             </a>
                                             <div class="user-dropdown-divider"></div>
                                         }.into_any()
@@ -232,7 +246,7 @@ fn UserDropdown(
                         }}
                     </Suspense>
                     <a
-                        href=profile_href.clone()
+                        href="/profile"
                         class="user-dropdown-item"
                         on:click=move |_| set_dropdown_open.set(false)
                     >
@@ -248,10 +262,19 @@ fn UserDropdown(
                         " Settings"
                     </a>
                     <a
+                        href="/subscription"
+                        class="user-dropdown-item"
+                        on:click=move |_| set_dropdown_open.set(false)
+                    >
+                        <IconCreditCard />
+                        " Subscription"
+                    </a>
+                    <a
                         href="/billing"
                         class="user-dropdown-item"
                         on:click=move |_| set_dropdown_open.set(false)
                     >
+                        <IconReceipt />
                         " Billing"
                     </a>
                     <div class="user-dropdown-divider"></div>

@@ -2,13 +2,43 @@ mod harness;
 
 use harness::*;
 
+/// Helper: simulate upgrading a user to Pro (flat) plan via Stripe webhook.
+async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str, secret: &str) {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let payload = format!(
+        r#"{{"type":"checkout.session.completed","data":{{"object":{{"client_reference_id":"{}","customer":"cus_pro_{}","subscription":"sub_pro_{}","metadata":{{"plan":"flat"}}}}}}}}"#,
+        user_id, user_id, user_id
+    );
+    let timestamp = "1234567890";
+    let signed_payload = format!("{}.{}", timestamp, payload);
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(signed_payload.as_bytes());
+    let sig = hex::encode(mac.finalize().into_bytes());
+    let signature = format!("t={},v1={}", timestamp, sig);
+
+    let resp = client
+        .client
+        .post(format!("{}/api/stripe/webhook", base_url))
+        .header("stripe-signature", &signature)
+        .header("content-type", "application/json")
+        .body(payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200, "webhook should succeed");
+}
+
 /// Test that the session detail page shows a vibe score badge.
 #[tokio::test]
 async fn test_vibe_score_on_session_detail() {
-    let server = TestServer::start().await;
+    let secret = "whsec_vibe_score_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     client.register("alice", "alice@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("viberepo", "Vibe score test", false).await;
 

@@ -2,6 +2,34 @@ mod harness;
 
 use harness::*;
 
+/// Helper: simulate upgrading a user to Pro (flat) plan via Stripe webhook.
+async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str, secret: &str) {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let payload = format!(
+        r#"{{"type":"checkout.session.completed","data":{{"object":{{"client_reference_id":"{}","customer":"cus_pro_{}","subscription":"sub_pro_{}","metadata":{{"plan":"flat"}}}}}}}}"#,
+        user_id, user_id, user_id
+    );
+    let timestamp = "1234567890";
+    let signed_payload = format!("{}.{}", timestamp, payload);
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(signed_payload.as_bytes());
+    let sig = hex::encode(mac.finalize().into_bytes());
+    let signature = format!("t={},v1={}", timestamp, sig);
+
+    let resp = client
+        .client
+        .post(format!("{}/api/stripe/webhook", base_url))
+        .header("stripe-signature", &signature)
+        .header("content-type", "application/json")
+        .body(payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200, "webhook should succeed");
+}
+
 /// Test that the recipe marketplace page loads.
 #[tokio::test]
 async fn test_marketplace_page_loads() {
@@ -18,10 +46,12 @@ async fn test_marketplace_page_loads() {
 /// Test that the session detail page shows "Share as Recipe" button for owner.
 #[tokio::test]
 async fn test_session_detail_shows_share_button() {
-    let server = TestServer::start().await;
+    let secret = "whsec_recipe_share_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     client.register("alice", "alice@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("reciperepo", "Recipe test", false).await;
 
@@ -50,10 +80,12 @@ async fn test_session_detail_shows_share_button() {
 /// Test that the share recipe page loads.
 #[tokio::test]
 async fn test_share_recipe_page_loads() {
-    let server = TestServer::start().await;
+    let secret = "whsec_recipe_share_page_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     client.register("bob", "bob@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("bob", "password123").await;
     client.create_repo("sharerepo", "Share test", false).await;
 
@@ -111,10 +143,12 @@ async fn test_marketplace_empty_state() {
 /// Test that non-owner does not see share button.
 #[tokio::test]
 async fn test_share_button_hidden_for_non_owner() {
-    let server = TestServer::start().await;
+    let secret = "whsec_recipe_nonowner_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     client.register("dave", "dave@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("dave", "password123").await;
     client.create_repo("owneronly", "Owner only", false).await;
 
@@ -132,8 +166,9 @@ async fn test_share_button_hidden_for_non_owner() {
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    // Login as different user
+    // Login as different user — also needs pro plan to access AI session detail
     client.register("eve", "eve@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "2", secret).await;
     client.login("eve", "password123").await;
 
     let resp = client.get("/dave/owneronly/ai/owner-sess-1").await;

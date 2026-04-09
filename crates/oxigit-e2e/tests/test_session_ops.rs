@@ -2,13 +2,43 @@ mod harness;
 
 use harness::*;
 
+/// Helper: simulate upgrading a user to Pro (flat) plan via Stripe webhook.
+async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str, secret: &str) {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let payload = format!(
+        r#"{{"type":"checkout.session.completed","data":{{"object":{{"client_reference_id":"{}","customer":"cus_pro_{}","subscription":"sub_pro_{}","metadata":{{"plan":"flat"}}}}}}}}"#,
+        user_id, user_id, user_id
+    );
+    let timestamp = "1234567890";
+    let signed_payload = format!("{}.{}", timestamp, payload);
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(signed_payload.as_bytes());
+    let sig = hex::encode(mac.finalize().into_bytes());
+    let signature = format!("t={},v1={}", timestamp, sig);
+
+    let resp = client
+        .client
+        .post(format!("{}/api/stripe/webhook", base_url))
+        .header("stripe-signature", &signature)
+        .header("content-type", "application/json")
+        .body(payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200, "webhook should succeed");
+}
+
 /// Test that the session detail page shows squash and cherry-pick buttons.
 #[tokio::test]
 async fn test_session_detail_shows_operations() {
-    let server = TestServer::start().await;
+    let secret = "whsec_session_ops_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     client.register("alice", "alice@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("opsrepo", "Session ops test", false).await;
 
@@ -51,10 +81,12 @@ async fn test_session_detail_shows_operations() {
 /// Test that session detail page shows correct commit count and prompts.
 #[tokio::test]
 async fn test_session_detail_content() {
-    let server = TestServer::start().await;
+    let secret = "whsec_session_content_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     client.register("bob", "bob@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("bob", "password123").await;
     client.create_repo("detailrepo", "Detail test", false).await;
 
@@ -91,11 +123,13 @@ async fn test_session_detail_content() {
 /// Test that non-owners don't see operation buttons.
 #[tokio::test]
 async fn test_session_ops_hidden_for_non_owner() {
-    let server = TestServer::start().await;
+    let secret = "whsec_session_nonowner_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     // Owner creates repo and pushes AI commits
     client.register("alice", "alice@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("privops", "Private ops test", false).await;
 
@@ -113,8 +147,9 @@ async fn test_session_ops_hidden_for_non_owner() {
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    // Login as different user
+    // Login as different user — also needs pro plan to access AI session detail
     client.register("eve", "eve@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "2", secret).await;
     client.login("eve", "password123").await;
 
     let resp = client.get("/alice/privops/ai/priv-sess-1").await;

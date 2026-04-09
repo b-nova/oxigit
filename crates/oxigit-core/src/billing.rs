@@ -102,6 +102,34 @@ pub async fn create_portal_session(
     Ok(body.url)
 }
 
+/// List invoices for a Stripe customer.
+/// Returns a list of invoices with date, amount, status, and PDF URL.
+pub async fn list_invoices(
+    stripe_key: &str,
+    customer_id: &str,
+) -> Result<Vec<StripeInvoice>> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{}/invoices", STRIPE_API_BASE))
+        .basic_auth(stripe_key, None::<&str>)
+        .query(&[
+            ("customer", customer_id),
+            ("limit", "50"),
+        ])
+        .send()
+        .await
+        .map_err(|e| OxigitError::Billing(format!("Failed to list invoices: {e}")))?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(OxigitError::Billing(format!("Stripe list invoices failed: {body}")));
+    }
+
+    let body: StripeInvoiceList = resp.json().await
+        .map_err(|e| OxigitError::Billing(format!("Failed to parse invoices response: {e}")))?;
+    Ok(body.data)
+}
+
 /// Verify a Stripe webhook signature using HMAC-SHA256.
 /// Stripe sends `t=<timestamp>,v1=<signature>` in the Stripe-Signature header.
 pub fn verify_webhook_signature(
@@ -169,6 +197,22 @@ struct StripeCheckoutSession {
 #[derive(Deserialize)]
 struct StripePortalSession {
     url: String,
+}
+
+#[derive(Deserialize)]
+struct StripeInvoiceList {
+    data: Vec<StripeInvoice>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StripeInvoice {
+    pub id: String,
+    pub amount_paid: i64,
+    pub currency: String,
+    pub status: Option<String>,
+    pub created: i64,
+    pub invoice_pdf: Option<String>,
+    pub hosted_invoice_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

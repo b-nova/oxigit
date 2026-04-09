@@ -26,7 +26,8 @@ use pages::{
     admin::AdminPage,
     ai_hub::AiHubPage,
     ai_session_detail::AiSessionDetailPage,
-    billing::BillingPage,
+    billing::SubscriptionPage,
+    billing_details::BillingDetailsPage,
     blame::BlamePage,
     commit_view::CommitViewPage,
     contact::ContactPage,
@@ -41,6 +42,7 @@ use pages::{
     org_new::OrgNewPage,
     org_settings::OrgSettingsPage,
     pricing::PricingPage,
+    profile_edit::ProfileEditPage,
     pr_list::PrListPage,
     pr_new::PrNewPage,
     pr_view::PrViewPage,
@@ -118,8 +120,10 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/repos") view=RepoListPage />
                     <Route path=path!("/repos/new") view=NewRepoPage />
                     <Route path=path!("/settings") view=SettingsPage />
+                    <Route path=path!("/profile") view=ProfileEditPage />
                     <Route path=path!("/pricing") view=PricingPage />
-                    <Route path=path!("/billing") view=BillingPage />
+                    <Route path=path!("/subscription") view=SubscriptionPage />
+                    <Route path=path!("/billing") view=BillingDetailsPage />
                     <Route path=path!("/contact") view=ContactPage />
                     <Route path=path!("/admin") view=AdminPage />
                     <Route path=path!("/orgs/new") view=OrgNewPage />

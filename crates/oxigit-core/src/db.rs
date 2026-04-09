@@ -114,6 +114,23 @@ pub async fn get_user_by_username(pool: &SqlitePool, username: &str) -> Result<U
         .ok_or(OxigitError::NotFound("User not found".into()))
 }
 
+pub async fn update_user_profile(
+    pool: &SqlitePool,
+    user_id: i64,
+    display_name: &str,
+    email: &str,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE users SET display_name = ?, email = ?, updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(display_name)
+    .bind(email)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 // --- Repository queries ---
 
 pub async fn create_repository(
@@ -219,8 +236,8 @@ pub fn can_access_repo(repo: &Repository, viewer_id: Option<i64>) -> bool {
 /// Search public repositories. If query is empty, returns all public repos.
 pub async fn search_public_repositories(pool: &SqlitePool, query: &str) -> Result<Vec<(User, Repository)>> {
     let rows = if query.is_empty() {
-        sqlx::query_as::<_, (i64, String, String, String, i64, String, String, bool, Option<i64>, bool, String, String)>(
-            "SELECT u.id, u.username, u.email, u.password_hash, r.id, r.name, r.description, r.is_private, r.forked_from, r.has_remix, r.created_at, r.updated_at \
+        sqlx::query_as::<_, (i64, String, String, String, String, i64, String, String, bool, Option<i64>, bool, String, String)>(
+            "SELECT u.id, u.username, u.email, u.password_hash, u.display_name, r.id, r.name, r.description, r.is_private, r.forked_from, r.has_remix, r.created_at, r.updated_at \
              FROM repositories r JOIN users u ON r.owner_id = u.id \
              WHERE r.is_private = 0 \
              ORDER BY r.updated_at DESC LIMIT 50",
@@ -229,8 +246,8 @@ pub async fn search_public_repositories(pool: &SqlitePool, query: &str) -> Resul
         .await?
     } else {
         let pattern = format!("%{}%", query);
-        sqlx::query_as::<_, (i64, String, String, String, i64, String, String, bool, Option<i64>, bool, String, String)>(
-            "SELECT u.id, u.username, u.email, u.password_hash, r.id, r.name, r.description, r.is_private, r.forked_from, r.has_remix, r.created_at, r.updated_at \
+        sqlx::query_as::<_, (i64, String, String, String, String, i64, String, String, bool, Option<i64>, bool, String, String)>(
+            "SELECT u.id, u.username, u.email, u.password_hash, u.display_name, r.id, r.name, r.description, r.is_private, r.forked_from, r.has_remix, r.created_at, r.updated_at \
              FROM repositories r JOIN users u ON r.owner_id = u.id \
              WHERE r.is_private = 0 AND (r.name LIKE ? OR u.username LIKE ? OR r.description LIKE ?) \
              ORDER BY r.updated_at DESC LIMIT 50",
@@ -244,9 +261,9 @@ pub async fn search_public_repositories(pool: &SqlitePool, query: &str) -> Resul
 
     Ok(rows
         .into_iter()
-        .map(|(uid, username, email, pw, rid, name, desc, private, forked_from, has_remix, created, updated)| {
+        .map(|(uid, username, email, pw, display_name, rid, name, desc, private, forked_from, has_remix, created, updated)| {
             (
-                User { id: uid, username, email, password_hash: pw, is_admin: false, is_disabled: false, created_at: created.clone(), updated_at: updated.clone() },
+                User { id: uid, username, email, password_hash: pw, display_name, is_admin: false, is_disabled: false, created_at: created.clone(), updated_at: updated.clone() },
                 Repository { id: rid, owner_id: uid, name, description: desc, is_private: private, forked_from, has_remix, created_at: created, updated_at: updated },
             )
         })
@@ -419,8 +436,8 @@ pub async fn add_collaborator(
 }
 
 pub async fn list_collaborators(pool: &SqlitePool, repo_id: i64) -> Result<Vec<(User, Collaborator)>> {
-    let rows = sqlx::query_as::<_, (i64, String, String, String, String, String, i64, i64, i64, String, String)>(
-        "SELECT u.id, u.username, u.email, u.password_hash, u.created_at, u.updated_at, \
+    let rows = sqlx::query_as::<_, (i64, String, String, String, String, String, String, i64, i64, i64, String, String)>(
+        "SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.created_at, u.updated_at, \
          c.id, c.repo_id, c.user_id, c.permission, c.created_at \
          FROM collaborators c JOIN users u ON c.user_id = u.id \
          WHERE c.repo_id = ? ORDER BY c.created_at",
@@ -431,9 +448,9 @@ pub async fn list_collaborators(pool: &SqlitePool, repo_id: i64) -> Result<Vec<(
 
     Ok(rows
         .into_iter()
-        .map(|(uid, username, email, pw, ucreated, uupdated, cid, repo_id, user_id, perm, ccreated)| {
+        .map(|(uid, username, email, pw, display_name, ucreated, uupdated, cid, repo_id, user_id, perm, ccreated)| {
             (
-                User { id: uid, username, email, password_hash: pw, is_admin: false, is_disabled: false, created_at: ucreated, updated_at: uupdated },
+                User { id: uid, username, email, password_hash: pw, display_name, is_admin: false, is_disabled: false, created_at: ucreated, updated_at: uupdated },
                 Collaborator { id: cid, repo_id, user_id, permission: perm, created_at: ccreated },
             )
         })
@@ -929,8 +946,8 @@ pub async fn update_repository_visibility(pool: &SqlitePool, repo_id: i64, is_pr
 /// Search public repositories that have REMIX.md (remixable).
 pub async fn search_remixable_repositories(pool: &SqlitePool, query: &str) -> Result<Vec<(User, Repository)>> {
     let rows = if query.is_empty() {
-        sqlx::query_as::<_, (i64, String, String, String, i64, String, String, bool, Option<i64>, bool, String, String)>(
-            "SELECT u.id, u.username, u.email, u.password_hash, r.id, r.name, r.description, r.is_private, r.forked_from, r.has_remix, r.created_at, r.updated_at \
+        sqlx::query_as::<_, (i64, String, String, String, String, i64, String, String, bool, Option<i64>, bool, String, String)>(
+            "SELECT u.id, u.username, u.email, u.password_hash, u.display_name, r.id, r.name, r.description, r.is_private, r.forked_from, r.has_remix, r.created_at, r.updated_at \
              FROM repositories r JOIN users u ON r.owner_id = u.id \
              WHERE r.is_private = 0 AND r.has_remix = 1 \
              ORDER BY r.updated_at DESC LIMIT 50",
@@ -939,8 +956,8 @@ pub async fn search_remixable_repositories(pool: &SqlitePool, query: &str) -> Re
         .await?
     } else {
         let pattern = format!("%{}%", query);
-        sqlx::query_as::<_, (i64, String, String, String, i64, String, String, bool, Option<i64>, bool, String, String)>(
-            "SELECT u.id, u.username, u.email, u.password_hash, r.id, r.name, r.description, r.is_private, r.forked_from, r.has_remix, r.created_at, r.updated_at \
+        sqlx::query_as::<_, (i64, String, String, String, String, i64, String, String, bool, Option<i64>, bool, String, String)>(
+            "SELECT u.id, u.username, u.email, u.password_hash, u.display_name, r.id, r.name, r.description, r.is_private, r.forked_from, r.has_remix, r.created_at, r.updated_at \
              FROM repositories r JOIN users u ON r.owner_id = u.id \
              WHERE r.is_private = 0 AND r.has_remix = 1 AND (r.name LIKE ? OR u.username LIKE ? OR r.description LIKE ?) \
              ORDER BY r.updated_at DESC LIMIT 50",
@@ -954,9 +971,9 @@ pub async fn search_remixable_repositories(pool: &SqlitePool, query: &str) -> Re
 
     Ok(rows
         .into_iter()
-        .map(|(uid, username, email, pw, rid, name, desc, private, forked_from, has_remix, created, updated)| {
+        .map(|(uid, username, email, pw, display_name, rid, name, desc, private, forked_from, has_remix, created, updated)| {
             (
-                User { id: uid, username, email, password_hash: pw, is_admin: false, is_disabled: false, created_at: created.clone(), updated_at: updated.clone() },
+                User { id: uid, username, email, password_hash: pw, display_name, is_admin: false, is_disabled: false, created_at: created.clone(), updated_at: updated.clone() },
                 Repository { id: rid, owner_id: uid, name, description: desc, is_private: private, forked_from, has_remix, created_at: created, updated_at: updated },
             )
         })
@@ -2189,8 +2206,8 @@ pub async fn remove_org_member(pool: &SqlitePool, org_id: i64, user_id: i64) -> 
 }
 
 pub async fn list_org_members(pool: &SqlitePool, org_id: i64) -> Result<Vec<(User, String)>> {
-    let rows: Vec<(i64, String, String, String, bool, bool, String, String, String)> = sqlx::query_as(
-        "SELECT u.id, u.username, u.email, u.password_hash, u.is_admin, u.is_disabled, \
+    let rows: Vec<(i64, String, String, String, String, bool, bool, String, String, String)> = sqlx::query_as(
+        "SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.is_admin, u.is_disabled, \
                 u.created_at, u.updated_at, m.role \
          FROM users u \
          JOIN org_memberships m ON u.id = m.user_id \
@@ -2202,9 +2219,9 @@ pub async fn list_org_members(pool: &SqlitePool, org_id: i64) -> Result<Vec<(Use
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, username, email, password_hash, is_admin, is_disabled, created_at, updated_at, role)| {
+        .map(|(id, username, email, password_hash, display_name, is_admin, is_disabled, created_at, updated_at, role)| {
             (
-                User { id, username, email, password_hash, is_admin, is_disabled, created_at, updated_at },
+                User { id, username, email, password_hash, display_name, is_admin, is_disabled, created_at, updated_at },
                 role,
             )
         })

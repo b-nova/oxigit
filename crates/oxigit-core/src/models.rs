@@ -7,6 +7,7 @@ pub struct User {
     pub email: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
+    pub display_name: String,
     pub is_admin: bool,
     pub is_disabled: bool,
     pub created_at: String,

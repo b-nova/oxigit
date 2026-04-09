@@ -285,6 +285,40 @@ pub fn IconArrowUpRight() -> impl IntoView {
 }
 
 #[component]
+pub fn IconCreditCard() -> impl IntoView {
+    view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" />
+            <line x1="1.5" y1="7" x2="14.5" y2="7" />
+            <line x1="4" y1="10" x2="7" y2="10" />
+        </svg>
+    }
+}
+
+#[component]
+pub fn IconReceipt() -> impl IntoView {
+    view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 1.5h8c.83 0 1.5.67 1.5 1.5v11l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5V3c0-.83.67-1.5 1.5-1.5Z" />
+            <line x1="5.5" y1="5" x2="10.5" y2="5" />
+            <line x1="5.5" y1="8" x2="10.5" y2="8" />
+        </svg>
+    }
+}
+
+#[component]
+pub fn IconTeam() -> impl IntoView {
+    view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="5" r="2" />
+            <path d="M2 13c0-2.21 1.79-4 4-4s4 1.79 4 4" />
+            <circle cx="11.5" cy="5.5" r="1.5" />
+            <path d="M14 13c0-1.66-1.12-3-2.5-3-.56 0-1.08.19-1.5.5" />
+        </svg>
+    }
+}
+
+#[component]
 pub fn IconRust() -> impl IntoView {
     view! {
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">

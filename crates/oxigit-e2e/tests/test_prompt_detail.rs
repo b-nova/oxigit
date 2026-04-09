@@ -2,13 +2,43 @@ mod harness;
 
 use harness::*;
 
+/// Helper: simulate upgrading a user to Pro (flat) plan via Stripe webhook.
+async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str, secret: &str) {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let payload = format!(
+        r#"{{"type":"checkout.session.completed","data":{{"object":{{"client_reference_id":"{}","customer":"cus_pro_{}","subscription":"sub_pro_{}","metadata":{{"plan":"flat"}}}}}}}}"#,
+        user_id, user_id, user_id
+    );
+    let timestamp = "1234567890";
+    let signed_payload = format!("{}.{}", timestamp, payload);
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(signed_payload.as_bytes());
+    let sig = hex::encode(mac.finalize().into_bytes());
+    let signature = format!("t={},v1={}", timestamp, sig);
+
+    let resp = client
+        .client
+        .post(format!("{}/api/stripe/webhook", base_url))
+        .header("stripe-signature", &signature)
+        .header("content-type", "application/json")
+        .body(payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200, "webhook should succeed");
+}
+
 /// Test that the prompt detail page shows prompt info and commits.
 #[tokio::test]
 async fn test_prompt_detail_page() {
-    let server = TestServer::start().await;
+    let secret = "whsec_prompt_detail_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     client.register("alice", "alice@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("promptdetail", "Prompt detail test", false).await;
 
@@ -55,10 +85,12 @@ async fn test_prompt_detail_page() {
 /// Test that prompt detail shows the correct prompt (not another prompt's data).
 #[tokio::test]
 async fn test_prompt_detail_isolation() {
-    let server = TestServer::start().await;
+    let secret = "whsec_prompt_iso_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     client.register("bob", "bob@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("bob", "password123").await;
     client.create_repo("isolation", "Isolation test", false).await;
 
@@ -95,10 +127,12 @@ async fn test_prompt_detail_isolation() {
 /// Test that prompt detail page shows vibe score and squash button.
 #[tokio::test]
 async fn test_prompt_detail_shows_vibe_and_squash() {
-    let server = TestServer::start().await;
+    let secret = "whsec_prompt_vibe_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     client.register("carol", "carol@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("carol", "password123").await;
     client.create_repo("vibesquash", "Vibe and squash test", false).await;
 
@@ -142,10 +176,12 @@ async fn test_prompt_detail_shows_vibe_and_squash() {
 /// Test that non-owners don't see prompt operations.
 #[tokio::test]
 async fn test_prompt_ops_hidden_for_non_owner() {
-    let server = TestServer::start().await;
+    let secret = "whsec_prompt_nonowner_test";
+    let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
     client.register("dan", "dan@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("dan", "password123").await;
     client.create_repo("privprompt", "Private prompt ops", false).await;
 
@@ -163,8 +199,9 @@ async fn test_prompt_ops_hidden_for_non_owner() {
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    // Login as different user
+    // Login as different user — also needs pro plan to access prompt detail
     client.register("eve", "eve@test.com", "password123").await;
+    upgrade_to_pro(&client, &client.base_url.clone(), "2", secret).await;
     client.login("eve", "password123").await;
 
     let resp = client.get("/dan/privprompt/ai/pp-sess/prompt/1").await;

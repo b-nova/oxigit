@@ -48,6 +48,29 @@ const API_FETCH_AI_TIMELINE: &str = "/api/fetch_ai_timeline4144953925164700098";
 const API_ATTACH_AI_METADATA: &str = "/api/attach_ai_metadata7316923189440040834";
 const API_INSTALL_AI_HOOK: &str = "/api/install_ai_hook2543744637116902123";
 
+// Smart Diff Review
+const API_GET_DIFF_REVIEW: &str = "/api/get_diff_review7316923189440040834";
+const API_GENERATE_DIFF_SUMMARY: &str = "/api/generate_diff_summary7316923189440040834";
+
+// Remix
+const API_FETCH_REMIX_GUIDE: &str = "/api/fetch_remix_guide12442678095498596403";
+
+// Pricing
+const API_FETCH_PRICING_INFO: &str = "/api/fetch_pricing_info17567552309871395660";
+
+// Webhooks (Deploy Previews)
+const API_LIST_REPO_WEBHOOKS: &str = "/api/list_repo_webhooks2543744637116902123";
+const API_ADD_WEBHOOK: &str = "/api/add_webhook2543744637116902123";
+const API_DELETE_WEBHOOK: &str = "/api/delete_webhook2543744637116902123";
+
+// Organizations (Team Features)
+const API_CREATE_ORG: &str = "/api/create_org7865708971083396342";
+const API_GET_ORG_SETTINGS: &str = "/api/get_org_settings4903785691938244665";
+const API_ADD_MEMBER: &str = "/api/add_member4903785691938244665";
+const API_REMOVE_MEMBER: &str = "/api/remove_member4903785691938244665";
+const API_LIST_MY_ORGS: &str = "/api/list_my_orgs18378147844618610829";
+const API_SWITCH_ORG: &str = "/api/switch_org18378147844618610829";
+
 /// A running server instance with its own data directory and ports.
 pub struct TestServer {
     pub http_port: u16,
@@ -722,6 +745,180 @@ impl TestClient {
             .send()
             .await
             .expect("attach_ai_metadata request failed")
+    }
+
+    pub async fn get_diff_review(&self, owner: &str, repo: &str, sha: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_GET_DIFF_REVIEW))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&sha={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                urlencoded(sha)
+            ))
+            .send()
+            .await
+            .expect("get_diff_review request failed")
+    }
+
+    pub async fn generate_diff_summary(&self, owner: &str, repo: &str, sha: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_GENERATE_DIFF_SUMMARY))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&sha={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                urlencoded(sha)
+            ))
+            .send()
+            .await
+            .expect("generate_diff_summary request failed")
+    }
+
+    pub async fn fetch_remix_guide(&self, owner: &str, repo: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_FETCH_REMIX_GUIDE))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}",
+                urlencoded(owner),
+                urlencoded(repo)
+            ))
+            .send()
+            .await
+            .expect("fetch_remix_guide request failed")
+    }
+
+    pub async fn list_repo_webhooks(&self, owner: &str, repo: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_LIST_REPO_WEBHOOKS))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}",
+                urlencoded(owner),
+                urlencoded(repo)
+            ))
+            .send()
+            .await
+            .expect("list_repo_webhooks request failed")
+    }
+
+    pub async fn add_webhook(&self, owner: &str, repo: &str, url: &str, secret: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_ADD_WEBHOOK))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&url={}&secret={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                urlencoded(url),
+                urlencoded(secret)
+            ))
+            .send()
+            .await
+            .expect("add_webhook request failed")
+    }
+
+    pub async fn fetch_pricing_info(&self) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_FETCH_PRICING_INFO))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body("")
+            .send()
+            .await
+            .expect("fetch_pricing_info request failed")
+    }
+
+    pub async fn delete_webhook(&self, owner: &str, repo: &str, webhook_id: i64) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_DELETE_WEBHOOK))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&webhook_id={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                webhook_id
+            ))
+            .send()
+            .await
+            .expect("delete_webhook request failed")
+    }
+
+    // --- Organization (Team) helpers ---
+
+    pub async fn create_org(&self, slug: &str, display_name: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_CREATE_ORG))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "slug={}&display_name={}",
+                urlencoded(slug),
+                urlencoded(display_name)
+            ))
+            .send()
+            .await
+            .expect("create_org request failed")
+    }
+
+    pub async fn get_org_settings(&self, slug: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_GET_ORG_SETTINGS))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!("slug={}", urlencoded(slug)))
+            .send()
+            .await
+            .expect("get_org_settings request failed")
+    }
+
+    pub async fn add_org_member(&self, slug: &str, username: &str, role: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_ADD_MEMBER))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "slug={}&username={}&role={}",
+                urlencoded(slug),
+                urlencoded(username),
+                urlencoded(role)
+            ))
+            .send()
+            .await
+            .expect("add_org_member request failed")
+    }
+
+    pub async fn remove_org_member(&self, slug: &str, user_id: i64) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_REMOVE_MEMBER))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "slug={}&user_id={}",
+                urlencoded(slug),
+                user_id
+            ))
+            .send()
+            .await
+            .expect("remove_org_member request failed")
+    }
+
+    pub async fn list_my_orgs(&self) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_LIST_MY_ORGS))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body("")
+            .send()
+            .await
+            .expect("list_my_orgs request failed")
+    }
+
+    pub async fn switch_org(&self, slug: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_SWITCH_ORG))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!("slug={}", urlencoded(slug)))
+            .send()
+            .await
+            .expect("switch_org request failed")
     }
 }
 

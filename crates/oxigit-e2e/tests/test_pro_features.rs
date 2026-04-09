@@ -232,7 +232,7 @@ async fn free_user_no_badge_on_profile() {
 /// Test: register with plan param redirects to pricing checkout.
 #[tokio::test]
 async fn register_with_plan_redirects_to_pricing() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_with_stripe("whsec_plan_redirect_test").await;
     let client = server.client();
 
     // Register with plan=flat via the server function API

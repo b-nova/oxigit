@@ -16,7 +16,7 @@ Oxigit is licensed under the [Business Source License 1.1](LICENSE) (BSL 1.1).
 
 ## Automatic open source conversion
 
-Each version of Oxigit automatically converts to the **Apache License 2.0** three years after its release. This means every line of code becomes fully permissive open source — it just takes time.
+Each version of Oxigit automatically converts to the **GNU Affero General Public License v3.0 (AGPL v3.0)** three years after its release — making it fully open source.
 
 ## Why BSL?
 

@@ -8,6 +8,9 @@ members = [
     "crates/oxigit-e2e",
 ]
 
+[workspace.package]
+license = "BUSL-1.1"
+
 [workspace.dependencies]
 # Leptos
 leptos = "0.8"

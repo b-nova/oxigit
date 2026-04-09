@@ -12,7 +12,7 @@ async fn register_user(
     password: String,
     plan: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_control_pool, get_stripe_config, get_tenant_mgr, is_multi_tenant, set_session_user};
+    use crate::server_fns::{get_control_pool, set_session_user};
     use oxigit_core::db;
 
     let pool = get_control_pool().await?;
@@ -32,46 +32,55 @@ async fn register_user(
             .map_err(|e| ServerFnError::new(e.to_string()))?;
     }
 
-    // Create personal org for the new user
-    let org = db::create_organization(&pool, &username, &username, user.id)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-    db::add_org_member(&pool, org.id, user.id, "owner")
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    #[cfg(feature = "saas")]
+    {
+        use crate::server_fns::{get_tenant_mgr, is_multi_tenant};
 
-    // Provision tenant database and directory structure in multi-tenant mode
-    if is_multi_tenant().await? {
-        let tenant_mgr = get_tenant_mgr().await?;
-        tenant_mgr
-            .provision_tenant(&username)
+        // Create personal org for the new user
+        let org = db::create_organization(&pool, &username, &username, user.id)
             .await
             .map_err(|e| ServerFnError::new(e.to_string()))?;
-    }
-
-    set_session_user(user.id, &user.username, Some(&username)).await;
-
-    // If a paid plan was selected, handle billing
-    if let Some(ref p) = plan {
-        if matches!(p.as_str(), "flat" | "team" | "founding") {
-            let stripe = get_stripe_config().await?;
-            if stripe.is_some() {
-                // Stripe configured — redirect to checkout flow
-                leptos_axum::redirect(&format!("/pricing?checkout={}", p));
-                return Ok(());
-            }
-
-            // No billing provider (self-hosted) — grant the plan directly
-            db::upsert_subscription(
-                &pool, user.id, "self-hosted", None, p, "active", None, 1,
-            )
+        db::add_org_member(&pool, org.id, user.id, "owner")
             .await
             .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-            if p == "founding" {
-                let _ = db::claim_founding_slot(&pool, user.id).await;
+        // Provision tenant database and directory structure in multi-tenant mode
+        if is_multi_tenant().await? {
+            let tenant_mgr = get_tenant_mgr().await?;
+            tenant_mgr
+                .provision_tenant(&username)
+                .await
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+        }
+
+        set_session_user(user.id, &user.username, Some(&username)).await;
+
+        // If a paid plan was selected, handle billing
+        if let Some(ref p) = plan {
+            if matches!(p.as_str(), "flat" | "team" | "founding") {
+                let stripe = crate::server_fns::get_stripe_config().await?;
+                if stripe.is_some() {
+                    leptos_axum::redirect(&format!("/pricing?checkout={}", p));
+                    return Ok(());
+                }
+
+                db::upsert_subscription(
+                    &pool, user.id, "self-hosted", None, p, "active", None, 1,
+                )
+                .await
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+                if p == "founding" {
+                    let _ = db::claim_founding_slot(&pool, user.id).await;
+                }
             }
         }
+    }
+
+    #[cfg(not(feature = "saas"))]
+    {
+        let _ = plan;
+        set_session_user(user.id, &user.username, None).await;
     }
 
     leptos_axum::redirect("/repos");

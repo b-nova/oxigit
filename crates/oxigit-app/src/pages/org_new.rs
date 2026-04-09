@@ -4,27 +4,36 @@ use crate::components::error_display::ErrorDisplay;
 
 #[server]
 async fn create_org(slug: String, display_name: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool, set_session_org};
-    use oxigit_core::db;
+    #[cfg(feature = "saas")]
+    {
+        use crate::server_fns::{extract_session_user, get_control_pool, set_session_org};
+        use oxigit_core::db;
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_control_pool().await?;
+        let user = extract_session_user()
+            .await
+            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let pool = get_control_pool().await?;
 
-    let org = db::create_organization(&pool, &slug, &display_name, user.id)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        let org = db::create_organization(&pool, &slug, &display_name, user.id)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    db::add_org_member(&pool, org.id, user.id, "owner")
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        db::add_org_member(&pool, org.id, user.id, "owner")
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    // Switch to the newly created org
-    set_session_org(&user, &slug).await;
+        // Switch to the newly created org
+        set_session_org(&user, &slug).await;
 
-    leptos_axum::redirect(&format!("/orgs/{}/settings", slug));
-    Ok(())
+        leptos_axum::redirect(&format!("/orgs/{}/settings", slug));
+        Ok(())
+    }
+    #[cfg(not(feature = "saas"))]
+    {
+        let _ = slug;
+        let _ = display_name;
+        Err(ServerFnError::new("This feature requires the SaaS edition"))
+    }
 }
 
 #[component]

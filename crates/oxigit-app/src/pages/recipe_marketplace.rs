@@ -13,7 +13,7 @@ async fn fetch_recipe_marketplace(
     sort: String,
     page: i64,
 ) -> Result<RecipeMarketplaceResponse, ServerFnError> {
-    use crate::server_fns::{get_pool, is_multi_tenant};
+    use crate::server_fns::get_pool;
     use oxigit_core::db;
 
     let pool = get_pool().await?;
@@ -21,7 +21,8 @@ async fn fetch_recipe_marketplace(
     let offset = page * limit;
 
     // In multi-tenant mode, recipes are in tenant DBs and not globally indexed yet.
-    if is_multi_tenant().await? {
+    #[cfg(feature = "saas")]
+    if crate::server_fns::is_multi_tenant().await? {
         return Ok(RecipeMarketplaceResponse { recipes: vec![], total: 0, has_more: false });
     }
 

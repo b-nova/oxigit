@@ -10,6 +10,7 @@ path = "src/main.rs"
 [[bin]]
 name = "migrate-tenants"
 path = "src/bin/migrate_tenants.rs"
+required-features = ["saas"]
 
 [dependencies]
 oxigit-core = { path = "../oxigit-core" }
@@ -36,3 +37,4 @@ chrono = { workspace = true }
 [features]
 default = ["ssr"]
 ssr = []
+saas = ["oxigit-core/saas", "oxigit-app/saas", "oxigit-ssh/saas"]

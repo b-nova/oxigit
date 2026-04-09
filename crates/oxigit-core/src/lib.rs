@@ -1,4 +1,5 @@
 pub mod auth;
+#[cfg(feature = "saas")]
 pub mod billing;
 pub mod db;
 pub mod email;
@@ -8,9 +9,11 @@ pub mod git;
 pub mod guardrail;
 pub mod hooks;
 pub mod llm;
+#[cfg(feature = "saas")]
 pub mod migrate;
 pub mod models;
 pub mod risk;
+#[cfg(feature = "saas")]
 pub mod tenant;
 pub mod vibe;
 pub mod webhook;

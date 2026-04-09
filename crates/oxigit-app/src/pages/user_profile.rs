@@ -21,7 +21,9 @@ pub struct UserProfileInfo {
 async fn fetch_user_profile(
     username: String,
 ) -> Result<UserProfileInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool, is_multi_tenant};
+    use crate::server_fns::{extract_session_user, get_control_pool};
+    #[cfg(feature = "saas")]
+    use crate::server_fns::is_multi_tenant;
     use oxigit_core::db;
 
     let pool = get_control_pool().await?;
@@ -33,42 +35,66 @@ async fn fetch_user_profile(
 
     let is_own_profile = current_user.as_ref().map(|u| u.id) == Some(user.id);
 
-    let visible_repos: Vec<RepoInfo> = if is_multi_tenant().await? {
-        db::list_user_repos_from_index(&pool, user.id)
-            .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?
-            .into_iter()
-            .filter(|r| !r.is_private || is_own_profile)
-            .map(|r| RepoInfo {
-                id: r.id,
-                name: r.repo_name,
-                description: r.description,
-                is_private: r.is_private,
-                created_at: r.created_at,
-            })
-            .collect()
-    } else {
-        db::list_user_repositories(&pool, user.id)
-            .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?
-            .into_iter()
-            .filter(|r| !r.is_private || is_own_profile)
-            .map(|r| RepoInfo {
-                id: r.id,
-                name: r.name,
-                description: r.description,
-                is_private: r.is_private,
-                created_at: r.created_at,
-            })
-            .collect()
+    let visible_repos: Vec<RepoInfo> = {
+        #[cfg(feature = "saas")]
+        {
+            if is_multi_tenant().await? {
+                db::list_user_repos_from_index(&pool, user.id)
+                    .await
+                    .map_err(|e| ServerFnError::new(e.to_string()))?
+                    .into_iter()
+                    .filter(|r| !r.is_private || is_own_profile)
+                    .map(|r| RepoInfo {
+                        id: r.id,
+                        name: r.repo_name,
+                        description: r.description,
+                        is_private: r.is_private,
+                        created_at: r.created_at,
+                    })
+                    .collect()
+            } else {
+                db::list_user_repositories(&pool, user.id)
+                    .await
+                    .map_err(|e| ServerFnError::new(e.to_string()))?
+                    .into_iter()
+                    .filter(|r| !r.is_private || is_own_profile)
+                    .map(|r| RepoInfo {
+                        id: r.id,
+                        name: r.name,
+                        description: r.description,
+                        is_private: r.is_private,
+                        created_at: r.created_at,
+                    })
+                    .collect()
+            }
+        }
+        #[cfg(not(feature = "saas"))]
+        {
+            db::list_user_repositories(&pool, user.id)
+                .await
+                .map_err(|e| ServerFnError::new(e.to_string()))?
+                .into_iter()
+                .filter(|r| !r.is_private || is_own_profile)
+                .map(|r| RepoInfo {
+                    id: r.id,
+                    name: r.name,
+                    description: r.description,
+                    is_private: r.is_private,
+                    created_at: r.created_at,
+                })
+                .collect()
+        }
     };
 
     let plan = db::get_user_plan(&pool, user.id)
         .await
         .unwrap_or_else(|_| "free".to_string());
+    #[cfg(feature = "saas")]
     let founding_slot = db::get_founding_member_slot(&pool, user.id)
         .await
         .unwrap_or(None);
+    #[cfg(not(feature = "saas"))]
+    let founding_slot: Option<i64> = None;
     let is_founding = founding_slot.is_some();
 
     Ok(UserProfileInfo {

@@ -12,9 +12,11 @@ use tokio::process::Command;
 
 use oxigit_core::db;
 use oxigit_core::git::repo_path;
+#[cfg(feature = "saas")]
 use oxigit_core::tenant::TenantPoolManager;
 
 /// Start the SSH server on the given address.
+#[cfg(feature = "saas")]
 pub async fn run_ssh_server(
     addr: SocketAddr,
     tenant_mgr: Arc<TenantPoolManager>,
@@ -36,8 +38,48 @@ pub async fn run_ssh_server(
         tracing::debug!("SSH connection from {}", peer_addr);
 
         let handler = OxigitSshHandler {
+            #[cfg(feature = "saas")]
             tenant_mgr: tenant_mgr.clone(),
+            #[cfg(feature = "saas")]
             multi_tenant,
+            pool: tenant_mgr.control_pool().clone(),
+            data_dir: data_dir.clone(),
+            authenticated_user: None,
+            channels: HashMap::new(),
+        };
+
+        let config = config.clone();
+        tokio::spawn(async move {
+            if let Err(e) = russh::server::run_stream(config, stream, handler).await {
+                tracing::debug!("SSH session from {} ended: {}", peer_addr, e);
+            }
+        });
+    }
+}
+
+/// Start the SSH server (non-saas: single pool, no multi-tenant).
+#[cfg(not(feature = "saas"))]
+pub async fn run_ssh_server(
+    addr: SocketAddr,
+    pool: SqlitePool,
+    data_dir: PathBuf,
+    host_key: PrivateKey,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let config = russh::server::Config {
+        keys: vec![host_key],
+        ..Default::default()
+    };
+    let config = Arc::new(config);
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!("SSH server listening on {}", addr);
+
+    loop {
+        let (stream, peer_addr) = listener.accept().await?;
+        tracing::debug!("SSH connection from {}", peer_addr);
+
+        let handler = OxigitSshHandler {
+            pool: pool.clone(),
             data_dir: data_dir.clone(),
             authenticated_user: None,
             channels: HashMap::new(),
@@ -79,8 +121,11 @@ pub fn load_or_generate_host_key(data_dir: &std::path::Path) -> PrivateKey {
 }
 
 struct OxigitSshHandler {
+    #[cfg(feature = "saas")]
     tenant_mgr: Arc<TenantPoolManager>,
+    #[cfg(feature = "saas")]
     multi_tenant: bool,
+    pool: SqlitePool,
     data_dir: PathBuf,
     authenticated_user: Option<String>,
     channels: HashMap<ChannelId, Channel<Msg>>,
@@ -97,7 +142,7 @@ impl Handler for OxigitSshHandler {
         let fingerprint = public_key.fingerprint(HashAlg::Sha256).to_string();
         tracing::debug!("SSH auth attempt with fingerprint: {}", fingerprint);
 
-        match db::find_user_by_ssh_fingerprint(self.tenant_mgr.control_pool(), &fingerprint).await {
+        match db::find_user_by_ssh_fingerprint(&self.pool, &fingerprint).await {
             Ok(user) => {
                 tracing::info!("SSH authenticated user: {}", user.username);
                 self.authenticated_user = Some(user.username);
@@ -157,23 +202,28 @@ impl Handler for OxigitSshHandler {
         };
 
         // Resolve the appropriate pool for repo operations
-        let control_pool = self.tenant_mgr.control_pool().clone();
-        let repo_pool = if self.multi_tenant {
-            match db::lookup_repo_org(&control_pool, &owner, &repo_name).await {
-                Ok(org_slug) => match self.tenant_mgr.get_tenant_pool(&org_slug).await {
-                    Ok(p) => p,
+        let control_pool = self.pool.clone();
+        let repo_pool = {
+            #[cfg(feature = "saas")]
+            if self.multi_tenant {
+                match db::lookup_repo_org(&control_pool, &owner, &repo_name).await {
+                    Ok(org_slug) => match self.tenant_mgr.get_tenant_pool(&org_slug).await {
+                        Ok(p) => p,
+                        Err(_) => {
+                            let _ = session.channel_failure(channel_id);
+                            return Ok(());
+                        }
+                    },
                     Err(_) => {
                         let _ = session.channel_failure(channel_id);
                         return Ok(());
                     }
-                },
-                Err(_) => {
-                    let _ = session.channel_failure(channel_id);
-                    return Ok(());
                 }
+            } else {
+                control_pool.clone()
             }
-        } else {
-            control_pool.clone()
+            #[cfg(not(feature = "saas"))]
+            { control_pool.clone() }
         };
 
         // For push, verify the user has write access (owner or collaborator)
@@ -203,13 +253,18 @@ impl Handler for OxigitSshHandler {
         }
 
         // Resolve repo path based on mode
-        let path = if self.multi_tenant {
-            let org_slug = db::lookup_repo_org(&control_pool, &owner, &repo_name)
-                .await
-                .unwrap_or_else(|_| owner.clone());
-            self.tenant_mgr.tenant_repos_dir(&org_slug).join(format!("{}/{}.git", owner, repo_name))
-        } else {
-            repo_path(&self.data_dir, &owner, &repo_name)
+        let path = {
+            #[cfg(feature = "saas")]
+            if self.multi_tenant {
+                let org_slug = db::lookup_repo_org(&control_pool, &owner, &repo_name)
+                    .await
+                    .unwrap_or_else(|_| owner.clone());
+                self.tenant_mgr.tenant_repos_dir(&org_slug).join(format!("{}/{}.git", owner, repo_name))
+            } else {
+                repo_path(&self.data_dir, &owner, &repo_name)
+            }
+            #[cfg(not(feature = "saas"))]
+            { repo_path(&self.data_dir, &owner, &repo_name) }
         };
         if !path.exists() {
             let _ = session.channel_failure(channel_id);

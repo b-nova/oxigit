@@ -10,6 +10,8 @@
 
 Oxigit is a self-hosted Git hosting platform that treats AI-assisted development as a first-class concept. Track what your AI builds, review it with smart summaries, browse coding sessions, remix projects, and deploy previews -- all from a single platform built with Rust.
 
+> **Hosted Edition:** Try the hosted version at [oxigit.com](https://oxigit.com) — no setup required.
+
 ## Features
 
 ### AI-Aware Commits
@@ -140,6 +142,16 @@ Oxigit automatically detects these trailers on push and stores the metadata for 
 - **5 crates**: oxigit-core, oxigit-app, oxigit-server, oxigit-ssh, oxigit-e2e
 - **Git protocol**: HTTP Smart Protocol + SSH via russh (pure Rust)
 - **Database**: SQLite with sqlx (compile-time checked queries)
+
+## Building with SaaS Features
+
+The default build produces a single-tenant, self-hosted instance backed by one SQLite database (`oxigit.db` inside `OXIGIT_DATA_DIR`). To enable multi-tenancy, Stripe billing, and other SaaS features used by the hosted edition:
+
+```bash
+cargo leptos build --release --features saas
+```
+
+This activates per-organization tenant pools, billing integration, and related UI. These features are not required for self-hosting.
 
 ## Community
 

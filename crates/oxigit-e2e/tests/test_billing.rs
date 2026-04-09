@@ -2,6 +2,15 @@ mod harness;
 
 use harness::*;
 
+/// Skip this test if the server was not built with SaaS features.
+async fn require_saas(server: &TestServer) -> bool {
+    if !server.has_saas().await {
+        eprintln!("SKIPPED: server built without saas feature");
+        return false;
+    }
+    true
+}
+
 /// Helper: compute Stripe webhook signature for test payloads.
 fn sign_webhook(payload: &str, secret: &str, timestamp: &str) -> String {
     use hmac::{Hmac, Mac};
@@ -18,6 +27,7 @@ fn sign_webhook(payload: &str, secret: &str, timestamp: &str) -> String {
 #[tokio::test]
 async fn pricing_page_renders() {
     let server = TestServer::start().await;
+    if !require_saas(&server).await { return; }
     let client = server.client();
 
     let resp = client
@@ -39,6 +49,7 @@ async fn pricing_page_renders() {
 #[tokio::test]
 async fn subscription_page_requires_auth() {
     let server = TestServer::start().await;
+    if !require_saas(&server).await { return; }
     let client = server.client();
 
     let resp = client
@@ -60,6 +71,7 @@ async fn subscription_page_requires_auth() {
 #[tokio::test]
 async fn subscription_page_shows_for_authenticated_user() {
     let server = TestServer::start().await;
+    if !require_saas(&server).await { return; }
     let client = server.client();
 
     client.register("alice", "alice@test.com", "password123").await;
@@ -81,6 +93,7 @@ async fn subscription_page_shows_for_authenticated_user() {
 #[tokio::test]
 async fn webhook_rejects_missing_signature() {
     let server = TestServer::start_with_stripe("whsec_test_secret").await;
+    if !require_saas(&server).await { return; }
     let client = server.client();
 
     let resp = client
@@ -98,6 +111,7 @@ async fn webhook_rejects_missing_signature() {
 #[tokio::test]
 async fn webhook_rejects_invalid_signature() {
     let server = TestServer::start_with_stripe("whsec_test_secret").await;
+    if !require_saas(&server).await { return; }
     let client = server.client();
 
     let resp = client
@@ -117,6 +131,7 @@ async fn webhook_rejects_invalid_signature() {
 async fn webhook_processes_checkout_completed() {
     let secret = "whsec_test_secret";
     let server = TestServer::start_with_stripe(secret).await;
+    if !require_saas(&server).await { return; }
     let client = server.client();
 
     // Register a user first (user_id will be 1)
@@ -155,6 +170,7 @@ async fn webhook_processes_checkout_completed() {
 async fn webhook_handles_subscription_deleted() {
     let secret = "whsec_test_secret";
     let server = TestServer::start_with_stripe(secret).await;
+    if !require_saas(&server).await { return; }
     let client = server.client();
 
     client.register("alice", "alice@test.com", "password123").await;
@@ -210,6 +226,7 @@ async fn webhook_handles_subscription_deleted() {
 #[tokio::test]
 async fn webhook_returns_503_when_not_configured() {
     let server = TestServer::start().await;
+    if !require_saas(&server).await { return; }
     let client = server.client();
 
     let resp = client

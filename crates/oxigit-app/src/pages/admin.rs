@@ -37,11 +37,11 @@ pub struct AdminDashboardData {
 
 #[server]
 async fn get_admin_dashboard() -> Result<AdminDashboardData, ServerFnError> {
-    use crate::server_fns::{get_data_dir, get_control_pool, require_admin};
+    use crate::server_fns::{get_data_dir, get_pool, require_admin};
     use oxigit_core::db;
 
     require_admin().await?;
-    let pool = get_control_pool().await?;
+    let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
 
     let user_count = db::count_users(&pool)
@@ -50,9 +50,12 @@ async fn get_admin_dashboard() -> Result<AdminDashboardData, ServerFnError> {
     let repo_count = db::count_repositories(&pool)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
+    #[cfg(feature = "saas")]
     let subscription_breakdown = db::subscription_breakdown(&pool)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
+    #[cfg(not(feature = "saas"))]
+    let subscription_breakdown = vec![];
 
     // Compute disk usage of data directory
     let disk_usage_display = {
@@ -129,11 +132,11 @@ async fn get_admin_dashboard() -> Result<AdminDashboardData, ServerFnError> {
 
 #[server]
 async fn admin_toggle_disabled(user_id: i64, disabled: bool) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_control_pool, require_admin};
+    use crate::server_fns::{get_pool, require_admin};
     use oxigit_core::db;
 
     require_admin().await?;
-    let pool = get_control_pool().await?;
+    let pool = get_pool().await?;
     db::set_user_disabled(&pool, user_id, disabled)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
@@ -142,14 +145,23 @@ async fn admin_toggle_disabled(user_id: i64, disabled: bool) -> Result<(), Serve
 
 #[server]
 async fn admin_set_plan(user_id: i64, plan: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_control_pool, require_admin};
-    use oxigit_core::db;
+    use crate::server_fns::{require_admin};
 
     require_admin().await?;
-    let pool = get_control_pool().await?;
-    db::admin_override_plan(&pool, user_id, &plan)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    #[cfg(feature = "saas")]
+    {
+        use crate::server_fns::get_pool;
+        use oxigit_core::db;
+        let pool = get_pool().await?;
+        db::admin_override_plan(&pool, user_id, &plan)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+    }
+    #[cfg(not(feature = "saas"))]
+    {
+        let _ = (user_id, plan);
+        return Err(ServerFnError::new("Plan management requires the SaaS edition"));
+    }
     Ok(())
 }
 

@@ -137,21 +137,24 @@ async fn fetch_repo_tree(
 
 #[server]
 async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_path, get_repo_pools, get_tenant_mgr, is_multi_tenant};
+    use crate::server_fns::{extract_session_user, get_data_dir, get_repo_path, get_repo_pools};
+    #[cfg(feature = "saas")]
+    use crate::server_fns::is_multi_tenant;
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
+    let (_control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     // Check if source repo has REMIX.md before forking
     let source_path = get_repo_path(&owner, &repo).await?;
     let default_ref = git::default_branch(&source_path).unwrap_or(None).unwrap_or_else(|| "main".to_string());
     let has_remix = git::read_blob(&source_path, &default_ref, "REMIX.md").is_ok();
 
-    let multi = is_multi_tenant().await?;
-    if multi {
+    #[cfg(feature = "saas")]
+    if is_multi_tenant().await? {
+        use crate::server_fns::get_tenant_mgr;
         // In multi-tenant mode, the fork user's tenant repos_dir is needed.
         // Both source and fork live in the same tenant since the fork user
         // is the active user whose org was used to resolve the tenant pool.
@@ -165,7 +168,7 @@ async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
             .await
             .map_err(|e| ServerFnError::new(e.to_string()))?;
         // Source repo: resolve from source tenant
-        let (_, source_repo) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
+        let (_, source_repo) = db::get_repository_cross(&_control_pool, &pool, &owner, &repo)
             .await
             .map_err(|e| ServerFnError::new(e.to_string()))?;
         if source_repo.owner_id == user.id {
@@ -192,14 +195,17 @@ async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
             &fork_pool, user.id, &user.username, &repo, &source_repo.description, false, &fork_repos_dir,
         ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
         // Register in global index
-        db::register_repo_in_index(&control_pool, &user.username, user.id, &user.username, &repo, &source_repo.description, false)
+        db::register_repo_in_index(&_control_pool, &user.username, user.id, &user.username, &repo, &source_repo.description, false)
             .await.map_err(|e| ServerFnError::new(e.to_string()))?;
         if has_remix {
             leptos_axum::redirect(&format!("/{}/{}/remix-guide", user.username, forked.name));
         } else {
             leptos_axum::redirect(&format!("/{}/{}", user.username, forked.name));
         }
-    } else {
+        return Ok(());
+    }
+
+    {
         let data_dir = get_data_dir().await?;
         let forked = db::fork_repository(&pool, &owner, &repo, user.id, &data_dir)
             .await

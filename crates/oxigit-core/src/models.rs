@@ -44,6 +44,7 @@ pub struct Repository {
 
 /// Lightweight repository entry from the global index (control DB).
 /// Used for cross-tenant listing/search without loading full tenant DBs.
+#[cfg(feature = "saas")]
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct RepositoryIndexEntry {
     pub id: i64,
@@ -281,6 +282,7 @@ pub struct DeployPreview {
     pub updated_at: String,
 }
 
+#[cfg(feature = "saas")]
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Subscription {
     pub id: i64,
@@ -295,6 +297,7 @@ pub struct Subscription {
     pub updated_at: String,
 }
 
+#[cfg(feature = "saas")]
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct FoundingMember {
     pub id: i64,
@@ -313,6 +316,7 @@ pub struct ContactInquiry {
     pub created_at: String,
 }
 
+#[cfg(feature = "saas")]
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Organization {
     pub id: i64,
@@ -323,6 +327,7 @@ pub struct Organization {
     pub updated_at: String,
 }
 
+#[cfg(feature = "saas")]
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct OrgMembership {
     pub id: i64,

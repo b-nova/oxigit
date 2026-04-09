@@ -3,7 +3,9 @@ use std::path::Path;
 
 use crate::auth::{hash_password, validate_repo_name, validate_username, verify_password};
 use crate::error::{OxigitError, Result};
-use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, ContactInquiry, DeployPreview, FoundingMember, GuardrailConfig, GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile, OrgMembership, Organization, PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, Subscription, User, UserSettings};
+use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, ContactInquiry, DeployPreview, GuardrailConfig, GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile, PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, User, UserSettings};
+#[cfg(feature = "saas")]
+use crate::models::{FoundingMember, OrgMembership, Organization, Subscription};
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
@@ -22,6 +24,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
 }
 
 /// Run control-plane migrations (users, auth, billing, orgs).
+#[cfg(feature = "saas")]
 pub async fn run_control_migrations(pool: &SqlitePool) -> Result<()> {
     sqlx::migrate!("../../migrations_control").run(pool).await.map_err(|e| {
         OxigitError::Database(sqlx::Error::Protocol(format!("Control migration failed: {e}")))
@@ -30,6 +33,7 @@ pub async fn run_control_migrations(pool: &SqlitePool) -> Result<()> {
 }
 
 /// Run tenant migrations (repos, issues, PRs, AI data, etc.).
+#[cfg(feature = "saas")]
 pub async fn run_tenant_migrations(pool: &SqlitePool) -> Result<()> {
     sqlx::migrate!("../../migrations_tenant").run(pool).await.map_err(|e| {
         OxigitError::Database(sqlx::Error::Protocol(format!("Tenant migration failed: {e}")))
@@ -169,6 +173,7 @@ pub async fn create_repository(
 
 /// Create a repository in a tenant DB where the `users` table is not available.
 /// The caller provides the owner username and the repos directory directly.
+#[cfg(feature = "saas")]
 pub async fn create_repository_in_tenant(
     pool: &SqlitePool,
     owner_id: i64,
@@ -2094,24 +2099,28 @@ pub async fn delete_recipe(pool: &SqlitePool, recipe_id: i64, author_id: i64) ->
 
 // --- Subscription queries ---
 
+#[cfg(feature = "saas")]
 pub async fn get_subscription(pool: &SqlitePool, user_id: i64) -> Result<Option<Subscription>> {
     let sub = sqlx::query_as::<_, Subscription>("SELECT * FROM subscriptions WHERE user_id = ?")
         .bind(user_id).fetch_optional(pool).await?;
     Ok(sub)
 }
 
+#[cfg(feature = "saas")]
 pub async fn get_subscription_by_stripe_customer(pool: &SqlitePool, stripe_customer_id: &str) -> Result<Option<Subscription>> {
     let sub = sqlx::query_as::<_, Subscription>("SELECT * FROM subscriptions WHERE stripe_customer_id = ?")
         .bind(stripe_customer_id).fetch_optional(pool).await?;
     Ok(sub)
 }
 
+#[cfg(feature = "saas")]
 pub async fn get_subscription_by_stripe_subscription(pool: &SqlitePool, stripe_subscription_id: &str) -> Result<Option<Subscription>> {
     let sub = sqlx::query_as::<_, Subscription>("SELECT * FROM subscriptions WHERE stripe_subscription_id = ?")
         .bind(stripe_subscription_id).fetch_optional(pool).await?;
     Ok(sub)
 }
 
+#[cfg(feature = "saas")]
 pub async fn upsert_subscription(
     pool: &SqlitePool,
     user_id: i64,
@@ -2154,6 +2163,7 @@ pub async fn upsert_subscription(
     Ok(sub)
 }
 
+#[cfg(feature = "saas")]
 pub async fn update_subscription_status(
     pool: &SqlitePool,
     stripe_subscription_id: &str,
@@ -2169,6 +2179,7 @@ pub async fn update_subscription_status(
     Ok(())
 }
 
+#[cfg(feature = "saas")]
 pub async fn cancel_subscription(pool: &SqlitePool, stripe_subscription_id: &str) -> Result<()> {
     sqlx::query(
         "UPDATE subscriptions SET status = 'canceled', updated_at = datetime('now') WHERE stripe_subscription_id = ?",
@@ -2178,15 +2189,24 @@ pub async fn cancel_subscription(pool: &SqlitePool, stripe_subscription_id: &str
 }
 
 pub async fn get_user_plan(pool: &SqlitePool, user_id: i64) -> Result<String> {
-    let sub = get_subscription(pool, user_id).await?;
-    match sub {
-        Some(s) if s.status == "active" => Ok(s.plan),
-        _ => Ok("free".to_string()),
+    #[cfg(feature = "saas")]
+    {
+        let sub = get_subscription(pool, user_id).await?;
+        return match sub {
+            Some(s) if s.status == "active" => Ok(s.plan),
+            _ => Ok("free".to_string()),
+        };
+    }
+    #[cfg(not(feature = "saas"))]
+    {
+        let _ = (pool, user_id);
+        Ok("flat".to_string())
     }
 }
 
 // --- Founding member queries ---
 
+#[cfg(feature = "saas")]
 pub async fn count_founding_members(pool: &SqlitePool) -> Result<i64> {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM founding_members")
         .fetch_one(pool).await?;
@@ -2195,6 +2215,7 @@ pub async fn count_founding_members(pool: &SqlitePool) -> Result<i64> {
 
 /// Atomically claim a founding member slot. Returns the slot number if successful,
 /// or None if all 100 slots are taken.
+#[cfg(feature = "saas")]
 pub async fn claim_founding_slot(pool: &SqlitePool, user_id: i64) -> Result<Option<i64>> {
     // Atomic insert: only succeeds if fewer than 100 slots claimed and user hasn't claimed one
     let result = sqlx::query_as::<_, FoundingMember>(
@@ -2207,6 +2228,7 @@ pub async fn claim_founding_slot(pool: &SqlitePool, user_id: i64) -> Result<Opti
     Ok(result.map(|fm| fm.slot_number))
 }
 
+#[cfg(feature = "saas")]
 pub async fn is_founding_member(pool: &SqlitePool, user_id: i64) -> Result<bool> {
     let (count,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM founding_members WHERE user_id = ?")
@@ -2216,6 +2238,7 @@ pub async fn is_founding_member(pool: &SqlitePool, user_id: i64) -> Result<bool>
     Ok(count > 0)
 }
 
+#[cfg(feature = "saas")]
 pub async fn get_founding_member_slot(pool: &SqlitePool, user_id: i64) -> Result<Option<i64>> {
     let result: Option<(i64,)> =
         sqlx::query_as("SELECT slot_number FROM founding_members WHERE user_id = ?")
@@ -2225,6 +2248,7 @@ pub async fn get_founding_member_slot(pool: &SqlitePool, user_id: i64) -> Result
     Ok(result.map(|(n,)| n))
 }
 
+#[cfg(feature = "saas")]
 pub async fn get_founding_member_slot_by_username(
     pool: &SqlitePool,
     username: &str,
@@ -2285,6 +2309,7 @@ pub async fn count_repositories(pool: &SqlitePool) -> Result<i64> {
 }
 
 /// Count repositories via the control-plane index (works after split).
+#[cfg(feature = "saas")]
 pub async fn count_indexed_repositories(pool: &SqlitePool) -> Result<i64> {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM repository_index")
         .fetch_one(pool).await?;
@@ -2301,6 +2326,7 @@ pub async fn count_private_repositories(pool: &SqlitePool, owner_id: i64) -> Res
 
 /// Count private repositories for a user via the repository_index table (control DB).
 /// Use this in multi-tenant mode where repos table is in tenant DBs.
+#[cfg(feature = "saas")]
 pub async fn count_private_repos_from_index(pool: &SqlitePool, owner_id: i64) -> Result<i64> {
     let (count,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM repository_index WHERE owner_id = ? AND is_private = 1",
@@ -2309,6 +2335,7 @@ pub async fn count_private_repos_from_index(pool: &SqlitePool, owner_id: i64) ->
     Ok(count)
 }
 
+#[cfg(feature = "saas")]
 pub async fn subscription_breakdown(pool: &SqlitePool) -> Result<Vec<(String, i64)>> {
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT plan, COUNT(*) FROM subscriptions WHERE status = 'active' GROUP BY plan",
@@ -2317,6 +2344,7 @@ pub async fn subscription_breakdown(pool: &SqlitePool) -> Result<Vec<(String, i6
     Ok(rows)
 }
 
+#[cfg(feature = "saas")]
 pub async fn admin_override_plan(pool: &SqlitePool, user_id: i64, plan: &str) -> Result<()> {
     // Upsert a subscription with a sentinel stripe_customer_id for admin overrides
     sqlx::query(
@@ -2334,6 +2362,7 @@ pub async fn admin_override_plan(pool: &SqlitePool, user_id: i64, plan: &str) ->
 
 // --- Organization queries ---
 
+#[cfg(feature = "saas")]
 pub async fn create_organization(
     pool: &SqlitePool,
     slug: &str,
@@ -2352,6 +2381,7 @@ pub async fn create_organization(
     Ok(org)
 }
 
+#[cfg(feature = "saas")]
 pub async fn get_organization_by_slug(pool: &SqlitePool, slug: &str) -> Result<Organization> {
     let org = sqlx::query_as::<_, Organization>("SELECT * FROM organizations WHERE slug = ?")
         .bind(slug)
@@ -2360,6 +2390,7 @@ pub async fn get_organization_by_slug(pool: &SqlitePool, slug: &str) -> Result<O
     Ok(org)
 }
 
+#[cfg(feature = "saas")]
 pub async fn list_user_organizations(pool: &SqlitePool, user_id: i64) -> Result<Vec<(Organization, String)>> {
     let rows: Vec<(i64, String, String, i64, String, String, String)> = sqlx::query_as(
         "SELECT o.id, o.slug, o.display_name, o.created_by, o.created_at, o.updated_at, m.role \
@@ -2382,6 +2413,7 @@ pub async fn list_user_organizations(pool: &SqlitePool, user_id: i64) -> Result<
         .collect())
 }
 
+#[cfg(feature = "saas")]
 pub async fn add_org_member(
     pool: &SqlitePool,
     org_id: i64,
@@ -2399,6 +2431,7 @@ pub async fn add_org_member(
     Ok(membership)
 }
 
+#[cfg(feature = "saas")]
 pub async fn get_org_membership(
     pool: &SqlitePool,
     org_id: i64,
@@ -2414,6 +2447,7 @@ pub async fn get_org_membership(
     Ok(membership)
 }
 
+#[cfg(feature = "saas")]
 pub async fn is_org_member(pool: &SqlitePool, org_id: i64, user_id: i64) -> Result<bool> {
     let (count,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM org_memberships WHERE org_id = ? AND user_id = ?",
@@ -2425,6 +2459,7 @@ pub async fn is_org_member(pool: &SqlitePool, org_id: i64, user_id: i64) -> Resu
     Ok(count > 0)
 }
 
+#[cfg(feature = "saas")]
 pub async fn remove_org_member(pool: &SqlitePool, org_id: i64, user_id: i64) -> Result<()> {
     sqlx::query("DELETE FROM org_memberships WHERE org_id = ? AND user_id = ?")
         .bind(org_id)
@@ -2434,6 +2469,7 @@ pub async fn remove_org_member(pool: &SqlitePool, org_id: i64, user_id: i64) -> 
     Ok(())
 }
 
+#[cfg(feature = "saas")]
 pub async fn list_org_members(pool: &SqlitePool, org_id: i64) -> Result<Vec<(User, String)>> {
     let rows: Vec<(i64, String, String, String, String, bool, bool, String, String, String)> = sqlx::query_as(
         "SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.is_admin, u.is_disabled, \
@@ -2460,6 +2496,7 @@ pub async fn list_org_members(pool: &SqlitePool, org_id: i64) -> Result<Vec<(Use
 // --- Repository index queries ---
 
 /// Look up which org owns a repository by owner/repo name.
+#[cfg(feature = "saas")]
 pub async fn lookup_repo_org(pool: &SqlitePool, owner_username: &str, repo_name: &str) -> Result<String> {
     let (org_slug,): (String,) = sqlx::query_as(
         "SELECT org_slug FROM repository_index WHERE owner_username = ? AND repo_name = ?",
@@ -2473,6 +2510,7 @@ pub async fn lookup_repo_org(pool: &SqlitePool, owner_username: &str, repo_name:
 }
 
 /// Register a repository in the global index.
+#[cfg(feature = "saas")]
 pub async fn register_repo_in_index(
     pool: &SqlitePool,
     org_slug: &str,
@@ -2503,6 +2541,7 @@ pub async fn register_repo_in_index(
 }
 
 /// List repos owned by a user from the global index (for multi-tenant repo listing).
+#[cfg(feature = "saas")]
 pub async fn list_user_repos_from_index(pool: &SqlitePool, owner_id: i64) -> Result<Vec<crate::models::RepositoryIndexEntry>> {
     let rows = sqlx::query_as::<_, crate::models::RepositoryIndexEntry>(
         "SELECT id, org_slug, owner_id, owner_username, repo_name, description, is_private, created_at, updated_at \
@@ -2515,6 +2554,7 @@ pub async fn list_user_repos_from_index(pool: &SqlitePool, owner_id: i64) -> Res
 }
 
 /// Search public repos from the global index (for multi-tenant explore page).
+#[cfg(feature = "saas")]
 pub async fn search_public_repos_from_index(pool: &SqlitePool, query: &str) -> Result<Vec<crate::models::RepositoryIndexEntry>> {
     let rows = if query.is_empty() {
         sqlx::query_as::<_, crate::models::RepositoryIndexEntry>(
@@ -2540,6 +2580,7 @@ pub async fn search_public_repos_from_index(pool: &SqlitePool, query: &str) -> R
 }
 
 /// Remove a repository from the global index.
+#[cfg(feature = "saas")]
 pub async fn remove_repo_from_index(pool: &SqlitePool, owner_username: &str, repo_name: &str) -> Result<()> {
     sqlx::query("DELETE FROM repository_index WHERE owner_username = ? AND repo_name = ?")
         .bind(owner_username)

@@ -15,97 +15,112 @@ pub struct PricingInfo {
 
 #[server]
 async fn fetch_pricing_info() -> Result<PricingInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool, get_stripe_config};
-    use oxigit_core::db;
+    #[cfg(feature = "saas")]
+    {
+        use crate::server_fns::{extract_session_user, get_control_pool, get_stripe_config};
+        use oxigit_core::db;
 
-    let user = extract_session_user().await;
-    let pool = get_control_pool().await?;
-    let stripe = get_stripe_config().await?;
+        let user = extract_session_user().await;
+        let pool = get_control_pool().await?;
+        let stripe = get_stripe_config().await?;
 
-    let current_plan = if let Some(ref u) = user {
-        db::get_user_plan(&pool, u.id)
+        let current_plan = if let Some(ref u) = user {
+            db::get_user_plan(&pool, u.id)
+                .await
+                .map_err(|e| ServerFnError::new(e.to_string()))?
+        } else {
+            "free".to_string()
+        };
+
+        let founding_count = db::count_founding_members(&pool)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?
-    } else {
-        "free".to_string()
-    };
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    let founding_count = db::count_founding_members(&pool)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-
-    Ok(PricingInfo {
-        is_authenticated: user.is_some(),
-        current_plan,
-        founding_slots_remaining: (100 - founding_count).max(0),
-        stripe_configured: stripe.is_some(),
-    })
+        Ok(PricingInfo {
+            is_authenticated: user.is_some(),
+            current_plan,
+            founding_slots_remaining: (100 - founding_count).max(0),
+            stripe_configured: stripe.is_some(),
+        })
+    }
+    #[cfg(not(feature = "saas"))]
+    {
+        Err(ServerFnError::new("This feature requires the SaaS edition"))
+    }
 }
 
 #[server]
 async fn create_checkout(plan: String) -> Result<String, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_base_url, get_control_pool, get_stripe_config};
-    use oxigit_core::{billing, db};
+    #[cfg(feature = "saas")]
+    {
+        use crate::server_fns::{extract_session_user, get_base_url, get_control_pool, get_stripe_config};
+        use oxigit_core::{billing, db};
 
-    let user = extract_session_user().await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_control_pool().await?;
-    let stripe = get_stripe_config().await?
-        .ok_or_else(|| ServerFnError::new("Billing not configured"))?;
+        let user = extract_session_user().await
+            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let pool = get_control_pool().await?;
+        let stripe = get_stripe_config().await?
+            .ok_or_else(|| ServerFnError::new("Billing not configured"))?;
 
-    let base_url = get_base_url().await;
+        let base_url = get_base_url().await;
 
-    // Determine price ID
-    let price_id = match plan.as_str() {
-        "flat" => stripe.price_flat
-            .ok_or_else(|| ServerFnError::new("Flat plan price not configured"))?,
-        "team" => stripe.price_team
-            .ok_or_else(|| ServerFnError::new("Team plan price not configured"))?,
-        "founding" => {
-            // Check founding slots
-            let count = db::count_founding_members(&pool).await
-                .map_err(|e| ServerFnError::new(e.to_string()))?;
-            if count >= 100 {
-                return Err(ServerFnError::new("All founding member slots are taken"));
+        // Determine price ID
+        let price_id = match plan.as_str() {
+            "flat" => stripe.price_flat
+                .ok_or_else(|| ServerFnError::new("Flat plan price not configured"))?,
+            "team" => stripe.price_team
+                .ok_or_else(|| ServerFnError::new("Team plan price not configured"))?,
+            "founding" => {
+                // Check founding slots
+                let count = db::count_founding_members(&pool).await
+                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                if count >= 100 {
+                    return Err(ServerFnError::new("All founding member slots are taken"));
+                }
+                stripe.price_founding
+                    .ok_or_else(|| ServerFnError::new("Founding plan price not configured"))?
             }
-            stripe.price_founding
-                .ok_or_else(|| ServerFnError::new("Founding plan price not configured"))?
-        }
-        _ => return Err(ServerFnError::new("Invalid plan")),
-    };
+            _ => return Err(ServerFnError::new("Invalid plan")),
+        };
 
-    // Get or create Stripe customer
-    let sub = db::get_subscription(&pool, user.id).await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-
-    let customer_id = if let Some(ref sub) = sub {
-        sub.stripe_customer_id.clone()
-    } else {
-        // Look up user email
-        let db_user = db::get_user_by_id(&pool, user.id).await
+        // Get or create Stripe customer
+        let sub = db::get_subscription(&pool, user.id).await
             .map_err(|e| ServerFnError::new(e.to_string()))?;
-        let cid = billing::create_customer(&stripe.secret_key, &db_user.email, user.id).await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
-        // Store customer ID with free subscription
-        db::upsert_subscription(&pool, user.id, &cid, None, "free", "active", None, 1).await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
-        cid
-    };
 
-    let quantity = if plan == "team" { 3 } else { 1 };
+        let customer_id = if let Some(ref sub) = sub {
+            sub.stripe_customer_id.clone()
+        } else {
+            // Look up user email
+            let db_user = db::get_user_by_id(&pool, user.id).await
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+            let cid = billing::create_customer(&stripe.secret_key, &db_user.email, user.id).await
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+            // Store customer ID with free subscription
+            db::upsert_subscription(&pool, user.id, &cid, None, "free", "active", None, 1).await
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+            cid
+        };
 
-    let checkout_url = billing::create_checkout_session(
-        &stripe.secret_key,
-        &customer_id,
-        &price_id,
-        quantity,
-        &format!("{}/billing?success=true", base_url),
-        &format!("{}/pricing", base_url),
-        &user.id.to_string(),
-        &plan,
-    ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        let quantity = if plan == "team" { 3 } else { 1 };
 
-    Ok(checkout_url)
+        let checkout_url = billing::create_checkout_session(
+            &stripe.secret_key,
+            &customer_id,
+            &price_id,
+            quantity,
+            &format!("{}/billing?success=true", base_url),
+            &format!("{}/pricing", base_url),
+            &user.id.to_string(),
+            &plan,
+        ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+        Ok(checkout_url)
+    }
+    #[cfg(not(feature = "saas"))]
+    {
+        let _ = plan;
+        Err(ServerFnError::new("This feature requires the SaaS edition"))
+    }
 }
 
 #[component]

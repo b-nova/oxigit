@@ -38,26 +38,32 @@ pub struct Config {
     #[arg(long, env = "OXIGIT_LLM_BASE_URL")]
     pub llm_base_url: Option<String>,
 
+    #[cfg(feature = "saas")]
     /// Stripe secret key (sk_test_... or sk_live_...)
     #[arg(long, env = "STRIPE_SECRET_KEY")]
     pub stripe_secret_key: Option<String>,
 
+    #[cfg(feature = "saas")]
     /// Stripe webhook signing secret (whsec_...)
     #[arg(long, env = "STRIPE_WEBHOOK_SECRET")]
     pub stripe_webhook_secret: Option<String>,
 
+    #[cfg(feature = "saas")]
     /// Stripe publishable key (pk_test_... or pk_live_...)
     #[arg(long, env = "STRIPE_PUBLISHABLE_KEY")]
     pub stripe_publishable_key: Option<String>,
 
+    #[cfg(feature = "saas")]
     /// Stripe Price ID for Flat plan
     #[arg(long, env = "STRIPE_PRICE_FLAT")]
     pub stripe_price_flat: Option<String>,
 
+    #[cfg(feature = "saas")]
     /// Stripe Price ID for Team plan
     #[arg(long, env = "STRIPE_PRICE_TEAM")]
     pub stripe_price_team: Option<String>,
 
+    #[cfg(feature = "saas")]
     /// Stripe Price ID for Founding Member plan
     #[arg(long, env = "STRIPE_PRICE_FOUNDING")]
     pub stripe_price_founding: Option<String>,
@@ -87,6 +93,7 @@ pub struct Config {
     pub contact_email: Option<String>,
 
     /// Force legacy single-database mode even if control.db exists.
+    #[cfg(feature = "saas")]
     #[arg(long, env = "OXIGIT_LEGACY_MODE")]
     pub legacy_mode: bool,
 }

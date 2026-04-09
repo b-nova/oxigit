@@ -53,3 +53,4 @@ ssr = [
     "dep:hex",
     "dep:chrono",
 ]
+saas = ["oxigit-core/saas"]

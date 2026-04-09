@@ -10,11 +10,14 @@ use tracing_subscriber::EnvFilter;
 use oxigit_app::{App, Shell, ShellProps};
 use oxigit_app::server_fns::AppState;
 use oxigit_core::db;
+#[cfg(feature = "saas")]
 use oxigit_core::tenant::TenantPoolManager;
 
+#[cfg(feature = "saas")]
 mod badge;
 mod config;
 mod git_http;
+#[cfg(feature = "saas")]
 mod stripe_webhook;
 
 use config::Config;
@@ -32,52 +35,69 @@ async fn main() {
     // Ensure data directories exist
     std::fs::create_dir_all(&config.data_dir).expect("Failed to create data directory");
 
-    // Detect database mode: multi-tenant vs legacy single-DB
-    let control_db_path = config.data_dir.join("control.db");
-    let legacy_db_path = config.data_dir.join("oxigit.db");
+    // Database initialization
+    #[cfg(feature = "saas")]
+    let (pool, multi_tenant, tenant_mgr) = {
+        let control_db_path = config.data_dir.join("control.db");
+        let legacy_db_path = config.data_dir.join("oxigit.db");
 
-    let multi_tenant = if config.legacy_mode {
-        false
-    } else if control_db_path.exists() {
-        true
-    } else if legacy_db_path.exists() {
-        // Auto-migrate from legacy single-DB to multi-tenant
-        tracing::info!("Detected legacy oxigit.db — auto-migrating to multi-tenant...");
-        oxigit_core::migrate::migrate_legacy_to_multi_tenant(&config.data_dir)
-            .await
-            .expect("Auto-migration from legacy DB failed");
-        true
-    } else {
-        true // Fresh install
+        let multi_tenant = if config.legacy_mode {
+            false
+        } else if control_db_path.exists() {
+            true
+        } else if legacy_db_path.exists() {
+            tracing::info!("Detected legacy oxigit.db — auto-migrating to multi-tenant...");
+            oxigit_core::migrate::migrate_legacy_to_multi_tenant(&config.data_dir)
+                .await
+                .expect("Auto-migration from legacy DB failed");
+            true
+        } else {
+            true
+        };
+
+        let pool = if multi_tenant {
+            let url = format!("sqlite:{}?mode=rwc", control_db_path.display());
+            let p = db::create_pool(&url)
+                .await
+                .expect("Failed to create control database pool");
+            db::run_control_migrations(&p)
+                .await
+                .expect("Failed to run control migrations");
+            tracing::info!("Multi-tenant mode: control DB at {}", control_db_path.display());
+            p
+        } else {
+            std::fs::create_dir_all(config.data_dir.join("repos"))
+                .expect("Failed to create repos directory");
+            let url = format!("sqlite:{}?mode=rwc", legacy_db_path.display());
+            let p = db::create_pool(&url)
+                .await
+                .expect("Failed to create database pool");
+            db::run_migrations(&p)
+                .await
+                .expect("Failed to run migrations");
+            tracing::info!("Legacy mode: database at {}", legacy_db_path.display());
+            p
+        };
+
+        let tenant_mgr = Arc::new(TenantPoolManager::new(pool.clone(), config.data_dir.clone(), 50));
+        (pool, multi_tenant, tenant_mgr)
     };
 
-    let pool = if multi_tenant {
-        // Multi-tenant mode (fresh install, already migrated, or just auto-migrated)
-        let url = format!("sqlite:{}?mode=rwc", control_db_path.display());
-        let p = db::create_pool(&url)
-            .await
-            .expect("Failed to create control database pool");
-        db::run_control_migrations(&p)
-            .await
-            .expect("Failed to run control migrations");
-        tracing::info!("Multi-tenant mode: control DB at {}", control_db_path.display());
-        p
-    } else {
-        // Legacy single-DB mode (only when --legacy-mode is explicitly set)
+    #[cfg(not(feature = "saas"))]
+    let pool = {
         std::fs::create_dir_all(config.data_dir.join("repos"))
             .expect("Failed to create repos directory");
-        let url = format!("sqlite:{}?mode=rwc", legacy_db_path.display());
+        let db_path = config.data_dir.join("oxigit.db");
+        let url = format!("sqlite:{}?mode=rwc", db_path.display());
         let p = db::create_pool(&url)
             .await
             .expect("Failed to create database pool");
         db::run_migrations(&p)
             .await
             .expect("Failed to run migrations");
-        tracing::info!("Legacy mode: database at {}", legacy_db_path.display());
+        tracing::info!("Database at {}", db_path.display());
         p
     };
-
-    let tenant_mgr = Arc::new(TenantPoolManager::new(pool.clone(), config.data_dir.clone(), 50));
 
     // SSH host key
     let host_key = oxigit_ssh::load_or_generate_host_key(&config.data_dir);
@@ -97,8 +117,11 @@ async fn main() {
     let secret_key = load_or_generate_secret(&config);
 
     let state = AppState {
+        #[cfg(feature = "saas")]
         tenant_mgr: tenant_mgr.clone(),
+        #[cfg(feature = "saas")]
         multi_tenant,
+        pool: pool.clone(),
         data_dir: config.data_dir.clone(),
         secret_key,
         leptos_options: leptos_options.clone(),
@@ -106,11 +129,17 @@ async fn main() {
         llm_api_key: config.llm_api_key.clone(),
         llm_model: config.llm_model.clone(),
         llm_base_url: config.llm_base_url.clone(),
+        #[cfg(feature = "saas")]
         stripe_secret_key: config.stripe_secret_key.clone(),
+        #[cfg(feature = "saas")]
         stripe_publishable_key: config.stripe_publishable_key.clone(),
+        #[cfg(feature = "saas")]
         stripe_webhook_secret: config.stripe_webhook_secret.clone(),
+        #[cfg(feature = "saas")]
         stripe_price_flat: config.stripe_price_flat.clone(),
+        #[cfg(feature = "saas")]
         stripe_price_team: config.stripe_price_team.clone(),
+        #[cfg(feature = "saas")]
         stripe_price_founding: config.stripe_price_founding.clone(),
         smtp_host: config.smtp_host.clone(),
         smtp_port: config.smtp_port,
@@ -121,15 +150,21 @@ async fn main() {
     };
 
     // Git Smart HTTP routes + deploy callback (must be before Leptos routes)
-    let git_routes = Router::new()
+    let mut git_routes = Router::new()
         .route("/{owner}/{repo}/info/refs", get(git_http::info_refs))
         .route("/{owner}/{repo}/git-upload-pack", post(git_http::upload_pack))
         .route("/{owner}/{repo}/git-receive-pack", post(git_http::receive_pack))
         .route("/api/deploy-callback/{commit_sha}", post(git_http::deploy_callback))
-        .route("/internal/guardrail-check", post(git_http::guardrail_check))
-        .route("/api/stripe/webhook", post(stripe_webhook::handle_webhook))
-        .route("/api/badge/{username_svg}", get(badge::founding_badge))
-        .with_state(state.clone());
+        .route("/internal/guardrail-check", post(git_http::guardrail_check));
+
+    #[cfg(feature = "saas")]
+    {
+        git_routes = git_routes
+            .route("/api/stripe/webhook", post(stripe_webhook::handle_webhook))
+            .route("/api/badge/{username_svg}", get(badge::founding_badge));
+    }
+
+    let git_routes = git_routes.with_state(state.clone());
 
     // Build router — use Shell for SSR, App for hydration
     let shell_options = leptos_options.clone();
@@ -161,13 +196,25 @@ async fn main() {
 
     // Start SSH server in background
     let ssh_addr: std::net::SocketAddr = config.ssh_addr.parse().expect("Invalid SSH address");
-    let ssh_tenant_mgr = tenant_mgr.clone();
     let ssh_data_dir = config.data_dir.clone();
-    tokio::spawn(async move {
-        if let Err(e) = oxigit_ssh::run_ssh_server(ssh_addr, ssh_tenant_mgr, ssh_data_dir, host_key, multi_tenant).await {
-            tracing::error!("SSH server error: {}", e);
-        }
-    });
+    #[cfg(feature = "saas")]
+    {
+        let ssh_tenant_mgr = tenant_mgr.clone();
+        tokio::spawn(async move {
+            if let Err(e) = oxigit_ssh::run_ssh_server(ssh_addr, ssh_tenant_mgr, ssh_data_dir, host_key, multi_tenant).await {
+                tracing::error!("SSH server error: {}", e);
+            }
+        });
+    }
+    #[cfg(not(feature = "saas"))]
+    {
+        let ssh_pool = pool.clone();
+        tokio::spawn(async move {
+            if let Err(e) = oxigit_ssh::run_ssh_server(ssh_addr, ssh_pool, ssh_data_dir, host_key).await {
+                tracing::error!("SSH server error: {}", e);
+            }
+        });
+    }
 
     // Start HTTP server
     let listener = tokio::net::TcpListener::bind(&config.http_addr)

@@ -185,6 +185,20 @@ impl TestServer {
     pub fn client(&self) -> TestClient {
         TestClient::new(&self.base_url)
     }
+
+    /// Check if the server was built with SaaS features (Stripe webhook route exists).
+    pub async fn has_saas(&self) -> bool {
+        let client = reqwest::Client::new();
+        // OPTIONS or POST to the webhook — a 404 means the route doesn't exist
+        let resp = client
+            .post(format!("{}/api/stripe/webhook", self.base_url))
+            .send()
+            .await;
+        match resp {
+            Ok(r) => r.status().as_u16() != 404,
+            Err(_) => false,
+        }
+    }
 }
 
 impl Drop for TestServer {

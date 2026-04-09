@@ -15,12 +15,17 @@ async fn login_user(username: String, password: String) -> Result<(), ServerFnEr
         .map_err(|_| ServerFnError::new("Invalid username or password"))?;
 
     // Auto-select the user's first org (typically their personal org)
-    let orgs = db::list_user_organizations(&pool, user.id)
-        .await
-        .unwrap_or_default();
-    let org_slug = orgs.first().map(|(org, _)| org.slug.as_str());
+    #[cfg(feature = "saas")]
+    let org_slug = {
+        let orgs = db::list_user_organizations(&pool, user.id)
+            .await
+            .unwrap_or_default();
+        orgs.first().map(|(org, _)| org.slug.clone())
+    };
+    #[cfg(not(feature = "saas"))]
+    let org_slug: Option<String> = None;
 
-    set_session_user(user.id, &user.username, org_slug).await;
+    set_session_user(user.id, &user.username, org_slug.as_deref()).await;
     leptos_axum::redirect("/repos");
     Ok(())
 }

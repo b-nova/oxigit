@@ -16,45 +16,52 @@ pub struct InvoiceInfo {
 
 #[server]
 async fn fetch_invoices() -> Result<Vec<InvoiceInfo>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool, get_stripe_config};
-    use oxigit_core::{billing, db};
+    #[cfg(feature = "saas")]
+    {
+        use crate::server_fns::{extract_session_user, get_control_pool, get_stripe_config};
+        use oxigit_core::{billing, db};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_control_pool().await?;
-    let stripe = get_stripe_config()
-        .await?
-        .ok_or_else(|| ServerFnError::new("Billing not configured"))?;
+        let user = extract_session_user()
+            .await
+            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let pool = get_control_pool().await?;
+        let stripe = get_stripe_config()
+            .await?
+            .ok_or_else(|| ServerFnError::new("Billing not configured"))?;
 
-    let sub = db::get_subscription(&pool, user.id)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        let sub = db::get_subscription(&pool, user.id)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    let sub = match sub {
-        Some(s) => s,
-        None => return Ok(vec![]),
-    };
+        let sub = match sub {
+            Some(s) => s,
+            None => return Ok(vec![]),
+        };
 
-    let invoices = billing::list_invoices(&stripe.secret_key, &sub.stripe_customer_id)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        let invoices = billing::list_invoices(&stripe.secret_key, &sub.stripe_customer_id)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    Ok(invoices
-        .into_iter()
-        .map(|inv| {
-            let amount_f = inv.amount_paid as f64 / 100.0;
-            let currency_upper = inv.currency.to_uppercase();
-            InvoiceInfo {
-                date: format_timestamp(inv.created),
-                amount: format!("{:.2} {}", amount_f, currency_upper),
-                currency: currency_upper,
-                status: inv.status.unwrap_or_else(|| "unknown".to_string()),
-                invoice_url: inv.hosted_invoice_url,
-                pdf_url: inv.invoice_pdf,
-            }
-        })
-        .collect())
+        Ok(invoices
+            .into_iter()
+            .map(|inv| {
+                let amount_f = inv.amount_paid as f64 / 100.0;
+                let currency_upper = inv.currency.to_uppercase();
+                InvoiceInfo {
+                    date: format_timestamp(inv.created),
+                    amount: format!("{:.2} {}", amount_f, currency_upper),
+                    currency: currency_upper,
+                    status: inv.status.unwrap_or_else(|| "unknown".to_string()),
+                    invoice_url: inv.hosted_invoice_url,
+                    pdf_url: inv.invoice_pdf,
+                }
+            })
+            .collect())
+    }
+    #[cfg(not(feature = "saas"))]
+    {
+        Err(ServerFnError::new("This feature requires the SaaS edition"))
+    }
 }
 
 #[cfg(feature = "ssr")]

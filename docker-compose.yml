@@ -1,3 +1,4 @@
+# For AI features, run Ollama separately: docker run -p 11434:11434 ollama/ollama
 services:
   oxigit:
     image: ghcr.io/b-nova/oxigit:main
@@ -8,16 +9,6 @@ services:
       - oxigit-data:/app/data
     environment:
       - RUST_LOG=info
-      # Self-hosted: uses local Ollama sidecar by default (no API key needed)
-      - OXIGIT_LLM_BASE_URL=http://ollama:11434
-    depends_on:
-      - ollama
-
-  ollama:
-    image: ollama/ollama
-    volumes:
-      - ollama-data:/root/.ollama
 
 volumes:
   oxigit-data:
-  ollama-data:

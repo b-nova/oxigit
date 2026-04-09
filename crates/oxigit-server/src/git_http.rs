@@ -15,15 +15,13 @@ use oxigit_core::git::repo_path;
 use crate::AppState;
 
 /// Resolve the repo pool and filesystem path for an owner/repo pair.
-/// In multi-tenant mode, looks up org_slug via repository_index, returns
-/// the tenant pool and tenant-specific repo path.
-/// In legacy mode, returns the control pool and standard repo path.
 async fn resolve_repo(
     state: &AppState,
     owner: &str,
     repo_name: &str,
 ) -> Result<(SqlitePool, std::path::PathBuf), (StatusCode, &'static str)> {
     let control_pool = state.pool();
+    #[cfg(feature = "saas")]
     if state.multi_tenant {
         let org_slug = db::lookup_repo_org(&control_pool, owner, repo_name)
             .await
@@ -37,11 +35,10 @@ async fn resolve_repo(
             .tenant_mgr
             .tenant_repos_dir(&org_slug)
             .join(format!("{}/{}.git", owner, repo_name));
-        Ok((pool, path))
-    } else {
-        let path = repo_path(&state.data_dir, owner, repo_name);
-        Ok((control_pool, path))
+        return Ok((pool, path));
     }
+    let path = repo_path(&state.data_dir, owner, repo_name);
+    Ok((control_pool, path))
 }
 
 /// Extract HTTP Basic Auth credentials from headers.

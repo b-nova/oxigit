@@ -27,7 +27,8 @@ async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str, secr
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200, "webhook should succeed");
+    let status = resp.status().as_u16();
+    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {status}");
 }
 
 /// Test: add a webhook and verify it appears in the list.
@@ -171,10 +172,14 @@ async fn deploy_callback_updates_preview() {
     );
 }
 
-/// Test: deploy callback is blocked for free plan users.
+/// Test: deploy callback is blocked for free plan users (SaaS only — non-saas users are pro).
 #[tokio::test]
 async fn deploy_callback_blocked_for_free_plan() {
     let server = TestServer::start().await;
+    if !server.has_saas().await {
+        eprintln!("SKIPPED: server built without saas feature");
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 

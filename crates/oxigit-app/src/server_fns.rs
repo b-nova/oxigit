@@ -11,8 +11,11 @@ use crate::pages::UserInfo;
 /// Application state shared via Axum Extension layer.
 #[derive(Clone)]
 pub struct AppState {
+    #[cfg(feature = "saas")]
     pub tenant_mgr: Arc<oxigit_core::tenant::TenantPoolManager>,
+    #[cfg(feature = "saas")]
     pub multi_tenant: bool,
+    pub pool: SqlitePool,
     pub data_dir: PathBuf,
     pub secret_key: Vec<u8>,
     pub leptos_options: LeptosOptions,
@@ -20,11 +23,17 @@ pub struct AppState {
     pub llm_api_key: Option<String>,
     pub llm_model: String,
     pub llm_base_url: Option<String>,
+    #[cfg(feature = "saas")]
     pub stripe_secret_key: Option<String>,
+    #[cfg(feature = "saas")]
     pub stripe_publishable_key: Option<String>,
+    #[cfg(feature = "saas")]
     pub stripe_webhook_secret: Option<String>,
+    #[cfg(feature = "saas")]
     pub stripe_price_flat: Option<String>,
+    #[cfg(feature = "saas")]
     pub stripe_price_team: Option<String>,
+    #[cfg(feature = "saas")]
     pub stripe_price_founding: Option<String>,
     pub smtp_host: Option<String>,
     pub smtp_port: u16,
@@ -43,10 +52,13 @@ impl std::fmt::Debug for AppState {
 }
 
 impl AppState {
-    /// Backward-compatible pool accessor — returns the control plane pool.
-    /// During migration, all existing `get_pool()` callers use this.
+    /// Returns the main database pool.
+    /// In saas mode, this is the control plane pool. In open-source mode, the single DB pool.
     pub fn pool(&self) -> SqlitePool {
-        self.tenant_mgr.control_pool().clone()
+        #[cfg(feature = "saas")]
+        { return self.tenant_mgr.control_pool().clone(); }
+        #[cfg(not(feature = "saas"))]
+        { self.pool.clone() }
     }
 }
 
@@ -57,13 +69,13 @@ pub async fn get_pool() -> Result<SqlitePool, ServerFnError> {
     Ok(state.pool())
 }
 
-/// Get the control plane pool explicitly.
+/// Get the control plane pool explicitly (alias for get_pool).
 pub async fn get_control_pool() -> Result<SqlitePool, ServerFnError> {
     get_pool().await
 }
 
 /// Get the tenant pool for the user's active org.
-/// Returns an error if no org is selected in the session.
+#[cfg(feature = "saas")]
 pub async fn get_tenant_pool() -> Result<SqlitePool, ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
     let org_slug = extract_active_org()
@@ -77,60 +89,63 @@ pub async fn get_tenant_pool() -> Result<SqlitePool, ServerFnError> {
 }
 
 /// Get the tenant pool for a specific repo by looking up its org in the repository index.
-/// In legacy (single-DB) mode, returns the control pool for backward compatibility.
+/// In non-saas mode, returns the single pool.
+#[allow(unused_variables)]
 pub async fn get_repo_pool(owner: &str, repo: &str) -> Result<SqlitePool, ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
-    if !state.multi_tenant {
-        return Ok(state.pool());
+    #[cfg(feature = "saas")]
+    if state.multi_tenant {
+        let control = state.pool();
+        let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        return state
+            .tenant_mgr
+            .get_tenant_pool(&org_slug)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()));
     }
-    let control = state.pool();
-    let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-    state
-        .tenant_mgr
-        .get_tenant_pool(&org_slug)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))
+    Ok(state.pool())
 }
 
 /// Get both the control pool and tenant pool for a repo.
-/// Callers should use `db::get_repository_cross(&control, &tenant, owner, repo)` to look up
-/// a repo when the users table is in the control DB and repositories in the tenant DB.
-/// In legacy mode both pools are the same.
+/// In non-saas or legacy mode, both pools are the same.
+#[allow(unused_variables)]
 pub async fn get_repo_pools(owner: &str, repo: &str) -> Result<(SqlitePool, SqlitePool), ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
     let control = state.pool();
-    if !state.multi_tenant {
-        return Ok((control.clone(), control));
+    #[cfg(feature = "saas")]
+    if state.multi_tenant {
+        let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        let tenant = state
+            .tenant_mgr
+            .get_tenant_pool(&org_slug)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        return Ok((control, tenant));
     }
-    let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-    let tenant = state
-        .tenant_mgr
-        .get_tenant_pool(&org_slug)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-    Ok((control, tenant))
+    Ok((control.clone(), control))
 }
 
 /// Resolve the filesystem path to a bare repository.
-/// In multi-tenant mode, looks up the org via repository_index and returns the tenant-specific path.
-/// In legacy mode, returns the standard `{data_dir}/repos/{owner}/{repo}.git` path.
+#[allow(unused_variables)]
 pub async fn get_repo_path(owner: &str, repo: &str) -> Result<std::path::PathBuf, ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
-    if !state.multi_tenant {
-        return Ok(oxigit_core::git::repo_path(&state.data_dir, owner, repo));
+    #[cfg(feature = "saas")]
+    if state.multi_tenant {
+        let control = state.pool();
+        let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        return Ok(state.tenant_mgr.tenant_repos_dir(&org_slug).join(owner).join(format!("{repo}.git")));
     }
-    let control = state.pool();
-    let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-    Ok(state.tenant_mgr.tenant_repos_dir(&org_slug).join(owner).join(format!("{repo}.git")))
+    Ok(oxigit_core::git::repo_path(&state.data_dir, owner, repo))
 }
 
 /// Get the TenantPoolManager for advanced operations (provisioning, etc.).
+#[cfg(feature = "saas")]
 pub async fn get_tenant_mgr() -> Result<Arc<oxigit_core::tenant::TenantPoolManager>, ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
     Ok(state.tenant_mgr.clone())
@@ -138,8 +153,13 @@ pub async fn get_tenant_mgr() -> Result<Arc<oxigit_core::tenant::TenantPoolManag
 
 /// Check if multi-tenant mode is active.
 pub async fn is_multi_tenant() -> Result<bool, ServerFnError> {
-    let Extension(state): Extension<AppState> = extract().await?;
-    Ok(state.multi_tenant)
+    #[cfg(feature = "saas")]
+    {
+        let Extension(state): Extension<AppState> = extract().await?;
+        return Ok(state.multi_tenant);
+    }
+    #[cfg(not(feature = "saas"))]
+    Ok(false)
 }
 
 pub async fn get_data_dir() -> Result<PathBuf, ServerFnError> {
@@ -172,6 +192,7 @@ pub async fn get_effective_llm_config(user_id: Option<i64>) -> Result<(String, O
 }
 
 /// Stripe configuration for billing operations.
+#[cfg(feature = "saas")]
 #[derive(Clone, Debug)]
 pub struct StripeConfig {
     pub secret_key: String,
@@ -183,6 +204,7 @@ pub struct StripeConfig {
 }
 
 /// Extract Stripe configuration. Returns None if Stripe is not configured.
+#[cfg(feature = "saas")]
 pub async fn get_stripe_config() -> Result<Option<StripeConfig>, ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
     match (state.stripe_secret_key, state.stripe_webhook_secret) {
@@ -319,11 +341,13 @@ pub async fn set_session_user(user_id: i64, username: &str, org_slug: Option<&st
 }
 
 /// Update only the active org in the session cookie (for org switching).
+#[cfg(feature = "saas")]
 pub async fn set_session_org(user: &UserInfo, org_slug: &str) {
     set_session_user(user.id, &user.username, Some(org_slug)).await;
 }
 
 /// Extract the active org slug from the session, if set.
+#[cfg(feature = "saas")]
 pub async fn extract_active_org() -> Option<String> {
     let user = extract_session_user().await?;
     user.active_org_slug

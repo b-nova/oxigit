@@ -16,46 +16,75 @@ pub struct ExploreRepo {
 
 #[server]
 async fn explore_repos(query: String, remixable_only: bool) -> Result<Vec<ExploreRepo>, ServerFnError> {
-    use crate::server_fns::{get_pool, is_multi_tenant};
+    use crate::server_fns::get_pool;
+    #[cfg(feature = "saas")]
+    use crate::server_fns::is_multi_tenant;
     use oxigit_core::db;
 
     let pool = get_pool().await?;
-    let results = if is_multi_tenant().await? {
-        // In multi-tenant mode, use the repository_index in the control DB.
-        // The index doesn't track has_remix, so remixable filtering is not
-        // available in multi-tenant mode yet.
-        db::search_public_repos_from_index(&pool, &query)
-            .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?
-            .into_iter()
-            .map(|e| ExploreRepo {
-                owner: e.owner_username,
-                name: e.repo_name,
-                description: e.description,
-                created_at: e.created_at,
-                has_remix: false,
-            })
-            .collect()
-    } else {
-        let results = if remixable_only {
-            db::search_remixable_repositories(&pool, &query)
-                .await
-                .map_err(|e| ServerFnError::new(e.to_string()))?
-        } else {
-            db::search_public_repositories(&pool, &query)
-                .await
-                .map_err(|e| ServerFnError::new(e.to_string()))?
-        };
-        results
-            .into_iter()
-            .map(|(user, repo)| ExploreRepo {
-                owner: user.username,
-                name: repo.name,
-                description: repo.description,
-                created_at: repo.created_at,
-                has_remix: repo.has_remix,
-            })
-            .collect()
+    let results = {
+        #[cfg(feature = "saas")]
+        {
+            if is_multi_tenant().await? {
+                // In multi-tenant mode, use the repository_index in the control DB.
+                // The index doesn't track has_remix, so remixable filtering is not
+                // available in multi-tenant mode yet.
+                db::search_public_repos_from_index(&pool, &query)
+                    .await
+                    .map_err(|e| ServerFnError::new(e.to_string()))?
+                    .into_iter()
+                    .map(|e| ExploreRepo {
+                        owner: e.owner_username,
+                        name: e.repo_name,
+                        description: e.description,
+                        created_at: e.created_at,
+                        has_remix: false,
+                    })
+                    .collect()
+            } else {
+                let results = if remixable_only {
+                    db::search_remixable_repositories(&pool, &query)
+                        .await
+                        .map_err(|e| ServerFnError::new(e.to_string()))?
+                } else {
+                    db::search_public_repositories(&pool, &query)
+                        .await
+                        .map_err(|e| ServerFnError::new(e.to_string()))?
+                };
+                results
+                    .into_iter()
+                    .map(|(user, repo)| ExploreRepo {
+                        owner: user.username,
+                        name: repo.name,
+                        description: repo.description,
+                        created_at: repo.created_at,
+                        has_remix: repo.has_remix,
+                    })
+                    .collect()
+            }
+        }
+        #[cfg(not(feature = "saas"))]
+        {
+            let results = if remixable_only {
+                db::search_remixable_repositories(&pool, &query)
+                    .await
+                    .map_err(|e| ServerFnError::new(e.to_string()))?
+            } else {
+                db::search_public_repositories(&pool, &query)
+                    .await
+                    .map_err(|e| ServerFnError::new(e.to_string()))?
+            };
+            results
+                .into_iter()
+                .map(|(user, repo)| ExploreRepo {
+                    owner: user.username,
+                    name: repo.name,
+                    description: repo.description,
+                    created_at: repo.created_at,
+                    has_remix: repo.has_remix,
+                })
+                .collect()
+        }
     };
 
     Ok(results)

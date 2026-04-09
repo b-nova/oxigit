@@ -470,50 +470,62 @@ pub struct OrgListItem {
 
 #[server]
 pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
-    use oxigit_core::db;
+    #[cfg(feature = "saas")]
+    {
+        use crate::server_fns::{extract_session_user, get_control_pool};
+        use oxigit_core::db;
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_control_pool().await?;
-    let orgs = db::list_user_organizations(&pool, user.id)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-    Ok(orgs
-        .into_iter()
-        .map(|(org, role)| OrgListItem {
-            slug: org.slug,
-            display_name: org.display_name,
-            role,
-        })
-        .collect())
+        let user = extract_session_user()
+            .await
+            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let pool = get_control_pool().await?;
+        let orgs = db::list_user_organizations(&pool, user.id)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        return Ok(orgs
+            .into_iter()
+            .map(|(org, role)| OrgListItem {
+                slug: org.slug,
+                display_name: org.display_name,
+                role,
+            })
+            .collect());
+    }
+    #[cfg(not(feature = "saas"))]
+    Ok(vec![])
 }
 
 #[server]
 pub async fn switch_org(slug: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool, set_session_org};
-    use oxigit_core::db;
-
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_control_pool().await?;
-
-    // Verify the user is a member of this org
-    let org = db::get_organization_by_slug(&pool, &slug)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-    if !db::is_org_member(&pool, org.id, user.id)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?
+    #[cfg(feature = "saas")]
     {
-        return Err(ServerFnError::new("Not a member of this organization"));
-    }
+        use crate::server_fns::{extract_session_user, get_control_pool, set_session_org};
+        use oxigit_core::db;
 
-    set_session_org(&user, &slug).await;
-    leptos_axum::redirect("/repos");
-    Ok(())
+        let user = extract_session_user()
+            .await
+            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let pool = get_control_pool().await?;
+
+        let org = db::get_organization_by_slug(&pool, &slug)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        if !db::is_org_member(&pool, org.id, user.id)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?
+        {
+            return Err(ServerFnError::new("Not a member of this organization"));
+        }
+
+        set_session_org(&user, &slug).await;
+        leptos_axum::redirect("/repos");
+        return Ok(());
+    }
+    #[cfg(not(feature = "saas"))]
+    {
+        let _ = slug;
+        Err(ServerFnError::new("Organizations not available"))
+    }
 }
 
 #[server]

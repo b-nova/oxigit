@@ -155,10 +155,14 @@ async fn diff_review_flags_todo_comment() {
     );
 }
 
-/// Test: generating a diff summary requires a Flat or higher plan.
+/// Test: generating a diff summary requires a Flat or higher plan (SaaS only).
 #[tokio::test]
 async fn generate_summary_requires_flat_plan() {
     let server = TestServer::start().await;
+    if !server.has_saas().await {
+        eprintln!("SKIPPED: server built without saas feature");
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 

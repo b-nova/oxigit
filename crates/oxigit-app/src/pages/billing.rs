@@ -15,59 +15,73 @@ pub struct BillingInfo {
 
 #[server]
 async fn fetch_billing_info() -> Result<BillingInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool, get_stripe_config};
-    use oxigit_core::db;
+    #[cfg(feature = "saas")]
+    {
+        use crate::server_fns::{extract_session_user, get_control_pool, get_stripe_config};
+        use oxigit_core::db;
 
-    let user = extract_session_user().await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_control_pool().await?;
-    let stripe = get_stripe_config().await?;
+        let user = extract_session_user().await
+            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let pool = get_control_pool().await?;
+        let stripe = get_stripe_config().await?;
 
-    let sub = db::get_subscription(&pool, user.id).await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        let sub = db::get_subscription(&pool, user.id).await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    match sub {
-        Some(s) => Ok(BillingInfo {
-            plan: s.plan,
-            status: s.status,
-            current_period_end: s.current_period_end,
-            seats: s.seats,
-            has_stripe: stripe.is_some(),
-        }),
-        None => Ok(BillingInfo {
-            plan: "free".to_string(),
-            status: "active".to_string(),
-            current_period_end: None,
-            seats: 1,
-            has_stripe: stripe.is_some(),
-        }),
+        match sub {
+            Some(s) => Ok(BillingInfo {
+                plan: s.plan,
+                status: s.status,
+                current_period_end: s.current_period_end,
+                seats: s.seats,
+                has_stripe: stripe.is_some(),
+            }),
+            None => Ok(BillingInfo {
+                plan: "free".to_string(),
+                status: "active".to_string(),
+                current_period_end: None,
+                seats: 1,
+                has_stripe: stripe.is_some(),
+            }),
+        }
+    }
+    #[cfg(not(feature = "saas"))]
+    {
+        Err(ServerFnError::new("This feature requires the SaaS edition"))
     }
 }
 
 #[server]
 async fn create_portal_redirect() -> Result<String, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_base_url, get_control_pool, get_stripe_config};
-    use oxigit_core::{billing, db};
+    #[cfg(feature = "saas")]
+    {
+        use crate::server_fns::{extract_session_user, get_base_url, get_control_pool, get_stripe_config};
+        use oxigit_core::{billing, db};
 
-    let user = extract_session_user().await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
-    let pool = get_control_pool().await?;
-    let stripe = get_stripe_config().await?
-        .ok_or_else(|| ServerFnError::new("Billing not configured"))?;
+        let user = extract_session_user().await
+            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let pool = get_control_pool().await?;
+        let stripe = get_stripe_config().await?
+            .ok_or_else(|| ServerFnError::new("Billing not configured"))?;
 
-    let sub = db::get_subscription(&pool, user.id).await
-        .map_err(|e| ServerFnError::new(e.to_string()))?
-        .ok_or_else(|| ServerFnError::new("No subscription found"))?;
+        let sub = db::get_subscription(&pool, user.id).await
+            .map_err(|e| ServerFnError::new(e.to_string()))?
+            .ok_or_else(|| ServerFnError::new("No subscription found"))?;
 
-    let base_url = get_base_url().await;
+        let base_url = get_base_url().await;
 
-    let portal_url = billing::create_portal_session(
-        &stripe.secret_key,
-        &sub.stripe_customer_id,
-        &format!("{}/subscription", base_url),
-    ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        let portal_url = billing::create_portal_session(
+            &stripe.secret_key,
+            &sub.stripe_customer_id,
+            &format!("{}/subscription", base_url),
+        ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    Ok(portal_url)
+        Ok(portal_url)
+    }
+    #[cfg(not(feature = "saas"))]
+    {
+        Err(ServerFnError::new("This feature requires the SaaS edition"))
+    }
 }
 
 #[component]

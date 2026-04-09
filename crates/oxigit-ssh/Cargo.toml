@@ -14,3 +14,7 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 sqlx = { workspace = true }
 hex = { workspace = true }
+
+[features]
+default = []
+saas = ["oxigit-core/saas"]

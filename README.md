@@ -160,4 +160,4 @@ This activates per-organization tenant pools, billing integration, and related U
 
 ## License
 
-[BSL 1.1](LICENSE) — free to self-host; converts to Apache 2.0 after 3 years. See [LICENSING.md](LICENSING.md) for details.
+[BSL 1.1](LICENSE) — free to self-host; converts to AGPL v3.0 after 3 years. See [LICENSING.md](LICENSING.md) for details.

@@ -35,11 +35,24 @@ async fn main() {
     // Detect database mode: multi-tenant vs legacy single-DB
     let control_db_path = config.data_dir.join("control.db");
     let legacy_db_path = config.data_dir.join("oxigit.db");
-    let multi_tenant = !config.legacy_mode
-        && (control_db_path.exists() || !legacy_db_path.exists());
+
+    let multi_tenant = if config.legacy_mode {
+        false
+    } else if control_db_path.exists() {
+        true
+    } else if legacy_db_path.exists() {
+        // Auto-migrate from legacy single-DB to multi-tenant
+        tracing::info!("Detected legacy oxigit.db — auto-migrating to multi-tenant...");
+        oxigit_core::migrate::migrate_legacy_to_multi_tenant(&config.data_dir)
+            .await
+            .expect("Auto-migration from legacy DB failed");
+        true
+    } else {
+        true // Fresh install
+    };
 
     let pool = if multi_tenant {
-        // Multi-tenant mode (fresh install or already migrated)
+        // Multi-tenant mode (fresh install, already migrated, or just auto-migrated)
         let url = format!("sqlite:{}?mode=rwc", control_db_path.display());
         let p = db::create_pool(&url)
             .await
@@ -50,7 +63,7 @@ async fn main() {
         tracing::info!("Multi-tenant mode: control DB at {}", control_db_path.display());
         p
     } else {
-        // Legacy single-DB mode
+        // Legacy single-DB mode (only when --legacy-mode is explicitly set)
         std::fs::create_dir_all(config.data_dir.join("repos"))
             .expect("Failed to create repos directory");
         let url = format!("sqlite:{}?mode=rwc", legacy_db_path.display());
@@ -60,11 +73,6 @@ async fn main() {
         db::run_migrations(&p)
             .await
             .expect("Failed to run migrations");
-        if !control_db_path.exists() {
-            tracing::warn!(
-                "Running in legacy single-DB mode. Run `migrate-tenants` to enable multi-tenancy."
-            );
-        }
         tracing::info!("Legacy mode: database at {}", legacy_db_path.display());
         p
     };

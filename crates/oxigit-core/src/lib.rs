@@ -8,6 +8,7 @@ pub mod git;
 pub mod guardrail;
 pub mod hooks;
 pub mod llm;
+pub mod migrate;
 pub mod models;
 pub mod risk;
 pub mod tenant;

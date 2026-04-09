@@ -64,6 +64,9 @@ const API_LIST_REPO_WEBHOOKS: &str = "/api/list_repo_webhooks2543744637116902123
 const API_ADD_WEBHOOK: &str = "/api/add_webhook2543744637116902123";
 const API_DELETE_WEBHOOK: &str = "/api/delete_webhook2543744637116902123";
 
+// Session/Prompt Revert
+const API_REVERT_SESSION: &str = "/api/revert_session3910524453944931178";
+
 // Organizations (Team Features)
 const API_CREATE_ORG: &str = "/api/create_org7865708971083396342";
 const API_GET_ORG_SETTINGS: &str = "/api/get_org_settings4903785691938244665";
@@ -934,6 +937,19 @@ impl TestClient {
             .send()
             .await
             .expect("switch_org request failed")
+    }
+
+    pub async fn revert_session(&self, owner: &str, repo: &str, session_id: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_REVERT_SESSION))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&session_id={}",
+                urlencoded(owner), urlencoded(repo), urlencoded(session_id)
+            ))
+            .send()
+            .await
+            .expect("revert_session request failed")
     }
 }
 

@@ -92,6 +92,8 @@ pub struct AiMetadataInfo {
     pub ai_prompt: Option<String>,
     pub ai_session_id: Option<String>,
     pub ai_files_touched: Option<Vec<String>>,
+    #[serde(default)]
+    pub ai_prompt_index: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

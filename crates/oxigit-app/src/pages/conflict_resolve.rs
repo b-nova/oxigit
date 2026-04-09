@@ -95,13 +95,21 @@ async fn fetch_conflict_file_content(
     let file_record = files.iter().find(|f| f.file_path == file_path);
     let resolved_content = file_record.and_then(|f| f.resolved_content.clone());
 
+    let (ours_label, theirs_label) = if conflict.operation_type == "revert" {
+        let short_target = &conflict.target_ref[..7.min(conflict.target_ref.len())];
+        let short_source = &conflict.source_ref[..7.min(conflict.source_ref.len())];
+        (format!("Current ({})", short_target), format!("Reverted ({})", short_source))
+    } else {
+        (conflict.target_ref, conflict.source_ref)
+    };
+
     Ok(ConflictFileContentResponse {
         file_path,
         ours_content: ours,
         theirs_content: theirs,
         resolved_content,
-        ours_label: conflict.target_ref,
-        theirs_label: conflict.source_ref,
+        ours_label,
+        theirs_label,
     })
 }
 
@@ -200,44 +208,150 @@ async fn complete_resolution(
 
     let repo_path = get_repo_path(&owner, &repo).await?;
 
-    // Determine parents based on operation type
-    let message = format!("Resolve {} conflicts: {} -> {}",
-        conflict.operation_type, conflict.source_ref, conflict.target_ref);
+    if conflict.operation_type == "revert" {
+        // Revert: single-parent commit, then continue reverting remaining SHAs
+        let ctx: serde_json::Value = conflict.context_json.as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or(serde_json::json!({}));
 
-    let parents = vec![conflict.target_ref.as_str(), conflict.source_ref.as_str()];
+        let branch = ctx.get("branch").and_then(|v| v.as_str()).unwrap_or("main");
+        let revert_message = ctx.get("revert_message").and_then(|v| v.as_str()).unwrap_or("Revert");
+        let remaining_shas: Vec<String> = ctx.get("remaining_shas")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
 
-    // Extract branch name from target_ref (strip refs/heads/ if present)
-    let branch = conflict.target_ref.strip_prefix("refs/heads/")
-        .unwrap_or(&conflict.target_ref);
+        // Get the current branch tip to use as parent
+        let branch_ref = format!("refs/heads/{}", branch);
+        let branch_tip = git::rev_parse(&repo_path, &branch_ref)
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    git::apply_conflict_resolutions(
-        &repo_path,
-        &auto_tree,
-        &resolutions,
-        &parents,
-        &message,
-        branch,
-    ).map_err(|e| ServerFnError::new(e.to_string()))?;
+        // Create the resolution commit with a single parent (branch tip)
+        let resolve_msg = format!("Resolve revert conflict: {}", &conflict.merge_base[..7.min(conflict.merge_base.len())]);
+        let parents = vec![branch_tip.as_str()];
 
-    db::complete_merge_conflict(&pool, conflict_id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        let _resolution_sha = git::apply_conflict_resolutions(
+            &repo_path,
+            &auto_tree,
+            &resolutions,
+            &parents,
+            &resolve_msg,
+            branch,
+        ).map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    // Redirect back based on context
-    let redirect_url = if let Some(ref ctx) = conflict.context_json {
-        if let Ok(ctx) = serde_json::from_str::<serde_json::Value>(ctx) {
-            if let Some(session_id) = ctx.get("session_id").and_then(|v| v.as_str()) {
+        db::complete_merge_conflict(&pool, conflict_id)
+            .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+        // Remove the conflicting commit from remaining (it was just resolved)
+        let still_remaining: Vec<String> = remaining_shas.iter()
+            .filter(|s| **s != conflict.merge_base)
+            .cloned()
+            .collect();
+
+        if !still_remaining.is_empty() {
+            // Continue reverting the rest
+            let result = git::revert_session(&repo_path, branch, &still_remaining, revert_message)
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+            match result {
+                git::RevertResult::Success => {
+                    // All remaining commits reverted successfully
+                }
+                git::RevertResult::Conflict {
+                    conflicting_sha,
+                    remaining_shas: new_remaining,
+                    current_commit,
+                    auto_tree: new_auto_tree,
+                    conflict_files,
+                    ..
+                } => {
+                    // Another conflict — create a new conflict record and redirect
+                    let parent_sha = git::rev_parse(&repo_path, &format!("{}^", conflicting_sha))
+                        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+                    let new_ctx = serde_json::json!({
+                        "session_id": ctx.get("session_id"),
+                        "prompt_index": ctx.get("prompt_index"),
+                        "remaining_shas": new_remaining,
+                        "branch": branch,
+                        "revert_message": revert_message,
+                    });
+                    let new_ctx_str = serde_json::to_string(&new_ctx)
+                        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+                    let new_conflict = db::create_merge_conflict(
+                        &pool, repo_db.id, user.id,
+                        "revert",
+                        &current_commit,
+                        &parent_sha,
+                        &conflicting_sha,
+                        new_auto_tree.as_deref(),
+                        Some(&new_ctx_str),
+                    ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+                    for file_path in &conflict_files {
+                        db::create_conflict_file(&pool, new_conflict.id, file_path, "content")
+                            .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+                    }
+
+                    leptos_axum::redirect(&format!("/{}/{}/conflicts/{}", owner, repo, new_conflict.id));
+                    return Ok(());
+                }
+            }
+        }
+
+        // Redirect back to session/prompt detail
+        let redirect_url = if let Some(session_id) = ctx.get("session_id").and_then(|v| v.as_str()) {
+            if let Some(prompt_index) = ctx.get("prompt_index").and_then(|v| v.as_i64()) {
+                format!("/{}/{}/ai/{}/prompt/{}", owner, repo, session_id, prompt_index)
+            } else {
                 format!("/{}/{}/ai/{}", owner, repo, session_id)
+            }
+        } else {
+            format!("/{}/{}", owner, repo)
+        };
+
+        leptos_axum::redirect(&redirect_url);
+    } else {
+        // Merge: two-parent commit (existing behavior)
+        let message = format!("Resolve {} conflicts: {} -> {}",
+            conflict.operation_type, conflict.source_ref, conflict.target_ref);
+
+        let parents = vec![conflict.target_ref.as_str(), conflict.source_ref.as_str()];
+
+        // Extract branch name from target_ref (strip refs/heads/ if present)
+        let branch = conflict.target_ref.strip_prefix("refs/heads/")
+            .unwrap_or(&conflict.target_ref);
+
+        git::apply_conflict_resolutions(
+            &repo_path,
+            &auto_tree,
+            &resolutions,
+            &parents,
+            &message,
+            branch,
+        ).map_err(|e| ServerFnError::new(e.to_string()))?;
+
+        db::complete_merge_conflict(&pool, conflict_id)
+            .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+        // Redirect back based on context
+        let redirect_url = if let Some(ref ctx) = conflict.context_json {
+            if let Ok(ctx) = serde_json::from_str::<serde_json::Value>(ctx) {
+                if let Some(session_id) = ctx.get("session_id").and_then(|v| v.as_str()) {
+                    format!("/{}/{}/ai/{}", owner, repo, session_id)
+                } else {
+                    format!("/{}/{}", owner, repo)
+                }
             } else {
                 format!("/{}/{}", owner, repo)
             }
         } else {
             format!("/{}/{}", owner, repo)
-        }
-    } else {
-        format!("/{}/{}", owner, repo)
-    };
+        };
 
-    leptos_axum::redirect(&redirect_url);
+        leptos_axum::redirect(&redirect_url);
+    }
+
     Ok(())
 }
 
@@ -373,10 +487,14 @@ pub fn ConflictResolvePage() -> impl IntoView {
 
                                 <div class="card mb-4">
                                     <div style="padding: var(--space-3);">
-                                        <span class="ai-badge">{d.operation_type}</span>
+                                        <span class="ai-badge">{d.operation_type.clone()}</span>
                                         " "
                                         <span class="text-secondary">
-                                            {d.source_ref.clone()} " -> " {d.target_ref.clone()}
+                                            {if d.operation_type == "revert" {
+                                                format!("Reverting commit {}", &d.source_ref[..7.min(d.source_ref.len())])
+                                            } else {
+                                                format!("{} -> {}", d.source_ref, d.target_ref)
+                                            }}
                                         </span>
                                         " — "
                                         <span class="text-secondary">
@@ -506,7 +624,7 @@ pub fn ConflictResolvePage() -> impl IntoView {
                                         <input type="hidden" name="conflict_id" value={cid.to_string()} />
                                         <button type="submit" class="btn btn-primary"
                                             disabled={move || !d.all_resolved}>
-                                            "Complete Merge"
+                                            {if d.operation_type == "revert" { "Complete Revert" } else { "Complete Merge" }}
                                         </button>
                                     </ActionForm>
                                 </div>

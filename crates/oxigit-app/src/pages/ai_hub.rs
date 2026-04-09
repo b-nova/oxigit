@@ -87,6 +87,7 @@ pub async fn fetch_ai_hub(
                     ai_prompt: meta.ai_prompt,
                     ai_session_id: None,
                     ai_files_touched: meta.ai_files_touched.and_then(|f| serde_json::from_str(&f).ok()),
+                    ai_prompt_index: meta.ai_prompt_index,
                 },
                 diff_html: None,
             }

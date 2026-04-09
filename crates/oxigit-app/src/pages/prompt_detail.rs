@@ -89,6 +89,7 @@ async fn fetch_prompt_detail(
                 ai_prompt: meta.ai_prompt.clone(),
                 ai_session_id: meta.ai_session_id.clone(),
                 ai_files_touched: meta.ai_files_touched.as_ref().and_then(|f| serde_json::from_str(f).ok()),
+                ai_prompt_index: meta.ai_prompt_index,
             },
             diff_html: commit_diff,
         });
@@ -242,10 +243,53 @@ async fn revert_prompt(
         .unwrap_or(None).unwrap_or_else(|| "main".to_string());
 
     let message = format!("Revert prompt #{} in session {}: {}", prompt_index, short_id, prompt_text);
-    git::revert_session(&repo_path, &default_branch, &shas, &message)
+    let result = git::revert_session(&repo_path, &default_branch, &shas, &message)
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    leptos_axum::redirect(&format!("/{}/{}/ai/{}/prompt/{}", owner, repo, session_id, prompt_index));
+    match result {
+        git::RevertResult::Success => {
+            leptos_axum::redirect(&format!("/{}/{}/ai/{}/prompt/{}", owner, repo, session_id, prompt_index));
+        }
+        git::RevertResult::Conflict {
+            conflicting_sha,
+            remaining_shas,
+            current_commit,
+            auto_tree,
+            conflict_files,
+            ..
+        } => {
+            let parent_sha = git::rev_parse(&repo_path, &format!("{}^", conflicting_sha))
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+            let context = serde_json::json!({
+                "session_id": session_id,
+                "prompt_index": prompt_index,
+                "remaining_shas": remaining_shas,
+                "branch": default_branch,
+                "revert_message": message,
+            });
+            let context_str = serde_json::to_string(&context)
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+            let conflict = db::create_merge_conflict(
+                &pool, repo_db.id, user.id,
+                "revert",
+                &current_commit,
+                &parent_sha,
+                &conflicting_sha,
+                auto_tree.as_deref(),
+                Some(&context_str),
+            ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+            for file_path in &conflict_files {
+                db::create_conflict_file(&pool, conflict.id, file_path, "content")
+                    .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+            }
+
+            leptos_axum::redirect(&format!("/{}/{}/conflicts/{}", owner, repo, conflict.id));
+        }
+    }
+
     Ok(())
 }
 

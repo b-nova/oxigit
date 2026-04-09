@@ -698,6 +698,43 @@ pub fn cherry_pick_range(
     Ok(())
 }
 
+/// Parse conflicting file paths from git merge-tree output.
+fn parse_conflict_files(stdout: &str, stderr: &str) -> Vec<String> {
+    let mut conflict_files = Vec::new();
+    let combined = format!("{}\n{}", stdout, stderr);
+    for line in combined.lines() {
+        if let Some(rest) = line.strip_prefix("CONFLICT") {
+            if let Some(idx) = rest.find("Merge conflict in ") {
+                let path = rest[idx + "Merge conflict in ".len()..].trim().to_string();
+                conflict_files.push(path);
+            } else if let Some(idx) = rest.find("modify/delete: ") {
+                let path = rest[idx + "modify/delete: ".len()..].trim();
+                let path = path.split_whitespace().next().unwrap_or("").to_string();
+                if !path.is_empty() {
+                    conflict_files.push(path);
+                }
+            }
+        }
+    }
+    conflict_files
+}
+
+/// Parse merge-tree output into (clean, conflict_files, tree_sha).
+fn parse_merge_tree_output(output: &std::process::Output) -> (bool, Vec<String>, Option<String>) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if output.status.success() {
+        let tree_sha = stdout.lines().next().unwrap_or("").trim().to_string();
+        (true, vec![], Some(tree_sha))
+    } else {
+        let lines: Vec<&str> = stdout.lines().collect();
+        let tree_sha = lines.first().map(|l| l.trim().to_string());
+        let conflict_files = parse_conflict_files(&stdout, &stderr);
+        (false, conflict_files, tree_sha)
+    }
+}
+
 /// Analyze a merge for conflicts using git merge-tree (Git 2.38+).
 /// Returns (can_auto_merge, conflicting_file_paths, auto_merged_tree_sha).
 pub fn analyze_merge(
@@ -705,51 +742,36 @@ pub fn analyze_merge(
     target: &str,
     source: &str,
 ) -> Result<(bool, Vec<String>, Option<String>)> {
-    // Get merge base
-    let base_output = Command::new("git")
+    let output = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .args(["merge-base", target, source])
+        .args(["merge-tree", "--write-tree", target, source])
         .output()?;
-    if !base_output.status.success() {
-        return Err(OxigitError::Git("No common ancestor found".into()));
-    }
-    let merge_base = String::from_utf8_lossy(&base_output.stdout).trim().to_string();
+
+    Ok(parse_merge_tree_output(&output))
+}
+
+/// Analyze whether reverting a single commit on top of a current ref produces conflicts.
+/// Returns (clean, conflicting_file_paths, auto_merged_tree_sha).
+///
+/// Uses `git merge-tree --write-tree --merge-base=<commit>` to perform a real 3-way merge:
+/// base=commit_sha, ours=current_ref, theirs=commit_sha^ (parent).
+pub fn analyze_revert_commit(
+    repo_path: &Path,
+    commit_sha: &str,
+    current_ref: &str,
+) -> Result<(bool, Vec<String>, Option<String>)> {
+    let parent = rev_parse(repo_path, &format!("{}^", commit_sha))?;
 
     let output = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .args(["merge-tree", "--write-tree", &merge_base, target, source])
+        .args([
+            "merge-tree", "--write-tree",
+            &format!("--merge-base={}", commit_sha),
+            current_ref, &parent,
+        ])
         .output()?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    if output.status.success() {
-        let tree_sha = stdout.lines().next().unwrap_or("").trim().to_string();
-        Ok((true, vec![], Some(tree_sha)))
-    } else {
-        let lines: Vec<&str> = stdout.lines().collect();
-        let tree_sha = lines.first().map(|l| l.trim().to_string());
-
-        // Parse conflicting file paths
-        let mut conflict_files = Vec::new();
-        let combined = format!("{}\n{}", stdout, stderr);
-        for line in combined.lines() {
-            if let Some(rest) = line.strip_prefix("CONFLICT") {
-                if let Some(idx) = rest.find("Merge conflict in ") {
-                    let path = rest[idx + "Merge conflict in ".len()..].trim().to_string();
-                    conflict_files.push(path);
-                } else if let Some(idx) = rest.find("modify/delete: ") {
-                    let path = rest[idx + "modify/delete: ".len()..].trim();
-                    let path = path.split_whitespace().next().unwrap_or("").to_string();
-                    if !path.is_empty() {
-                        conflict_files.push(path);
-                    }
-                }
-            }
-        }
-
-        Ok((false, conflict_files, tree_sha))
-    }
+    Ok(parse_merge_tree_output(&output))
 }
 
 /// Apply conflict resolutions and create a merge commit.
@@ -1195,6 +1217,18 @@ pub fn session_diff_stats(repo_path: &Path, shas: &[String]) -> Result<(usize, u
     Ok((added, deleted))
 }
 
+/// Resolve a git revision to its full SHA.
+pub fn rev_parse(repo_path: &Path, rev: &str) -> Result<String> {
+    let output = Command::new("git")
+        .env("GIT_DIR", repo_path)
+        .args(["rev-parse", rev])
+        .output()?;
+    if !output.status.success() {
+        return Err(OxigitError::Git(format!("Failed to resolve rev: {}", rev)));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 /// Check if a session has been reverted by searching for revert commits.
 pub fn is_session_reverted(repo_path: &Path, session_id: &str) -> bool {
     let short_id = &session_id[..8.min(session_id.len())];
@@ -1211,11 +1245,34 @@ pub fn is_session_reverted(repo_path: &Path, session_id: &str) -> bool {
     }
 }
 
+/// Result of a revert operation that may encounter conflicts.
+#[derive(Debug)]
+pub enum RevertResult {
+    /// All commits reverted successfully.
+    Success,
+    /// Conflict detected at a specific commit.
+    Conflict {
+        /// SHA of the commit that caused the conflict.
+        conflicting_sha: String,
+        /// SHAs already successfully reverted (in revert order, newest-first).
+        reverted_shas: Vec<String>,
+        /// SHAs remaining to be reverted, including the conflicting one (oldest-first).
+        remaining_shas: Vec<String>,
+        /// The current commit after successful partial reverts (or original tip).
+        current_commit: String,
+        /// Auto-merged tree SHA from merge-tree (may contain conflict markers).
+        auto_tree: Option<String>,
+        /// File paths with conflicts.
+        conflict_files: Vec<String>,
+    },
+}
+
 /// Revert a sequence of commits on a bare repo, creating a single revert commit.
 /// `shas` should be ordered oldest-first; they are reverted newest-first.
-pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: &str) -> Result<()> {
+/// Returns `RevertResult::Conflict` if a commit cannot be cleanly reverted.
+pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: &str) -> Result<RevertResult> {
     if shas.is_empty() {
-        return Ok(());
+        return Ok(RevertResult::Success);
     }
 
     let branch_ref = format!("refs/heads/{}", branch);
@@ -1228,37 +1285,44 @@ pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: 
     }
     let original_tip = String::from_utf8_lossy(&tip_output.stdout).trim().to_string();
     let mut current = original_tip.clone();
+    let mut reverted_shas = Vec::new();
 
     // Revert each commit newest-first
-    for sha in shas.iter().rev() {
-        let parent_output = Command::new("git")
-            .env("GIT_DIR", repo_path)
-            .args(["rev-parse", &format!("{}^", sha)])
-            .output()?;
-        if !parent_output.status.success() {
-            continue; // Can't revert root commit
+    for (rev_idx, sha) in shas.iter().rev().enumerate() {
+        // Check for conflicts before attempting the revert
+        let (clean, conflict_files, auto_tree) = analyze_revert_commit(repo_path, sha, &current)?;
+        if !clean {
+            // Remaining SHAs: from the conflicting commit back to the oldest (oldest-first order)
+            let remaining: Vec<String> = shas[..(shas.len() - rev_idx)].to_vec();
+            return Ok(RevertResult::Conflict {
+                conflicting_sha: sha.clone(),
+                reverted_shas,
+                remaining_shas: remaining,
+                current_commit: current,
+                auto_tree,
+                conflict_files,
+            });
         }
-        let parent = String::from_utf8_lossy(&parent_output.stdout).trim().to_string();
 
-        // Three-way merge to revert: base=sha, ours=current, theirs=sha^
-        let read_tree = Command::new("git")
+        let parent = rev_parse(repo_path, &format!("{}^", sha))
+            .map_err(|_| OxigitError::Git("Cannot find parent commit".into()))?;
+
+        // Use merge-tree to produce the reverted tree (already verified clean by analyze_revert_commit)
+        let merge_output = Command::new("git")
             .env("GIT_DIR", repo_path)
-            .args(["read-tree", "-m", "-i", sha, &current, &parent])
+            .args([
+                "merge-tree", "--write-tree",
+                &format!("--merge-base={}", sha),
+                &current, &parent,
+            ])
             .output()?;
-        if !read_tree.status.success() {
+        if !merge_output.status.success() {
             return Err(OxigitError::Git(format!(
-                "Cannot revert commit {}: conflicts detected", &sha[..7.min(sha.len())]
+                "Cannot revert commit {}: merge-tree failed", &sha[..7.min(sha.len())]
             )));
         }
-
-        let write_tree = Command::new("git")
-            .env("GIT_DIR", repo_path)
-            .args(["write-tree"])
-            .output()?;
-        if !write_tree.status.success() {
-            return Err(OxigitError::Git("Failed to write revert tree".into()));
-        }
-        let tree_sha = String::from_utf8_lossy(&write_tree.stdout).trim().to_string();
+        let tree_sha = String::from_utf8_lossy(&merge_output.stdout)
+            .lines().next().unwrap_or("").trim().to_string();
 
         let commit = Command::new("git")
             .env("GIT_DIR", repo_path)
@@ -1272,6 +1336,7 @@ pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: 
             return Err(OxigitError::Git("Failed to create revert commit".into()));
         }
         current = String::from_utf8_lossy(&commit.stdout).trim().to_string();
+        reverted_shas.push(sha.clone());
     }
 
     // Squash into single commit parented on original tip
@@ -1299,5 +1364,5 @@ pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: 
         .args(["update-ref", &branch_ref, &squash_sha])
         .output()?;
 
-    Ok(())
+    Ok(RevertResult::Success)
 }

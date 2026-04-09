@@ -88,6 +88,7 @@ async fn fetch_session_detail(
                 ai_prompt: meta.ai_prompt.clone(),
                 ai_session_id: meta.ai_session_id.clone(),
                 ai_files_touched: meta.ai_files_touched.as_ref().and_then(|f| serde_json::from_str(f).ok()),
+                ai_prompt_index: meta.ai_prompt_index,
             },
             diff_html: commit_diff,
         });
@@ -231,10 +232,54 @@ async fn revert_session(
         .unwrap_or(None).unwrap_or_else(|| "main".to_string());
 
     let message = format!("Revert AI session {}: {}", short_id, first_prompt);
-    git::revert_session(&repo_path, &default_branch, &shas, &message)
+    let result = git::revert_session(&repo_path, &default_branch, &shas, &message)
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    leptos_axum::redirect(&format!("/{}/{}/ai/{}", owner, repo, session_id));
+    match result {
+        git::RevertResult::Success => {
+            leptos_axum::redirect(&format!("/{}/{}/ai/{}", owner, repo, session_id));
+        }
+        git::RevertResult::Conflict {
+            conflicting_sha,
+            remaining_shas,
+            current_commit,
+            auto_tree,
+            conflict_files,
+            ..
+        } => {
+            // Get parent of conflicting commit (the revert target state)
+            let parent_sha = git::rev_parse(&repo_path, &format!("{}^", conflicting_sha))
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+            let context = serde_json::json!({
+                "session_id": session_id,
+                "prompt_index": serde_json::Value::Null,
+                "remaining_shas": remaining_shas,
+                "branch": default_branch,
+                "revert_message": message,
+            });
+            let context_str = serde_json::to_string(&context)
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+            let conflict = db::create_merge_conflict(
+                &pool, repo_db.id, user.id,
+                "revert",
+                &current_commit,
+                &parent_sha,
+                &conflicting_sha,
+                auto_tree.as_deref(),
+                Some(&context_str),
+            ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+
+            for file_path in &conflict_files {
+                db::create_conflict_file(&pool, conflict.id, file_path, "content")
+                    .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+            }
+
+            leptos_axum::redirect(&format!("/{}/{}/conflicts/{}", owner, repo, conflict.id));
+        }
+    }
+
     Ok(())
 }
 
@@ -497,57 +542,85 @@ pub fn AiSessionDetailPage() -> impl IntoView {
                                 }.into_any());
                             }
 
-                            // Conversation: unified prompt → code cards
-                            let turn_items: Vec<AnyView> = d.entries.iter().map(|entry| {
-                                let commit_href = format!("/{}/{}/commit/{}", owner_name, repo_name, entry.commit_sha);
-                                let files = entry.metadata.ai_files_touched.clone().unwrap_or_default();
-                                let file_count = files.len();
-                                let files_str = files.join(", ");
-                                let entry_diff = entry.diff_html.clone();
+                            // Group entries by prompt_index for drill-down
+                            // Entries are newest-first; collect into groups preserving order
+                            let mut prompt_groups: Vec<(Option<i64>, String, Vec<&AiTimelineEntry>)> = Vec::new();
+                            for entry in &d.entries {
+                                let idx = entry.metadata.ai_prompt_index;
+                                let prompt_text = entry.metadata.ai_prompt.clone()
+                                    .unwrap_or_else(|| entry.commit_message.clone());
+                                if let Some(group) = prompt_groups.iter_mut().find(|(gi, _, _)| *gi == idx) {
+                                    group.2.push(entry);
+                                } else {
+                                    prompt_groups.push((idx, prompt_text, vec![entry]));
+                                }
+                            }
+                            // Reverse so oldest prompt group is first
+                            prompt_groups.reverse();
 
-                                view! {
-                                    <div class="conversation-turn">
-                                        // Prompt section
-                                        <div class="turn-prompt">
-                                            <div class="turn-prompt-label">"Prompt"</div>
-                                            {match &entry.metadata.ai_prompt {
-                                                Some(prompt) => view! { <span>{prompt.clone()}</span> }.into_any(),
-                                                None => view! { <span class="turn-no-prompt">{entry.commit_message.clone()}</span> }.into_any(),
-                                            }}
-                                        </div>
-                                        // Response section
-                                        <div class="turn-response">
-                                            <div class="turn-commit-line">
-                                                <a href={commit_href} class="commit-sha">{entry.short_sha.clone()}</a>
-                                                <span>{entry.commit_message.clone()}</span>
-                                                <span class="text-tertiary" style="margin-left: auto; font-size: 0.75rem;">{entry.commit_time.clone()}</span>
+                            let prompt_cards: Vec<AnyView> = prompt_groups.iter().enumerate().map(|(display_idx, (prompt_idx, prompt_text, group_entries))| {
+                                let prompt_index_val = prompt_idx.unwrap_or(display_idx as i64);
+                                let prompt_href = format!("/{}/{}/ai/{}/prompt/{}", owner_name, repo_name, sid, prompt_index_val);
+
+                                let turn_items: Vec<AnyView> = group_entries.iter().map(|entry| {
+                                    let commit_href = format!("/{}/{}/commit/{}", owner_name, repo_name, entry.commit_sha);
+                                    let files = entry.metadata.ai_files_touched.clone().unwrap_or_default();
+                                    let file_count = files.len();
+                                    let files_str = files.join(", ");
+                                    let entry_diff = entry.diff_html.clone();
+
+                                    view! {
+                                        <div class="conversation-turn">
+                                            <div class="turn-response">
+                                                <div class="turn-commit-line">
+                                                    <a href={commit_href} class="commit-sha">{entry.short_sha.clone()}</a>
+                                                    <span>{entry.commit_message.clone()}</span>
+                                                    <span class="text-tertiary" style="margin-left: auto; font-size: 0.75rem;">{entry.commit_time.clone()}</span>
+                                                </div>
+                                                {(!files_str.is_empty()).then(|| view! {
+                                                    <div class="turn-files">{files_str}</div>
+                                                })}
                                             </div>
-                                            {(!files_str.is_empty()).then(|| view! {
-                                                <div class="turn-files">{files_str}</div>
+                                            {entry_diff.map(|dh| {
+                                                let summary_text = if file_count > 0 {
+                                                    format!("Show generated code ({} file{})", file_count, if file_count != 1 { "s" } else { "" })
+                                                } else {
+                                                    "Show generated code".to_string()
+                                                };
+                                                view! {
+                                                    <details class="turn-diff-toggle">
+                                                        <summary>{summary_text}</summary>
+                                                        <div class="diff-container" inner_html={dh}></div>
+                                                    </details>
+                                                }
                                             })}
                                         </div>
-                                        // Collapsed code diff
-                                        {entry_diff.map(|dh| {
-                                            let summary_text = if file_count > 0 {
-                                                format!("Show generated code ({} file{})", file_count, if file_count != 1 { "s" } else { "" })
-                                            } else {
-                                                "Show generated code".to_string()
-                                            };
-                                            view! {
-                                                <details class="turn-diff-toggle">
-                                                    <summary>{summary_text}</summary>
-                                                    <div class="diff-container" inner_html={dh}></div>
-                                                </details>
-                                            }
-                                        })}
+                                    }.into_any()
+                                }).collect();
+
+                                let commit_count = group_entries.len();
+
+                                view! {
+                                    <div class="card mb-4" style="border-left: 3px solid var(--accent);">
+                                        <div class="card-header" style="display: flex; align-items: center; gap: var(--space-2);">
+                                            <a href={prompt_href} style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: var(--space-2); flex: 1;">
+                                                <span class="text-secondary" style="font-size: 0.8rem; font-weight: 600;">"Prompt #" {prompt_index_val.to_string()}</span>
+                                                <span style="flex: 1;">{prompt_text.clone()}</span>
+                                                <span class="text-tertiary" style="font-size: 0.75rem;">
+                                                    {commit_count} " commit" {if commit_count != 1 { "s" } else { "" }}
+                                                    " →"
+                                                </span>
+                                            </a>
+                                        </div>
+                                        <div style="padding: var(--space-4);">{turn_items}</div>
                                     </div>
                                 }.into_any()
                             }).collect();
 
                             parts.push(view! {
-                                <div class="card mb-4">
-                                    <div class="card-header">"Conversation"</div>
-                                    <div style="padding: var(--space-4);">{turn_items}</div>
+                                <div class="mb-4">
+                                    <h2 class="text-secondary mb-2" style="font-size: 1rem;">"Prompts"</h2>
+                                    {prompt_cards}
                                 </div>
                             }.into_any());
 

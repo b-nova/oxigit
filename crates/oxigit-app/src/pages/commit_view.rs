@@ -65,6 +65,7 @@ async fn fetch_commit_diff(
                     ai_prompt: if is_full { m.ai_prompt } else { None },
                     ai_session_id: if is_full { m.ai_session_id } else { None },
                     ai_files_touched: m.ai_files_touched.and_then(|f| serde_json::from_str(&f).ok()),
+                    ai_prompt_index: m.ai_prompt_index,
                 }
             })
     };

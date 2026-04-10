@@ -15,13 +15,14 @@ pub struct UserProfileInfo {
     pub is_founding_member: bool,
     pub founding_slot: Option<i64>,
     pub repos: Vec<RepoInfo>,
+    pub base_url: String,
 }
 
 #[server]
 async fn fetch_user_profile(username: String) -> Result<UserProfileInfo, ServerFnError> {
     #[cfg(feature = "saas")]
     use crate::server_fns::is_multi_tenant;
-    use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
+    use crate::server_fns::{extract_session_user, get_base_url, get_control_pool, sfn_err};
     use oxigit_core::db;
 
     let pool = get_control_pool().await?;
@@ -94,6 +95,7 @@ async fn fetch_user_profile(username: String) -> Result<UserProfileInfo, ServerF
     #[cfg(not(feature = "saas"))]
     let founding_slot: Option<i64> = None;
     let is_founding = founding_slot.is_some();
+    let base_url = get_base_url().await;
 
     Ok(UserProfileInfo {
         username: user.username,
@@ -101,6 +103,7 @@ async fn fetch_user_profile(username: String) -> Result<UserProfileInfo, ServerF
         is_founding_member: is_founding,
         founding_slot,
         repos: visible_repos,
+        base_url,
     })
 }
 
@@ -123,6 +126,7 @@ pub fn UserProfilePage() -> impl IntoView {
                             let plan = info.plan;
                             let is_founding = info.is_founding_member;
                             let founding_slot = info.founding_slot;
+                            let base_url = info.base_url;
                             view! {
                             <div class="page-header">
                                 <h1 class="page-title">
@@ -140,7 +144,7 @@ pub fn UserProfilePage() -> impl IntoView {
                             </div>
                             {is_founding.then(|| {
                                 let badge_src = format!("/api/badge/{}.svg", name);
-                                let badge_url = format!("https://oxigit.com/api/badge/{}.svg", name);
+                                let badge_url = format!("{}/api/badge/{}.svg", base_url, name);
                                 let download_name = format!("oxigit-founding-badge-{}.svg", name);
                                 let slot_display = founding_slot.map(|s| format!("#{:03}", s)).unwrap_or_default();
                                 let alt = format!("Oxigit Founding Member {}", slot_display);

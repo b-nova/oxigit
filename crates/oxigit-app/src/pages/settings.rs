@@ -14,7 +14,7 @@ pub struct SshKeyInfo {
 
 #[server]
 async fn list_ssh_keys() -> Result<Vec<SshKeyInfo>, ServerFnError> {
-    use crate::server_fns::{require_auth, get_control_pool, sfn_err};
+    use crate::server_fns::{get_control_pool, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;
@@ -34,7 +34,7 @@ async fn list_ssh_keys() -> Result<Vec<SshKeyInfo>, ServerFnError> {
 
 #[server]
 async fn add_ssh_key(name: String, public_key: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_control_pool, sfn_err};
+    use crate::server_fns::{get_control_pool, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;
@@ -145,7 +145,7 @@ pub struct LlmSettingsInfo {
 
 #[server]
 async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
-    use crate::server_fns::{require_auth, get_control_pool, get_llm_config, sfn_err};
+    use crate::server_fns::{get_control_pool, get_llm_config, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;
@@ -183,7 +183,7 @@ async fn save_llm_settings(
     model: String,
     base_url: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_control_pool, sfn_err};
+    use crate::server_fns::{get_control_pool, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;
@@ -222,7 +222,7 @@ async fn save_llm_settings(
 
 #[server]
 async fn delete_key(key_id: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_control_pool, sfn_err};
+    use crate::server_fns::{get_control_pool, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;

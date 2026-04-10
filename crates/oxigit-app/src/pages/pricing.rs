@@ -52,7 +52,7 @@ async fn create_checkout(plan: String) -> Result<String, ServerFnError> {
     #[cfg(feature = "saas")]
     {
         use crate::server_fns::{
-            require_auth, get_base_url, get_control_pool, get_stripe_config, sfn_err,
+            get_base_url, get_control_pool, get_stripe_config, require_auth, sfn_err,
         };
         use oxigit_core::{billing, db};
 

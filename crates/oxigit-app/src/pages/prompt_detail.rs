@@ -16,8 +16,8 @@ async fn fetch_prompt_detail(
 ) -> Result<PromptDetailResponse, ServerFnError> {
     use super::{AiMetadataInfo, DiffSummaryInfo, RiskFlagInfo, VibeScoreInfo};
     use crate::server_fns::{
-        require_auth, get_effective_llm_config, get_repo_path, get_repo_pools,
-        get_user_entitlements, sfn_err,
+        get_effective_llm_config, get_repo_path, get_repo_pools, get_user_entitlements,
+        require_auth, sfn_err,
     };
     use oxigit_core::{db, git, llm, risk};
 
@@ -249,7 +249,7 @@ async fn revert_prompt(
     prompt_index: i64,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        get_repo_path, get_repo_pools, get_user_entitlements, require_auth, sfn_err,
     };
     use oxigit_core::{db, git};
 
@@ -362,7 +362,7 @@ async fn cherry_pick_prompt(
     target_branch: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        get_repo_path, get_repo_pools, get_user_entitlements, require_auth, sfn_err,
     };
     use oxigit_core::{db, git};
 
@@ -417,7 +417,7 @@ async fn squash_prompt(
     message: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        get_repo_path, get_repo_pools, get_user_entitlements, require_auth, sfn_err,
     };
     use oxigit_core::{db, git};
 

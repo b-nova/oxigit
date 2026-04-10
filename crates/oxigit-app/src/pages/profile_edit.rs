@@ -13,7 +13,7 @@ pub struct ProfileInfo {
 
 #[server]
 async fn fetch_profile() -> Result<ProfileInfo, ServerFnError> {
-    use crate::server_fns::{require_auth, get_control_pool, sfn_err};
+    use crate::server_fns::{get_control_pool, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;
@@ -29,7 +29,7 @@ async fn fetch_profile() -> Result<ProfileInfo, ServerFnError> {
 
 #[server]
 async fn save_profile(display_name: String, email: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_control_pool};
+    use crate::server_fns::{get_control_pool, require_auth};
     use oxigit_core::db;
 
     let user = require_auth().await?;

@@ -256,20 +256,18 @@ pub async fn receive_pack(
     let base_url = format!("http://{}", state.leptos_options.site_addr);
     tokio::spawn(async move {
         let after_refs = oxigit_core::git::capture_refs(&path_clone).unwrap_or_default();
-        oxigit_core::hooks::process_post_receive(
-            &oxigit_core::hooks::PostReceiveContext {
-                pool: &repo_pool,
-                control_pool: &control_pool,
-                repo_path: &path_clone,
-                repo_id: repo_db_id,
-                owner_id: repo_owner_id,
-                before_refs: &before_refs,
-                after_refs: &after_refs,
-                owner: &owner_clone,
-                repo_name: &repo_name_clone,
-                callback_base_url: &base_url,
-            },
-        )
+        oxigit_core::hooks::process_post_receive(&oxigit_core::hooks::PostReceiveContext {
+            pool: &repo_pool,
+            control_pool: &control_pool,
+            repo_path: &path_clone,
+            repo_id: repo_db_id,
+            owner_id: repo_owner_id,
+            before_refs: &before_refs,
+            after_refs: &after_refs,
+            owner: &owner_clone,
+            repo_name: &repo_name_clone,
+            callback_base_url: &base_url,
+        })
         .await;
     });
 

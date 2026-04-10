@@ -78,7 +78,7 @@ async fn get_issue(owner: String, repo: String, number: i64) -> Result<IssueDeta
 
 #[server]
 async fn close_issue_action(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_repo_pools, sfn_err};
+    use crate::server_fns::{get_repo_pools, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;
@@ -107,7 +107,7 @@ async fn reopen_issue_action(
     repo: String,
     number: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_repo_pools, sfn_err};
+    use crate::server_fns::{get_repo_pools, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;
@@ -137,7 +137,7 @@ async fn add_comment(
     number: i64,
     body: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_repo_pools, sfn_err};
+    use crate::server_fns::{get_repo_pools, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;

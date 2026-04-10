@@ -149,9 +149,7 @@ async fn fetch_repo_tree(
 async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     use crate::server_fns::is_multi_tenant;
-    use crate::server_fns::{
-        require_auth, get_data_dir, get_repo_path, get_repo_pools, sfn_err,
-    };
+    use crate::server_fns::{get_data_dir, get_repo_path, get_repo_pools, require_auth, sfn_err};
     use oxigit_core::{db, git};
 
     let user = require_auth().await?;

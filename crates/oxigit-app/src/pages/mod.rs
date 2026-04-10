@@ -536,7 +536,7 @@ pub struct OrgListItem {
 pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{require_auth, get_control_pool, sfn_err};
+        use crate::server_fns::{get_control_pool, require_auth, sfn_err};
         use oxigit_core::db;
 
         let user = require_auth().await?;
@@ -561,7 +561,7 @@ pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
 pub async fn switch_org(slug: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{require_auth, get_control_pool, set_session_org, sfn_err};
+        use crate::server_fns::{get_control_pool, require_auth, set_session_org, sfn_err};
         use oxigit_core::db;
 
         let user = require_auth().await?;

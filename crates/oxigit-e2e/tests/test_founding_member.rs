@@ -189,7 +189,7 @@ async fn founding_profile_shows_slot_and_embed_code() {
         "profile should show embed instructions: {body}"
     );
     assert!(
-        body.contains("oxigit.com/api/badge/alice.svg"),
+        body.contains("/api/badge/alice.svg"),
         "profile should show embed URL: {body}"
     );
 }

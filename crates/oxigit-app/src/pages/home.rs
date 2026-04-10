@@ -255,7 +255,7 @@ pub fn HomePage() -> impl IntoView {
                                 <div class="hero-orb hero-orb-1"></div>
                                 <div class="hero-orb hero-orb-2"></div>
                                 <div class="hero-content">
-                                    <span class="hero-eyebrow hero-stagger">"THE AI-NATIVE GIT PLATFORM"</span>
+                                    <span class="hero-eyebrow hero-stagger">"BETA · THE AI-NATIVE GIT PLATFORM"</span>
                                     <div class="hero-title hero-stagger">
                                         <svg class="hero-logo" viewBox="0 0 84 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <g transform="scale(1.0667)">

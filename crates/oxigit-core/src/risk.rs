@@ -56,14 +56,18 @@ pub fn scan_diff(diff: &str) -> Vec<RiskFlag> {
         Regex::new(r#"(?i)format!\s*\(\s*"[^"]*(?:SELECT|INSERT|UPDATE|DELETE|DROP)[^"]*\{"#)
             .expect("valid regex")
     });
-    let re_eval = RE_EVAL.get_or_init(|| Regex::new(r"(?i)\b(eval|exec)\s*\(").expect("valid regex"));
+    let re_eval =
+        RE_EVAL.get_or_init(|| Regex::new(r"(?i)\b(eval|exec)\s*\(").expect("valid regex"));
     let re_unsafe = RE_UNSAFE.get_or_init(|| Regex::new(r"\bunsafe\s*\{").expect("valid regex"));
-    let re_todo = RE_TODO.get_or_init(|| Regex::new(r"(?i)\b(TODO|FIXME|HACK|XXX|WORKAROUND)\b").expect("valid regex"));
+    let re_todo = RE_TODO.get_or_init(|| {
+        Regex::new(r"(?i)\b(TODO|FIXME|HACK|XXX|WORKAROUND)\b").expect("valid regex")
+    });
     let re_pub_removed = RE_PUB_REMOVED.get_or_init(|| {
         Regex::new(r"^pub\s+(fn|struct|enum|trait|type|const|static)\s+\w+").expect("valid regex")
     });
     let re_export_removed = RE_EXPORT_REMOVED.get_or_init(|| {
-        Regex::new(r"^export\s+(function|const|let|class|default|type|interface)\s+").expect("valid regex")
+        Regex::new(r"^export\s+(function|const|let|class|default|type|interface)\s+")
+            .expect("valid regex")
     });
 
     for line in diff.lines() {

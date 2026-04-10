@@ -17,9 +17,7 @@ pub struct BillingInfo {
 async fn fetch_billing_info() -> Result<BillingInfo, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{
-            require_auth, get_control_pool, get_stripe_config, sfn_err,
-        };
+        use crate::server_fns::{get_control_pool, get_stripe_config, require_auth, sfn_err};
         use oxigit_core::db;
 
         let user = require_auth().await?;
@@ -58,7 +56,7 @@ async fn create_portal_redirect() -> Result<String, ServerFnError> {
     #[cfg(feature = "saas")]
     {
         use crate::server_fns::{
-            require_auth, get_base_url, get_control_pool, get_stripe_config, sfn_err,
+            get_base_url, get_control_pool, get_stripe_config, require_auth, sfn_err,
         };
         use oxigit_core::{billing, db};
 

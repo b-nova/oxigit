@@ -25,7 +25,7 @@ pub async fn fetch_ai_hub(
     query: String,
 ) -> Result<AiHubResponse, ServerFnError> {
     use crate::server_fns::{
-        require_auth, get_ai_access_level, get_repo_path, get_repo_pools, sfn_err,
+        get_ai_access_level, get_repo_path, get_repo_pools, require_auth, sfn_err,
     };
     use oxigit_core::{db, entitlements::AiAccessLevel, git};
 

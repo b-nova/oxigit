@@ -53,6 +53,7 @@ pub fn Navbar() -> impl IntoView {
                             </g>
                             <text x="27" y="23" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-weight="700" font-size="22" letter-spacing="-0.02em" class="logo-text">{"xigit"}</text>
                         </svg>
+                        <span class="badge badge-beta">"Beta"</span>
                     </a>
                     <span class="navbar-divider"></span>
                     <a href="/explore" class=move || nav_class("/explore")>"Explore"</a>

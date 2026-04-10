@@ -26,7 +26,7 @@ async fn create_pr(
     source_branch: String,
     target_branch: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_repo_path, get_repo_pools, sfn_err};
+    use crate::server_fns::{get_repo_path, get_repo_pools, require_auth, sfn_err};
     use oxigit_core::{db, git};
 
     let user = require_auth().await?;

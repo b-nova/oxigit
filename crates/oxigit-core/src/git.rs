@@ -400,8 +400,13 @@ pub fn merge_branches(repo_path: &Path, target: &str, source: &str, message: &st
         // Fast-forward: just update the ref
         update_branch_ref(repo_path, target, &source_sha)
     } else {
-        let merge_sha =
-            create_merge_commit(repo_path, &merge_base_sha, &target_sha, &source_sha, message)?;
+        let merge_sha = create_merge_commit(
+            repo_path,
+            &merge_base_sha,
+            &target_sha,
+            &source_sha,
+            message,
+        )?;
         update_branch_ref(repo_path, target, &merge_sha)
     }
 }

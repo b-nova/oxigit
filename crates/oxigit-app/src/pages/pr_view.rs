@@ -114,7 +114,7 @@ async fn get_pr(owner: String, repo: String, number: i64) -> Result<PrDetail, Se
 
 #[server]
 async fn merge_pr(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_repo_path, get_repo_pools, sfn_err};
+    use crate::server_fns::{get_repo_path, get_repo_pools, require_auth, sfn_err};
     use oxigit_core::{db, git};
 
     let user = require_auth().await?;
@@ -152,7 +152,7 @@ async fn merge_pr(owner: String, repo: String, number: i64) -> Result<(), Server
 
 #[server]
 async fn close_pr(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_repo_pools, sfn_err};
+    use crate::server_fns::{get_repo_pools, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;
@@ -289,7 +289,7 @@ async fn generate_pr_diff_summary(
     number: i64,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
     use crate::server_fns::{
-        require_auth, get_effective_llm_config, get_repo_path, get_repo_pools, sfn_err,
+        get_effective_llm_config, get_repo_path, get_repo_pools, require_auth, sfn_err,
     };
     use oxigit_core::{db, git, llm, risk};
 

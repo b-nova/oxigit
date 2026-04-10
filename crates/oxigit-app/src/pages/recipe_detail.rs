@@ -128,7 +128,7 @@ async fn replay_recipe(
     mode: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        get_repo_path, get_repo_pools, get_user_entitlements, require_auth, sfn_err,
     };
     use oxigit_core::{db, git};
 

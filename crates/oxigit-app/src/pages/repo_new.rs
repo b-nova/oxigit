@@ -8,9 +8,7 @@ async fn create_repo(
     description: String,
     is_private: bool,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{
-        require_auth, get_data_dir, get_pool, get_user_entitlements, sfn_err,
-    };
+    use crate::server_fns::{get_data_dir, get_pool, get_user_entitlements, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;

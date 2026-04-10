@@ -24,9 +24,7 @@ pub struct OrgSettingsData {
 async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{
-            require_auth, get_control_pool, get_user_entitlements, sfn_err,
-        };
+        use crate::server_fns::{get_control_pool, get_user_entitlements, require_auth, sfn_err};
         use oxigit_core::db;
 
         let user = require_auth().await?;
@@ -86,9 +84,7 @@ async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError
 async fn add_member(slug: String, username: String, role: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{
-            require_auth, get_control_pool, get_user_entitlements, sfn_err,
-        };
+        use crate::server_fns::{get_control_pool, get_user_entitlements, require_auth, sfn_err};
         use oxigit_core::db;
 
         let user = require_auth().await?;
@@ -137,9 +133,7 @@ async fn add_member(slug: String, username: String, role: String) -> Result<(), 
 async fn remove_member(slug: String, user_id: i64) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{
-            require_auth, get_control_pool, get_user_entitlements, sfn_err,
-        };
+        use crate::server_fns::{get_control_pool, get_user_entitlements, require_auth, sfn_err};
         use oxigit_core::db;
 
         let user = require_auth().await?;

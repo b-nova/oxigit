@@ -106,7 +106,7 @@ async fn attach_ai_metadata(
     ai_session_id: Option<String>,
     ai_files_touched: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{require_auth, get_repo_pools, sfn_err};
+    use crate::server_fns::{get_repo_pools, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;

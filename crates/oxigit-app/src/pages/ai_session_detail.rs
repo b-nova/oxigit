@@ -17,8 +17,8 @@ async fn fetch_session_detail(
     session_id: String,
 ) -> Result<SessionDetailResponse, ServerFnError> {
     use crate::server_fns::{
-        require_auth, get_effective_llm_config, get_repo_path, get_repo_pools,
-        get_user_entitlements, sfn_err,
+        get_effective_llm_config, get_repo_path, get_repo_pools, get_user_entitlements,
+        require_auth, sfn_err,
     };
     use oxigit_core::{db, git, llm, risk};
 
@@ -251,7 +251,7 @@ async fn revert_session(
     session_id: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        get_repo_path, get_repo_pools, get_user_entitlements, require_auth, sfn_err,
     };
     use oxigit_core::{db, git};
 
@@ -363,7 +363,7 @@ async fn squash_session_action(
     message: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        get_repo_path, get_repo_pools, get_user_entitlements, require_auth, sfn_err,
     };
     use oxigit_core::{db, git};
 
@@ -420,7 +420,7 @@ async fn cherry_pick_session_action(
     target_branch: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        get_repo_path, get_repo_pools, get_user_entitlements, require_auth, sfn_err,
     };
     use oxigit_core::{db, git};
 

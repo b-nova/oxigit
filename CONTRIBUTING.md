@@ -15,7 +15,7 @@ Thank you for your interest in contributing to Oxigit! This guide covers everyth
 Clone the repository and build:
 
 ```bash
-git clone https://github.com/b-nova-openhub/oxigit.git
+git clone https://github.com/b-nova/oxigit.git
 cd oxigit
 make build
 ```

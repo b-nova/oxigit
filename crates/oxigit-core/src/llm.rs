@@ -92,10 +92,9 @@ async fn llm_request(
         )));
     }
 
-    let raw = resp
-        .text()
-        .await
-        .map_err(|e| OxigitError::Git(format!("Failed to read {} response: {}", provider_name, e)))?;
+    let raw = resp.text().await.map_err(|e| {
+        OxigitError::Git(format!("Failed to read {} response: {}", provider_name, e))
+    })?;
 
     extract_text(&raw)
 }
@@ -217,8 +216,9 @@ async fn call_anthropic(config: &LlmConfig, user_message: &str) -> Result<String
         &[("anthropic-version", "2023-06-01")],
         &body,
         |raw| {
-            let data: AnthropicResponse = serde_json::from_str(raw)
-                .map_err(|e| OxigitError::Git(format!("Failed to parse Anthropic response: {}", e)))?;
+            let data: AnthropicResponse = serde_json::from_str(raw).map_err(|e| {
+                OxigitError::Git(format!("Failed to parse Anthropic response: {}", e))
+            })?;
             data.content
                 .first()
                 .map(|c| c.text.trim().to_string())

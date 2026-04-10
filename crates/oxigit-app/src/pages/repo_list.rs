@@ -10,7 +10,7 @@ use super::RepoInfo;
 async fn list_repos() -> Result<(String, Vec<RepoInfo>), ServerFnError> {
     #[cfg(feature = "saas")]
     use crate::server_fns::is_multi_tenant;
-    use crate::server_fns::{require_auth, get_pool, sfn_err};
+    use crate::server_fns::{get_pool, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;

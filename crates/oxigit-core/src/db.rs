@@ -34,14 +34,11 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
 
 /// Ensure the schema exists on a single database (legacy mode).
 pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
-    sqlx::raw_sql(SCHEMA_SQL)
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            OxigitError::Database(sqlx::Error::Protocol(format!(
-                "Schema initialization failed: {e}"
-            )))
-        })?;
+    sqlx::raw_sql(SCHEMA_SQL).execute(pool).await.map_err(|e| {
+        OxigitError::Database(sqlx::Error::Protocol(format!(
+            "Schema initialization failed: {e}"
+        )))
+    })?;
     Ok(())
 }
 

@@ -69,6 +69,8 @@ docker run -d --name oxigit \
 
 Visit `http://localhost:9100` to register your first user.
 
+> **Data persistence:** The `/app/data` volume stores the database, bare repositories, SSH host key, and session secret key. Keep this volume persistent across container restarts to avoid losing repos and regenerating keys.
+
 ### Docker Compose
 
 ```yaml
@@ -81,6 +83,8 @@ services:
       - "2222:2222"
     volumes:
       - oxigit-data:/app/data
+    environment:
+      - RUST_LOG=info
 
 volumes:
   oxigit-data:
@@ -113,12 +117,21 @@ All settings via environment variables or CLI flags:
 | `OXIGIT_HTTP_ADDR` | `127.0.0.1:9100` | HTTP listen address |
 | `OXIGIT_SSH_ADDR` | `127.0.0.1:2222` | SSH listen address |
 | `OXIGIT_SECRET_KEY` | auto-generated | Hex-encoded session signing key |
-| `OXIGIT_LLM_PROVIDER` | `none` | LLM provider: `none`, `openai`, `anthropic`, `ollama` |
+| `OXIGIT_LLM_PROVIDER` | `ollama` | LLM provider: `none`, `openai`, `anthropic`, `ollama` |
 | `OXIGIT_LLM_API_KEY` | - | API key for cloud LLM providers |
-| `OXIGIT_LLM_MODEL` | `gpt-4o-mini` | LLM model name |
+| `OXIGIT_LLM_MODEL` | `qwen3-coder` | LLM model name |
 | `OXIGIT_LLM_BASE_URL` | - | Custom LLM endpoint (for Ollama or proxies) |
+| `OXIGIT_SMTP_HOST` | - | SMTP host for notification emails |
+| `OXIGIT_SMTP_PORT` | `587` | SMTP port |
+| `OXIGIT_SMTP_USER` | - | SMTP username |
+| `OXIGIT_SMTP_PASSWORD` | - | SMTP password |
+| `OXIGIT_SMTP_FROM` | - | From address for outgoing emails |
+| `OXIGIT_CONTACT_EMAIL` | - | Email address for contact form inquiries |
+| `RUST_LOG` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
 
 Users can also configure their own LLM settings in **Settings** (per-user, overrides server defaults).
+
+> **AI features:** The default LLM provider is `ollama`, so AI summaries work out of the box with a local [Ollama](https://ollama.com) instance running `qwen3-coder`. Set `OXIGIT_LLM_PROVIDER=none` to disable AI features, or use `openai`/`anthropic` with an API key.
 
 ## AI Metadata Convention
 

@@ -1,4 +1,4 @@
-.PHONY: dev dev-saas build build-saas clean docker docker-run e2e video
+.PHONY: dev dev-saas build build-saas clean docker docker-run e2e
 
 dev:
 	. "$$HOME/.cargo/env" && cargo leptos watch
@@ -24,6 +24,4 @@ docker-run:
 e2e: build
 	cargo test -p oxigit-e2e -- --test-threads=4
 
-video:
-	cd demo && npm run video
 

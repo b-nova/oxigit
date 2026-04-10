@@ -9,6 +9,11 @@ members = [
 ]
 
 [workspace.package]
+version = "0.1.0"
+authors = ["b-nova <licensing@b-nova.com>"]
+description = "The AI-native Git platform for vibecoders"
+homepage = "https://oxigit.com"
+repository = "https://github.com/b-nova/oxigit"
 license = "BUSL-1.1"
 
 [workspace.dependencies]

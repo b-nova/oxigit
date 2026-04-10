@@ -1,10 +1,16 @@
-.PHONY: dev build clean docker docker-run e2e video
+.PHONY: dev dev-saas build build-saas clean docker docker-run e2e video
 
 dev:
 	. "$$HOME/.cargo/env" && cargo leptos watch
 
+dev-saas:
+	. "$$HOME/.cargo/env" && cargo leptos watch --features saas
+
 build:
 	. "$$HOME/.cargo/env" && cargo leptos build --release
+
+build-saas:
+	. "$$HOME/.cargo/env" && cargo leptos build --release --features saas
 
 clean:
 	cargo clean

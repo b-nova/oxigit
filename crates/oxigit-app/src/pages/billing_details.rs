@@ -64,7 +64,7 @@ async fn fetch_invoices() -> Result<Vec<InvoiceInfo>, ServerFnError> {
     }
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(all(feature = "ssr", feature = "saas"))]
 fn format_timestamp(ts: i64) -> String {
     use std::time::{Duration, UNIX_EPOCH};
     let d = UNIX_EPOCH + Duration::from_secs(ts as u64);

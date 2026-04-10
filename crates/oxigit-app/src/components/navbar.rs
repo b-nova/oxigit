@@ -1,9 +1,13 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_location;
 
-use super::icons::{IconCheck, IconCreditCard, IconGear, IconLogout, IconMenu, IconReceipt, IconTeam, IconUser, IconX};
+use super::icons::{IconGear, IconLogout, IconMenu, IconUser, IconX};
+#[cfg(feature = "saas")]
+use super::icons::{IconCheck, IconCreditCard, IconReceipt, IconTeam};
 use super::theme_toggle::ThemeToggle;
-use crate::pages::{get_current_user, list_my_orgs, Logout, SwitchOrg};
+use crate::pages::{get_current_user, Logout};
+#[cfg(feature = "saas")]
+use crate::pages::{list_my_orgs, SwitchOrg};
 
 #[component]
 pub fn Navbar() -> impl IntoView {
@@ -56,7 +60,10 @@ pub fn Navbar() -> impl IntoView {
                     <span class="navbar-divider"></span>
                     <a href="/explore" class=move || nav_class("/explore")>"Explore"</a>
                     <a href="/recipes" class=move || nav_class("/recipes")>"Recipes"</a>
-                    <a href="/pricing" class=move || nav_class("/pricing")>"Pricing"</a>
+                    {
+                        #[cfg(feature = "saas")]
+                        view! { <a href="/pricing" class=move || nav_class("/pricing")>"Pricing"</a> }
+                    }
                     <Suspense fallback=|| ()>
                         {move || Suspend::new(async move {
                             match user.await {
@@ -85,7 +92,12 @@ pub fn Navbar() -> impl IntoView {
                                 },
                                 _ => view! {
                                     <a href="/login" class="navbar-link">"Sign in"</a>
-                                    <a href="/pricing" class="btn btn-primary btn-sm">"Sign up"</a>
+                                    {
+                                        #[cfg(feature = "saas")]
+                                        view! { <a href="/pricing" class="btn btn-primary btn-sm">"Sign up"</a> }
+                                        #[cfg(not(feature = "saas"))]
+                                        view! { <a href="/register" class="btn btn-primary btn-sm">"Sign up"</a> }
+                                    }
                                 }.into_any(),
                             }
                         })}
@@ -113,7 +125,10 @@ pub fn Navbar() -> impl IntoView {
                 </div>
                 <a href="/explore" class="mobile-nav-link">"Explore"</a>
                 <a href="/recipes" class="mobile-nav-link">"Recipes"</a>
-                <a href="/pricing" class="mobile-nav-link">"Pricing"</a>
+                {
+                    #[cfg(feature = "saas")]
+                    view! { <a href="/pricing" class="mobile-nav-link">"Pricing"</a> }
+                }
                 <Suspense fallback=|| ()>
                     {move || Suspend::new(async move {
                         match user.await {
@@ -123,8 +138,13 @@ pub fn Navbar() -> impl IntoView {
                                     <div class="mobile-nav-divider"></div>
                                     <a href="/profile" class="mobile-nav-link">"Profile"</a>
                                     <a href="/settings" class="mobile-nav-link">"Settings"</a>
-                                    <a href="/subscription" class="mobile-nav-link">"Subscription"</a>
-                                    <a href="/billing" class="mobile-nav-link">"Billing"</a>
+                                    {
+                                        #[cfg(feature = "saas")]
+                                        view! {
+                                            <a href="/subscription" class="mobile-nav-link">"Subscription"</a>
+                                            <a href="/billing" class="mobile-nav-link">"Billing"</a>
+                                        }
+                                    }
                                     <div class="mobile-nav-divider"></div>
                                     <ActionForm action=logout_action>
                                         <button type="submit" class="mobile-nav-link w-full text-left" style="background: none; border: none; cursor: pointer; font: inherit;">
@@ -136,7 +156,12 @@ pub fn Navbar() -> impl IntoView {
                             _ => view! {
                                 <div class="mobile-nav-divider"></div>
                                 <a href="/login" class="mobile-nav-link">"Sign in"</a>
-                                <a href="/pricing" class="mobile-nav-link">"Sign up"</a>
+                                {
+                                    #[cfg(feature = "saas")]
+                                    view! { <a href="/pricing" class="mobile-nav-link">"Sign up"</a> }
+                                    #[cfg(not(feature = "saas"))]
+                                    view! { <a href="/register" class="mobile-nav-link">"Sign up"</a> }
+                                }
                             }.into_any(),
                         }
                     })}
@@ -153,7 +178,9 @@ fn UserDropdown(
     logout_action: ServerAction<Logout>,
 ) -> impl IntoView {
     let (dropdown_open, set_dropdown_open) = signal(false);
+    #[cfg(feature = "saas")]
     let orgs = Resource::new(|| (), |_| list_my_orgs());
+    #[cfg(feature = "saas")]
     let switch_action = ServerAction::<SwitchOrg>::new();
     let location = use_location();
 
@@ -163,7 +190,10 @@ fn UserDropdown(
         set_dropdown_open.set(false);
     });
 
+    #[cfg(feature = "saas")]
     let active_org = StoredValue::new(active_org);
+    #[cfg(not(feature = "saas"))]
+    let _ = active_org;
 
     view! {
         <div class="user-dropdown">
@@ -180,71 +210,76 @@ fn UserDropdown(
                     on:click=move |_| set_dropdown_open.set(false)
                 ></div>
                 <div class="user-dropdown-menu">
-                    <Suspense fallback=|| ()>
-                        {move || {
-                            let active = active_org.get_value();
-                            Suspend::new(async move {
-                                match orgs.await {
-                                    Ok(orgs) if orgs.len() > 1 => {
-                                        let active_slug = active.clone();
-                                        let team_href = orgs.iter()
-                                            .find(|o| o.slug == active_slug)
-                                            .or_else(|| orgs.first())
-                                            .map(|o| format!("/orgs/{}/settings", o.slug))
-                                            .unwrap_or_default();
-                                        view! {
-                                            <div class="user-dropdown-label">"Organization"</div>
-                                            {orgs.iter().map(|o| {
-                                                let is_active = o.slug == active;
-                                                let slug = o.slug.clone();
-                                                let name = o.display_name.clone();
+                    {
+                        #[cfg(feature = "saas")]
+                        view! {
+                            <Suspense fallback=|| ()>
+                                {move || {
+                                    let active = active_org.get_value();
+                                    Suspend::new(async move {
+                                        match orgs.await {
+                                            Ok(orgs) if orgs.len() > 1 => {
+                                                let active_slug = active.clone();
+                                                let team_href = orgs.iter()
+                                                    .find(|o| o.slug == active_slug)
+                                                    .or_else(|| orgs.first())
+                                                    .map(|o| format!("/orgs/{}/settings", o.slug))
+                                                    .unwrap_or_default();
                                                 view! {
-                                                    <ActionForm action=switch_action>
-                                                        <input type="hidden" name="slug" value=slug />
-                                                        <button
-                                                            type="submit"
-                                                            class="user-dropdown-item"
-                                                            class:user-dropdown-item-active=is_active
-                                                        >
-                                                            {name}
-                                                            <Show when=move || is_active>
-                                                                <IconCheck />
-                                                            </Show>
-                                                        </button>
-                                                    </ActionForm>
-                                                }
-                                            }).collect::<Vec<_>>()}
-                                            <a
-                                                href=team_href
-                                                class="user-dropdown-item"
-                                                on:click=move |_| set_dropdown_open.set(false)
-                                            >
-                                                <IconTeam />
-                                                " Team"
-                                            </a>
-                                            <div class="user-dropdown-divider"></div>
-                                        }.into_any()
-                                    }
-                                    Ok(orgs) if orgs.len() == 1 => {
-                                        let org = &orgs[0];
-                                        let settings_href = format!("/orgs/{}/settings", org.slug);
-                                        view! {
-                                            <a
-                                                href=settings_href
-                                                class="user-dropdown-item"
-                                                on:click=move |_| set_dropdown_open.set(false)
-                                            >
-                                                <IconTeam />
-                                                " Team"
-                                            </a>
-                                            <div class="user-dropdown-divider"></div>
-                                        }.into_any()
-                                    }
-                                    _ => view! { <span></span> }.into_any(),
-                                }
-                            })
-                        }}
-                    </Suspense>
+                                                    <div class="user-dropdown-label">"Organization"</div>
+                                                    {orgs.iter().map(|o| {
+                                                        let is_active = o.slug == active;
+                                                        let slug = o.slug.clone();
+                                                        let name = o.display_name.clone();
+                                                        view! {
+                                                            <ActionForm action=switch_action>
+                                                                <input type="hidden" name="slug" value=slug />
+                                                                <button
+                                                                    type="submit"
+                                                                    class="user-dropdown-item"
+                                                                    class:user-dropdown-item-active=is_active
+                                                                >
+                                                                    {name}
+                                                                    <Show when=move || is_active>
+                                                                        <IconCheck />
+                                                                    </Show>
+                                                                </button>
+                                                            </ActionForm>
+                                                        }
+                                                    }).collect::<Vec<_>>()}
+                                                    <a
+                                                        href=team_href
+                                                        class="user-dropdown-item"
+                                                        on:click=move |_| set_dropdown_open.set(false)
+                                                    >
+                                                        <IconTeam />
+                                                        " Team"
+                                                    </a>
+                                                    <div class="user-dropdown-divider"></div>
+                                                }.into_any()
+                                            }
+                                            Ok(orgs) if orgs.len() == 1 => {
+                                                let org = &orgs[0];
+                                                let settings_href = format!("/orgs/{}/settings", org.slug);
+                                                view! {
+                                                    <a
+                                                        href=settings_href
+                                                        class="user-dropdown-item"
+                                                        on:click=move |_| set_dropdown_open.set(false)
+                                                    >
+                                                        <IconTeam />
+                                                        " Team"
+                                                    </a>
+                                                    <div class="user-dropdown-divider"></div>
+                                                }.into_any()
+                                            }
+                                            _ => view! { <span></span> }.into_any(),
+                                        }
+                                    })
+                                }}
+                            </Suspense>
+                        }
+                    }
                     <a
                         href="/profile"
                         class="user-dropdown-item"
@@ -261,22 +296,27 @@ fn UserDropdown(
                         <IconGear />
                         " Settings"
                     </a>
-                    <a
-                        href="/subscription"
-                        class="user-dropdown-item"
-                        on:click=move |_| set_dropdown_open.set(false)
-                    >
-                        <IconCreditCard />
-                        " Subscription"
-                    </a>
-                    <a
-                        href="/billing"
-                        class="user-dropdown-item"
-                        on:click=move |_| set_dropdown_open.set(false)
-                    >
-                        <IconReceipt />
-                        " Billing"
-                    </a>
+                    {
+                        #[cfg(feature = "saas")]
+                        view! {
+                            <a
+                                href="/subscription"
+                                class="user-dropdown-item"
+                                on:click=move |_| set_dropdown_open.set(false)
+                            >
+                                <IconCreditCard />
+                                " Subscription"
+                            </a>
+                            <a
+                                href="/billing"
+                                class="user-dropdown-item"
+                                on:click=move |_| set_dropdown_open.set(false)
+                            >
+                                <IconReceipt />
+                                " Billing"
+                            </a>
+                        }
+                    }
                     <div class="user-dropdown-divider"></div>
                     <ActionForm action=logout_action>
                         <button type="submit" class="user-dropdown-item user-dropdown-item-danger">

@@ -156,13 +156,13 @@ async fn admin_set_plan(user_id: i64, plan: String) -> Result<(), ServerFnError>
         db::admin_override_plan(&pool, user_id, &plan)
             .await
             .map_err(|e| ServerFnError::new(e.to_string()))?;
+        return Ok(());
     }
     #[cfg(not(feature = "saas"))]
     {
         let _ = (user_id, plan);
         return Err(ServerFnError::new("Plan management requires the SaaS edition"));
     }
-    Ok(())
 }
 
 #[component]

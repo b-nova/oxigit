@@ -7,7 +7,12 @@ RUN cargo install cargo-leptos
 WORKDIR /app
 COPY . .
 
-RUN cargo leptos build --release
+ARG SAAS_BUILD=false
+RUN if [ "$SAAS_BUILD" = "true" ]; then \
+      cargo leptos build --release --features saas; \
+    else \
+      cargo leptos build --release; \
+    fi
 
 # Runtime image
 FROM debian:bookworm-slim

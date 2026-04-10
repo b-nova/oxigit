@@ -115,27 +115,31 @@ jobs:
         run: docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
 
   deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ubuntu-latest-16-cores
+    timeout-minutes: 25
     needs: merge
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
-      packages: read
 
     steps:
       - uses: actions/checkout@v4
 
+      - uses: docker/setup-buildx-action@v3
+
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Pull image from GHCR
-        run: |
-          echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build SaaS image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: oxigit-saas:deploy
+          build-args: SAAS_BUILD=true
+          cache-from: type=gha,scope=saas-amd64
+          cache-to: type=gha,scope=saas-amd64,mode=max
 
       - name: Deploy to Fly.io
-        run: flyctl deploy --local-only --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+        run: flyctl deploy --local-only --image oxigit-saas:deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

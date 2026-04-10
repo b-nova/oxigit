@@ -142,7 +142,7 @@ async fn admin_set_plan(user_id: i64, plan: String) -> Result<(), ServerFnError>
     require_admin().await?;
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::get_pool;
+        use crate::server_fns::{get_pool, sfn_err};
         use oxigit_core::db;
         let pool = get_pool().await?;
         db::admin_override_plan(&pool, user_id, &plan)

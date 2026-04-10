@@ -8,7 +8,7 @@ async fn create_repo(
     description: String,
     is_private: bool,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_data_dir, get_pool, get_user_entitlements};
+    use crate::server_fns::{sfn_err, extract_session_user, get_data_dir, get_pool, get_user_entitlements};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -33,7 +33,7 @@ async fn create_repo(
                 #[cfg(not(feature = "saas"))]
                 { db::count_private_repositories(&pool, user.id).await }
             }
-                .map_err(|e| ServerFnError::new(e.to_string()))?;
+                .map_err(sfn_err)?;
             if count as usize >= max {
                 return Err(ServerFnError::new(format!(
                     "Free plan allows up to {} private repositories. Upgrade to Flat for unlimited.",
@@ -45,37 +45,37 @@ async fn create_repo(
 
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_active_org, get_tenant_mgr, is_multi_tenant};
+        use crate::server_fns::{sfn_err, extract_active_org, get_tenant_mgr, is_multi_tenant};
         let org_slug = extract_active_org().await.unwrap_or_else(|| user.username.clone());
 
         if is_multi_tenant().await? {
             let tenant_mgr = get_tenant_mgr().await?;
             let tenant_pool = tenant_mgr.get_tenant_pool(&org_slug)
                 .await
-                .map_err(|e| ServerFnError::new(e.to_string()))?;
+                .map_err(sfn_err)?;
             let repos_dir = tenant_mgr.tenant_repos_dir(&org_slug);
             db::create_repository_in_tenant(
                 &tenant_pool, user.id, &user.username, &name, &description, is_private, &repos_dir,
             )
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
         } else {
             db::create_repository(&pool, user.id, &name, &description, is_private, &data_dir)
                 .await
-                .map_err(|e| ServerFnError::new(e.to_string()))?;
+                .map_err(sfn_err)?;
         }
 
         // Register in the global repository index
         db::register_repo_in_index(&pool, &org_slug, user.id, &user.username, &name, &description, is_private)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
     }
 
     #[cfg(not(feature = "saas"))]
     {
         db::create_repository(&pool, user.id, &name, &description, is_private, &data_dir)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
     }
 
     leptos_axum::redirect(&format!("/{}/{}", user.username, name));

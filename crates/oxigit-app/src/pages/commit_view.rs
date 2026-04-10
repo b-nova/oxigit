@@ -24,7 +24,7 @@ async fn fetch_commit_diff(
     repo: String,
     sha: String,
 ) -> Result<CommitDetail, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -32,7 +32,7 @@ async fn fetch_commit_diff(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if !db::can_access_repo(&repo_db, current_user.as_ref().map(|u| u.id)) {
         return Err(ServerFnError::new("Repository not found"));
@@ -40,10 +40,10 @@ async fn fetch_commit_diff(
 
     let repo_path = get_repo_path(&owner, &repo).await?;
     let (commit_info, diff) = git::show_commit_diff(&repo_path, &sha)
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     // Render diff as HTML with line coloring
-    let diff_html = render_diff(&diff);
+    let diff_html = super::render_diff(&diff);
 
     // Fetch AI metadata — free users see tool/model badges, Flat+ sees full details
     use oxigit_core::entitlements::AiAccessLevel;
@@ -97,7 +97,7 @@ async fn attach_ai_metadata(
     ai_session_id: Option<String>,
     ai_files_touched: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -107,12 +107,12 @@ async fn attach_ai_metadata(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     // Check write access
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("Access denied"));
     }
@@ -135,7 +135,7 @@ async fn attach_ai_metadata(
         None, // ai_prompt_index not available from manual annotation
     )
     .await
-    .map_err(|e| ServerFnError::new(e.to_string()))?;
+    .map_err(sfn_err)?;
 
     Ok(())
 }
@@ -146,7 +146,7 @@ async fn get_diff_review(
     repo: String,
     sha: String,
 ) -> Result<DiffReviewData, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git, llm, risk};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -155,7 +155,7 @@ async fn get_diff_review(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if !db::can_access_repo(&repo_db, current_user.map(|u| u.id)) {
         return Err(ServerFnError::new("Repository not found"));
@@ -163,7 +163,7 @@ async fn get_diff_review(
 
     let repo_path = get_repo_path(&owner, &repo).await?;
     let (_, diff) = git::show_commit_diff(&repo_path, &sha)
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let risk_flags: Vec<RiskFlagInfo> = risk::scan_diff(&diff)
         .into_iter()
@@ -225,7 +225,7 @@ async fn generate_diff_summary(
     repo: String,
     sha: String,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{sfn_err, extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools, get_user_entitlements};
     use oxigit_core::{db, git, llm, risk};
 
     let user = extract_session_user()
@@ -248,7 +248,7 @@ async fn generate_diff_summary(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if !db::can_access_repo(&repo_db, Some(user.id)) {
         return Err(ServerFnError::new("Repository not found"));
@@ -256,7 +256,7 @@ async fn generate_diff_summary(
 
     let repo_path = get_repo_path(&owner, &repo).await?;
     let (_, diff) = git::show_commit_diff(&repo_path, &sha)
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     // Get AI prompt context if available
     let ai_prompt = db::get_ai_metadata_for_commit(&pool, repo_db.id, &sha)
@@ -268,7 +268,7 @@ async fn generate_diff_summary(
     let config = llm::LlmConfig { provider, api_key, model: model.clone(), base_url };
     let summary = llm::generate_summary(&config, &diff, ai_prompt.as_deref())
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let risk_flags: Vec<RiskFlagInfo> = risk::scan_diff(&diff)
         .into_iter()
@@ -283,62 +283,13 @@ async fn generate_diff_summary(
 
     db::upsert_diff_summary(&pool, repo_db.id, &sha, &summary, flags_json.as_deref(), &model)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     Ok(DiffSummaryInfo {
         summary,
         risk_flags,
         generated_by: model,
     })
-}
-
-#[cfg(feature = "ssr")]
-fn render_diff(diff: &str) -> String {
-    use std::fmt::Write;
-    let mut html = String::new();
-    let mut in_file = false;
-
-    for line in diff.lines() {
-        if line.starts_with("diff --git") {
-            if in_file {
-                html.push_str("</pre></div>");
-            }
-            in_file = true;
-            let _ = write!(
-                html,
-                r#"<div class="diff-file"><div class="diff-header">{}</div><pre class="diff-content">"#,
-                escape_html(line)
-            );
-        } else if line.starts_with("+++") || line.starts_with("---") {
-            let _ = write!(html, r#"<span class="diff-meta">{}</span>"#, escape_html(line));
-            html.push('\n');
-        } else if line.starts_with("@@") {
-            let _ = write!(html, r#"<span class="diff-hunk">{}</span>"#, escape_html(line));
-            html.push('\n');
-        } else if line.starts_with('+') {
-            let _ = write!(html, r#"<span class="diff-add">{}</span>"#, escape_html(line));
-            html.push('\n');
-        } else if line.starts_with('-') {
-            let _ = write!(html, r#"<span class="diff-del">{}</span>"#, escape_html(line));
-            html.push('\n');
-        } else {
-            let _ = write!(html, "{}", escape_html(line));
-            html.push('\n');
-        }
-    }
-
-    if in_file {
-        html.push_str("</pre></div>");
-    }
-
-    html
-}
-
-#[cfg(feature = "ssr")]
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 #[component]

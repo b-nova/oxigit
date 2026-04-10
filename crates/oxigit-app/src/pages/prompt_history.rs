@@ -14,7 +14,7 @@ async fn fetch_prompt_history(
     query: String,
     page: i64,
 ) -> Result<PromptHistoryResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
     use oxigit_core::{db, entitlements::AiAccessLevel, git};
     use super::PromptCommitInfo;
 
@@ -30,7 +30,7 @@ async fn fetch_prompt_history(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if !db::can_access_repo(&repo_db, Some(current_user.id)) {
         return Err(ServerFnError::new("Repository not found"));
@@ -45,11 +45,11 @@ async fn fetch_prompt_history(
 
     let total_prompts = db::count_prompt_groups(&pool, repo_db.id, &query)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let groups = db::list_prompt_groups(&pool, repo_db.id, &query, effective_page_size, offset)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let entries: Vec<PromptHistoryEntry> = groups
         .into_iter()

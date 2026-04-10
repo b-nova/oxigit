@@ -40,6 +40,48 @@ pub mod user_profile;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "ssr")]
+pub fn render_diff(diff: &str) -> String {
+    use std::fmt::Write;
+    let mut html = String::new();
+    let mut in_file = false;
+
+    for line in diff.lines() {
+        if line.starts_with("diff --git") {
+            if in_file {
+                html.push_str("</pre></div>");
+            }
+            in_file = true;
+            let _ = write!(html, r#"<div class="diff-file"><div class="diff-header">{}</div><pre class="diff-content">"#, escape_html(line));
+        } else if line.starts_with("+++") || line.starts_with("---") {
+            let _ = write!(html, r#"<span class="diff-meta">{}</span>"#, escape_html(line));
+            html.push('\n');
+        } else if line.starts_with("@@") {
+            let _ = write!(html, r#"<span class="diff-hunk">{}</span>"#, escape_html(line));
+            html.push('\n');
+        } else if line.starts_with('+') {
+            let _ = write!(html, r#"<span class="diff-add">{}</span>"#, escape_html(line));
+            html.push('\n');
+        } else if line.starts_with('-') {
+            let _ = write!(html, r#"<span class="diff-del">{}</span>"#, escape_html(line));
+            html.push('\n');
+        } else {
+            let _ = write!(html, "{}", escape_html(line));
+            html.push('\n');
+        }
+    }
+
+    if in_file {
+        html.push_str("</pre></div>");
+    }
+    html
+}
+
+#[cfg(feature = "ssr")]
+pub fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UserInfo {
     pub id: i64,
@@ -472,7 +514,7 @@ pub struct OrgListItem {
 pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool};
+        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -481,7 +523,7 @@ pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
         let pool = get_control_pool().await?;
         let orgs = db::list_user_organizations(&pool, user.id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
         return Ok(orgs
             .into_iter()
             .map(|(org, role)| OrgListItem {
@@ -499,7 +541,7 @@ pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
 pub async fn switch_org(slug: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool, set_session_org};
+        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, set_session_org};
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -509,10 +551,10 @@ pub async fn switch_org(slug: String) -> Result<(), ServerFnError> {
 
         let org = db::get_organization_by_slug(&pool, &slug)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
         if !db::is_org_member(&pool, org.id, user.id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?
+            .map_err(sfn_err)?
         {
             return Err(ServerFnError::new("Not a member of this organization"));
         }

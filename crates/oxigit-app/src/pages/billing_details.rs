@@ -18,7 +18,7 @@ pub struct InvoiceInfo {
 async fn fetch_invoices() -> Result<Vec<InvoiceInfo>, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool, get_stripe_config};
+        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_stripe_config};
         use oxigit_core::{billing, db};
 
         let user = extract_session_user()
@@ -31,7 +31,7 @@ async fn fetch_invoices() -> Result<Vec<InvoiceInfo>, ServerFnError> {
 
         let sub = db::get_subscription(&pool, user.id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         let sub = match sub {
             Some(s) => s,
@@ -40,7 +40,7 @@ async fn fetch_invoices() -> Result<Vec<InvoiceInfo>, ServerFnError> {
 
         let invoices = billing::list_invoices(&stripe.secret_key, &sub.stripe_customer_id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         Ok(invoices
             .into_iter()

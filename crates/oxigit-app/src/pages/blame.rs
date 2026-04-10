@@ -14,7 +14,7 @@ async fn fetch_blame(
     path: String,
     git_ref: String,
 ) -> Result<BlameResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -22,7 +22,7 @@ async fn fetch_blame(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if !db::can_access_repo(&repo_db, current_user.map(|u| u.id)) {
         return Err(ServerFnError::new("Repository not found"));
@@ -39,7 +39,7 @@ async fn fetch_blame(
     };
 
     let blame_lines = git::blame_file(&repo_path, &git_ref, &path)
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     // Collect unique SHAs and batch-fetch AI metadata
     let unique_shas: Vec<String> = {
@@ -51,7 +51,7 @@ async fn fetch_blame(
 
     let ai_map = db::get_ai_metadata_for_commits_map(&pool, repo_db.id, &unique_shas)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let mut ai_line_count = 0;
     let lines: Vec<BlameLineInfo> = blame_lines.iter().map(|bl| {

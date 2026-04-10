@@ -31,7 +31,7 @@ async fn get_issue(
     repo: String,
     number: i64,
 ) -> Result<IssueDetail, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -39,7 +39,7 @@ async fn get_issue(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if !db::can_access_repo(&repo_db, current_user.as_ref().map(|u| u.id)) {
         return Err(ServerFnError::new("Repository not found"));
@@ -47,15 +47,15 @@ async fn get_issue(
 
     let issue = db::get_issue(&pool, repo_db.id, number)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let author = db::get_user_by_id(&control_pool, issue.author_id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let comments = db::list_issue_comments_cross(&control_pool, &pool, issue.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?
+        .map_err(sfn_err)?
         .into_iter()
         .map(|(c, u)| CommentInfo {
             author: u.username,
@@ -82,53 +82,53 @@ async fn get_issue(
 
 #[server]
 async fn close_issue_action(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user().await.ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo).await.map_err(|e| ServerFnError::new(e.to_string()))?;
-    let issue = db::get_issue(&pool, repo_db.id, number).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo).await.map_err(sfn_err)?;
+    let issue = db::get_issue(&pool, repo_db.id, number).await.map_err(sfn_err)?;
 
     if user.id != repo_db.owner_id && user.id != issue.author_id {
         return Err(ServerFnError::new("Not authorized"));
     }
 
-    db::close_issue(&pool, repo_db.id, number).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    db::close_issue(&pool, repo_db.id, number).await.map_err(sfn_err)?;
     leptos_axum::redirect(&format!("/{}/{}/issues/{}", owner, repo, number));
     Ok(())
 }
 
 #[server]
 async fn reopen_issue_action(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user().await.ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo).await.map_err(|e| ServerFnError::new(e.to_string()))?;
-    let issue = db::get_issue(&pool, repo_db.id, number).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo).await.map_err(sfn_err)?;
+    let issue = db::get_issue(&pool, repo_db.id, number).await.map_err(sfn_err)?;
 
     if user.id != repo_db.owner_id && user.id != issue.author_id {
         return Err(ServerFnError::new("Not authorized"));
     }
 
-    db::reopen_issue(&pool, repo_db.id, number).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    db::reopen_issue(&pool, repo_db.id, number).await.map_err(sfn_err)?;
     leptos_axum::redirect(&format!("/{}/{}/issues/{}", owner, repo, number));
     Ok(())
 }
 
 #[server]
 async fn add_comment(owner: String, repo: String, number: i64, body: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user().await.ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo).await.map_err(|e| ServerFnError::new(e.to_string()))?;
-    let issue = db::get_issue(&pool, repo_db.id, number).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo).await.map_err(sfn_err)?;
+    let issue = db::get_issue(&pool, repo_db.id, number).await.map_err(sfn_err)?;
 
-    db::add_issue_comment(&pool, issue.id, user.id, &body).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    db::add_issue_comment(&pool, issue.id, user.id, &body).await.map_err(sfn_err)?;
     leptos_axum::redirect(&format!("/{}/{}/issues/{}", owner, repo, number));
     Ok(())
 }

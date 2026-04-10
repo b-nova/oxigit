@@ -5,13 +5,13 @@ use crate::components::error_display::ErrorDisplay;
 
 #[server]
 async fn get_branches(owner: String, repo: String) -> Result<Vec<String>, ServerFnError> {
-    use crate::server_fns::{get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let repo_path = get_repo_path(&owner, &repo).await?;
     Ok(git::list_branches(&repo_path).unwrap_or_default())
@@ -26,7 +26,7 @@ async fn create_pr(
     source_branch: String,
     target_branch: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
@@ -36,7 +36,7 @@ async fn create_pr(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     // Verify branches exist
     let repo_path = get_repo_path(&owner, &repo).await?;
@@ -51,7 +51,7 @@ async fn create_pr(
         &pool, repo_db.id, user.id, &title, &description, &source_branch, &target_branch,
     )
     .await
-    .map_err(|e| ServerFnError::new(e.to_string()))?;
+    .map_err(sfn_err)?;
 
     leptos_axum::redirect(&format!("/{}/{}/pulls/{}", owner, repo, pr.number));
     Ok(())

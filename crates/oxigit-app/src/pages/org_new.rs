@@ -6,7 +6,7 @@ use crate::components::error_display::ErrorDisplay;
 async fn create_org(slug: String, display_name: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool, set_session_org};
+        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, set_session_org};
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -16,11 +16,11 @@ async fn create_org(slug: String, display_name: String) -> Result<(), ServerFnEr
 
         let org = db::create_organization(&pool, &slug, &display_name, user.id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         db::add_org_member(&pool, org.id, user.id, "owner")
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         // Switch to the newly created org
         set_session_org(&user, &slug).await;

@@ -17,7 +17,7 @@ pub struct BillingInfo {
 async fn fetch_billing_info() -> Result<BillingInfo, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool, get_stripe_config};
+        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_stripe_config};
         use oxigit_core::db;
 
         let user = extract_session_user().await
@@ -26,7 +26,7 @@ async fn fetch_billing_info() -> Result<BillingInfo, ServerFnError> {
         let stripe = get_stripe_config().await?;
 
         let sub = db::get_subscription(&pool, user.id).await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         match sub {
             Some(s) => Ok(BillingInfo {
@@ -55,7 +55,7 @@ async fn fetch_billing_info() -> Result<BillingInfo, ServerFnError> {
 async fn create_portal_redirect() -> Result<String, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_base_url, get_control_pool, get_stripe_config};
+        use crate::server_fns::{sfn_err, extract_session_user, get_base_url, get_control_pool, get_stripe_config};
         use oxigit_core::{billing, db};
 
         let user = extract_session_user().await
@@ -65,7 +65,7 @@ async fn create_portal_redirect() -> Result<String, ServerFnError> {
             .ok_or_else(|| ServerFnError::new("Billing not configured"))?;
 
         let sub = db::get_subscription(&pool, user.id).await
-            .map_err(|e| ServerFnError::new(e.to_string()))?
+            .map_err(sfn_err)?
             .ok_or_else(|| ServerFnError::new("No subscription found"))?;
 
         let base_url = get_base_url().await;
@@ -74,7 +74,7 @@ async fn create_portal_redirect() -> Result<String, ServerFnError> {
             &stripe.secret_key,
             &sub.stripe_customer_id,
             &format!("{}/subscription", base_url),
-        ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        ).await.map_err(sfn_err)?;
 
         Ok(portal_url)
     }

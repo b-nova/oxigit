@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 sqlx = { workspace = true }
-gix = { workspace = true }
 argon2 = { workspace = true }
 rand_core = { workspace = true }
 serde = { workspace = true }

@@ -291,6 +291,9 @@ async fn free_user_commit_view_shows_badge_hides_prompt() {
     );
     git_push(&clone_dest);
 
+    // Wait for async post-receive hook to store AI metadata
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
     // Fetch commits — free user should see tool/model badges
     let resp = client.fetch_commits("alice", "myrepo").await;
     let body = resp.text().await.unwrap();

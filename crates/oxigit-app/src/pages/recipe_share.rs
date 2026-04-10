@@ -12,7 +12,7 @@ async fn share_session_as_recipe(
     description: String,
     tags: String,
 ) -> Result<i64, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git, vibe};
 
     let user = extract_session_user().await
@@ -20,10 +20,10 @@ async fn share_session_as_recipe(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("Access denied"));
     }
@@ -36,7 +36,7 @@ async fn share_session_as_recipe(
     let repo_path = get_repo_path(&owner, &repo).await?;
 
     let metas = db::get_ai_metadata_by_session(&pool, repo_db.id, &session_id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     if metas.is_empty() {
         return Err(ServerFnError::new("Session not found"));
@@ -94,7 +94,7 @@ async fn share_session_as_recipe(
         prompt_groups.len() as i64,
         all_files.len() as i64,
         Some(vs.score as i64),
-    ).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    ).await.map_err(sfn_err)?;
 
     // Create steps
     for (step_idx, (prompt_text, group_metas)) in prompt_groups.iter().enumerate() {

@@ -13,7 +13,7 @@ pub struct ProfileInfo {
 
 #[server]
 async fn fetch_profile() -> Result<ProfileInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -22,7 +22,7 @@ async fn fetch_profile() -> Result<ProfileInfo, ServerFnError> {
     let pool = get_control_pool().await?;
     let user = db::get_user_by_id(&pool, user.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     Ok(ProfileInfo {
         username: user.username,

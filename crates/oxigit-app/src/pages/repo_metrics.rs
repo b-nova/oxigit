@@ -12,7 +12,7 @@ async fn fetch_repo_metrics(
     owner: String,
     repo: String,
 ) -> Result<RepoMetricsResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
     use oxigit_core::{db, entitlements::AiAccessLevel, git, risk, vibe};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -24,7 +24,7 @@ async fn fetch_repo_metrics(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if !db::can_access_repo(&repo_db, Some(current_user.id)) {
         return Err(ServerFnError::new("Repository not found"));
@@ -34,7 +34,7 @@ async fn fetch_repo_metrics(
 
     let session_data = db::get_repo_session_data(&pool, repo_db.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     // Free plan: limit to last 30 days
     let session_data = if is_limited {

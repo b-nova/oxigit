@@ -20,7 +20,7 @@ pub async fn fetch_commits(
     owner: String,
     repo: String,
 ) -> Result<Vec<CommitEntry>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -28,7 +28,7 @@ pub async fn fetch_commits(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if !db::can_access_repo(&repo_db, current_user.map(|u| u.id)) {
         return Err(ServerFnError::new("Repository not found"));

@@ -24,7 +24,7 @@ pub struct OrgSettingsData {
 async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool, get_user_entitlements};
+        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_user_entitlements};
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -42,11 +42,11 @@ async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError
 
         let org = db::get_organization_by_slug(&pool, &slug)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         let membership = db::get_org_membership(&pool, org.id, user.id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         if membership.is_none() {
             return Err(ServerFnError::new("Not a member of this organization"));
@@ -56,7 +56,7 @@ async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError
 
         let members_raw = db::list_org_members(&pool, org.id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         let members = members_raw
             .into_iter()
@@ -85,7 +85,7 @@ async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError
 async fn add_member(slug: String, username: String, role: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool, get_user_entitlements};
+        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_user_entitlements};
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -103,12 +103,12 @@ async fn add_member(slug: String, username: String, role: String) -> Result<(), 
 
         let org = db::get_organization_by_slug(&pool, &slug)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         // Only owners can add members
         let membership = db::get_org_membership(&pool, org.id, user.id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
         if membership.map(|m| m.role != "owner").unwrap_or(true) {
             return Err(ServerFnError::new("Only org owners can add members"));
         }
@@ -119,7 +119,7 @@ async fn add_member(slug: String, username: String, role: String) -> Result<(), 
 
         db::add_org_member(&pool, org.id, target.id, &role)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         Ok(())
     }
@@ -136,7 +136,7 @@ async fn add_member(slug: String, username: String, role: String) -> Result<(), 
 async fn remove_member(slug: String, user_id: i64) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool, get_user_entitlements};
+        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_user_entitlements};
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -154,11 +154,11 @@ async fn remove_member(slug: String, user_id: i64) -> Result<(), ServerFnError> 
 
         let org = db::get_organization_by_slug(&pool, &slug)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         let membership = db::get_org_membership(&pool, org.id, user.id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
         if membership.map(|m| m.role != "owner").unwrap_or(true) {
             return Err(ServerFnError::new("Only org owners can remove members"));
         }
@@ -169,7 +169,7 @@ async fn remove_member(slug: String, user_id: i64) -> Result<(), ServerFnError> 
 
         db::remove_org_member(&pool, org.id, user_id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         Ok(())
     }

@@ -7,7 +7,7 @@ use super::{get_current_user, DashboardData, RecentSessionInfo, RiskCountInfo, T
 
 #[server]
 async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
     use oxigit_core::{db, vibe};
     use std::collections::HashMap;
 
@@ -19,18 +19,18 @@ async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
 
     let stats = db::get_user_ai_stats(&pool, user.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let tool_usage = db::get_user_tool_usage(&pool, user.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?
+        .map_err(sfn_err)?
         .into_iter()
         .map(|t| ToolUsageInfo { ai_tool: t.ai_tool, commit_count: t.commit_count })
         .collect();
 
     let recent_sessions = db::get_user_recent_sessions(&pool, user.id, 5)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?
+        .map_err(sfn_err)?
         .into_iter()
         .map(|s| RecentSessionInfo {
             session_id: s.session_id,
@@ -45,7 +45,7 @@ async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
     // Aggregate risk flags from summaries
     let risk_rows = db::get_user_risk_summaries(&pool, user.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let mut risk_map: HashMap<String, i64> = HashMap::new();
     for row in &risk_rows {

@@ -14,7 +14,7 @@ pub struct SshKeyInfo {
 
 #[server]
 async fn list_ssh_keys() -> Result<Vec<SshKeyInfo>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -23,7 +23,7 @@ async fn list_ssh_keys() -> Result<Vec<SshKeyInfo>, ServerFnError> {
     let pool = get_control_pool().await?;
     let keys = db::list_ssh_keys(&pool, user.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     Ok(keys
         .into_iter()
@@ -38,7 +38,7 @@ async fn list_ssh_keys() -> Result<Vec<SshKeyInfo>, ServerFnError> {
 
 #[server]
 async fn add_ssh_key(name: String, public_key: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -52,7 +52,7 @@ async fn add_ssh_key(name: String, public_key: String) -> Result<(), ServerFnErr
 
     db::add_ssh_key(&pool, user.id, &name, &public_key, &fingerprint)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     Ok(())
 }
@@ -148,7 +148,7 @@ pub struct LlmSettingsInfo {
 
 #[server]
 async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_llm_config, get_control_pool};
+    use crate::server_fns::{sfn_err, extract_session_user, get_llm_config, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -159,7 +159,7 @@ async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
 
     let settings = db::get_user_settings(&pool, user.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     Ok(LlmSettingsInfo {
         provider: settings.as_ref().and_then(|s| s.llm_provider.clone()).unwrap_or(default_provider),
@@ -176,7 +176,7 @@ async fn save_llm_settings(
     model: String,
     base_url: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -198,14 +198,14 @@ async fn save_llm_settings(
         base_url.as_deref(),
     )
     .await
-    .map_err(|e| ServerFnError::new(e.to_string()))?;
+    .map_err(sfn_err)?;
 
     Ok(())
 }
 
 #[server]
 async fn delete_key(key_id: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -214,7 +214,7 @@ async fn delete_key(key_id: i64) -> Result<(), ServerFnError> {
     let pool = get_control_pool().await?;
     db::delete_ssh_key(&pool, key_id, user.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
     Ok(())
 }
 

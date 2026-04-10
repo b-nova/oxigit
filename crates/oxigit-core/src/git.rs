@@ -7,6 +7,23 @@ use tracing;
 
 use crate::error::{OxigitError, Result};
 
+const SYSTEM_AUTHOR_NAME: &str = "Oxigit";
+const SYSTEM_AUTHOR_EMAIL: &str = "noreply@oxigit";
+const MAX_NEW_COMMITS: &str = "100";
+
+trait SystemGitIdentity {
+    fn system_identity(&mut self) -> &mut Self;
+}
+
+impl SystemGitIdentity for Command {
+    fn system_identity(&mut self) -> &mut Self {
+        self.env("GIT_AUTHOR_NAME", SYSTEM_AUTHOR_NAME)
+            .env("GIT_AUTHOR_EMAIL", SYSTEM_AUTHOR_EMAIL)
+            .env("GIT_COMMITTER_NAME", SYSTEM_AUTHOR_NAME)
+            .env("GIT_COMMITTER_EMAIL", SYSTEM_AUTHOR_EMAIL)
+    }
+}
+
 /// Initialize a bare git repository at the given path.
 pub fn init_bare_repo(path: &Path) -> Result<()> {
     let output = Command::new("git")
@@ -26,16 +43,6 @@ pub fn init_bare_repo(path: &Path) -> Result<()> {
 /// Resolve the on-disk path to a bare repository (legacy layout).
 pub fn repo_path(data_dir: &Path, owner: &str, name: &str) -> std::path::PathBuf {
     data_dir.join("repos").join(owner).join(format!("{name}.git"))
-}
-
-/// Resolve the on-disk path to a bare repository in a tenant directory.
-pub fn tenant_repo_path(data_dir: &Path, org_slug: &str, owner: &str, name: &str) -> std::path::PathBuf {
-    data_dir
-        .join("tenants")
-        .join(org_slug)
-        .join("repos")
-        .join(owner)
-        .join(format!("{name}.git"))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -368,10 +375,7 @@ pub fn merge_branches(repo_path: &Path, target: &str, source: &str, message: &st
         // Create merge commit
         let commit = Command::new("git")
             .env("GIT_DIR", repo_path)
-            .env("GIT_AUTHOR_NAME", "Oxigit")
-            .env("GIT_AUTHOR_EMAIL", "noreply@oxigit")
-            .env("GIT_COMMITTER_NAME", "Oxigit")
-            .env("GIT_COMMITTER_EMAIL", "noreply@oxigit")
+            .system_identity()
             .args([
                 "commit-tree", &tree_sha,
                 "-p", &target_sha,
@@ -586,10 +590,7 @@ pub fn squash_session(
     // Create the squashed commit
     let commit = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .env("GIT_AUTHOR_NAME", "Oxigit")
-        .env("GIT_AUTHOR_EMAIL", "noreply@oxigit")
-        .env("GIT_COMMITTER_NAME", "Oxigit")
-        .env("GIT_COMMITTER_EMAIL", "noreply@oxigit")
+        .system_identity()
         .args(["commit-tree", &tree_sha, "-p", &base_parent, "-m", message])
         .output()?;
     if !commit.status.success() {
@@ -674,10 +675,7 @@ pub fn cherry_pick_range(
 
         let commit = Command::new("git")
             .env("GIT_DIR", repo_path)
-            .env("GIT_AUTHOR_NAME", "Oxigit")
-            .env("GIT_AUTHOR_EMAIL", "noreply@oxigit")
-            .env("GIT_COMMITTER_NAME", "Oxigit")
-            .env("GIT_COMMITTER_EMAIL", "noreply@oxigit")
+            .system_identity()
             .args(["commit-tree", &tree_sha, "-p", &current_tip, "-m", &original_msg])
             .output()?;
         if !commit.status.success() {
@@ -733,21 +731,6 @@ fn parse_merge_tree_output(output: &std::process::Output) -> (bool, Vec<String>,
         let conflict_files = parse_conflict_files(&stdout, &stderr);
         (false, conflict_files, tree_sha)
     }
-}
-
-/// Analyze a merge for conflicts using git merge-tree (Git 2.38+).
-/// Returns (can_auto_merge, conflicting_file_paths, auto_merged_tree_sha).
-pub fn analyze_merge(
-    repo_path: &Path,
-    target: &str,
-    source: &str,
-) -> Result<(bool, Vec<String>, Option<String>)> {
-    let output = Command::new("git")
-        .env("GIT_DIR", repo_path)
-        .args(["merge-tree", "--write-tree", target, source])
-        .output()?;
-
-    Ok(parse_merge_tree_output(&output))
 }
 
 /// Analyze whether reverting a single commit on top of a current ref produces conflicts.
@@ -854,10 +837,7 @@ pub fn apply_conflict_resolutions(
 
     let commit = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .env("GIT_AUTHOR_NAME", "Oxigit")
-        .env("GIT_AUTHOR_EMAIL", "noreply@oxigit")
-        .env("GIT_COMMITTER_NAME", "Oxigit")
-        .env("GIT_COMMITTER_EMAIL", "noreply@oxigit")
+        .system_identity()
         .args(&args)
         .output()?;
 
@@ -1097,7 +1077,7 @@ pub fn list_new_commit_shas(repo_path: &Path, old_sha: &str, new_sha: &str) -> R
     let range = format!("{}..{}", old_sha, new_sha);
     let output = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .args(["rev-list", &range, "--max-count=100"])
+        .args(["rev-list", &range, &format!("--max-count={MAX_NEW_COMMITS}")])
         .output()?;
 
     if !output.status.success() {
@@ -1118,7 +1098,7 @@ pub fn list_new_commit_shas_excluding(repo_path: &Path, new_sha: &str, exclude_s
             args.push(sha.to_string());
         }
     }
-    args.push("--max-count=100".to_string());
+    args.push(format!("--max-count={MAX_NEW_COMMITS}"));
 
     let output = Command::new("git")
         .env("GIT_DIR", repo_path)
@@ -1326,10 +1306,7 @@ pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: 
 
         let commit = Command::new("git")
             .env("GIT_DIR", repo_path)
-            .env("GIT_AUTHOR_NAME", "Oxigit")
-            .env("GIT_AUTHOR_EMAIL", "noreply@oxigit")
-            .env("GIT_COMMITTER_NAME", "Oxigit")
-            .env("GIT_COMMITTER_EMAIL", "noreply@oxigit")
+            .system_identity()
             .args(["commit-tree", &tree_sha, "-p", &current, "-m", &format!("revert {}", sha)])
             .output()?;
         if !commit.status.success() {
@@ -1348,10 +1325,7 @@ pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: 
 
     let squash = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .env("GIT_AUTHOR_NAME", "Oxigit")
-        .env("GIT_AUTHOR_EMAIL", "noreply@oxigit")
-        .env("GIT_COMMITTER_NAME", "Oxigit")
-        .env("GIT_COMMITTER_EMAIL", "noreply@oxigit")
+        .system_identity()
         .args(["commit-tree", &final_tree_sha, "-p", &original_tip, "-m", message])
         .output()?;
     if !squash.status.success() {

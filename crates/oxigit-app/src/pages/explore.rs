@@ -16,7 +16,7 @@ pub struct ExploreRepo {
 
 #[server]
 async fn explore_repos(query: String, remixable_only: bool) -> Result<Vec<ExploreRepo>, ServerFnError> {
-    use crate::server_fns::get_pool;
+    use crate::server_fns::{get_pool, sfn_err};
     #[cfg(feature = "saas")]
     use crate::server_fns::is_multi_tenant;
     use oxigit_core::db;
@@ -31,7 +31,7 @@ async fn explore_repos(query: String, remixable_only: bool) -> Result<Vec<Explor
                 // available in multi-tenant mode yet.
                 db::search_public_repos_from_index(&pool, &query)
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?
+                    .map_err(sfn_err)?
                     .into_iter()
                     .map(|e| ExploreRepo {
                         owner: e.owner_username,
@@ -45,11 +45,11 @@ async fn explore_repos(query: String, remixable_only: bool) -> Result<Vec<Explor
                 let results = if remixable_only {
                     db::search_remixable_repositories(&pool, &query)
                         .await
-                        .map_err(|e| ServerFnError::new(e.to_string()))?
+                        .map_err(sfn_err)?
                 } else {
                     db::search_public_repositories(&pool, &query)
                         .await
-                        .map_err(|e| ServerFnError::new(e.to_string()))?
+                        .map_err(sfn_err)?
                 };
                 results
                     .into_iter()
@@ -68,11 +68,11 @@ async fn explore_repos(query: String, remixable_only: bool) -> Result<Vec<Explor
             let results = if remixable_only {
                 db::search_remixable_repositories(&pool, &query)
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?
+                    .map_err(sfn_err)?
             } else {
                 db::search_public_repositories(&pool, &query)
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?
+                    .map_err(sfn_err)?
             };
             results
                 .into_iter()

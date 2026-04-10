@@ -10,7 +10,7 @@ async fn create_issue(
     title: String,
     description: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -20,11 +20,11 @@ async fn create_issue(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let issue = db::create_issue(&pool, repo_db.id, user.id, &title, &description)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     leptos_axum::redirect(&format!("/{}/{}/issues/{}", owner, repo, issue.number));
     Ok(())

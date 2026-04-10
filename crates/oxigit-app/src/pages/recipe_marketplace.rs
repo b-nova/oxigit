@@ -13,7 +13,7 @@ async fn fetch_recipe_marketplace(
     sort: String,
     page: i64,
 ) -> Result<RecipeMarketplaceResponse, ServerFnError> {
-    use crate::server_fns::get_pool;
+    use crate::server_fns::{get_pool, sfn_err};
     use oxigit_core::db;
 
     let pool = get_pool().await?;
@@ -27,10 +27,10 @@ async fn fetch_recipe_marketplace(
     }
 
     let total = db::count_public_recipes(&pool, &query)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     let results = db::search_public_recipes(&pool, &query, &sort, limit, offset)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     let recipes: Vec<RecipeListItem> = results.into_iter().map(|r| {
         let tags: Vec<String> = r.recipe.tags.as_ref()

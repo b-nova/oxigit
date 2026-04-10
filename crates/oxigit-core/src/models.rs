@@ -14,21 +14,6 @@ pub struct User {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UserPublic {
-    pub id: i64,
-    pub username: String,
-}
-
-impl From<User> for UserPublic {
-    fn from(u: User) -> Self {
-        Self {
-            id: u.id,
-            username: u.username,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Repository {
     pub id: i64,

@@ -9,7 +9,7 @@ pub async fn submit_contact_inquiry(
     company: String,
     message: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_control_pool, get_smtp_config};
+    use crate::server_fns::{sfn_err, get_control_pool, get_smtp_config};
     use oxigit_core::{db, email};
 
     if name.trim().is_empty() || email.trim().is_empty() || message.trim().is_empty() {
@@ -20,7 +20,7 @@ pub async fn submit_contact_inquiry(
 
     db::insert_contact_inquiry(&pool, name.trim(), email.trim(), company.trim(), message.trim())
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     // Send email notification if SMTP is configured
     if let Ok(Some(smtp)) = get_smtp_config().await {

@@ -9,32 +9,32 @@ use super::{RecipeDetailResponse, RecipeFileInfo, RecipeStepInfo, ReplayTargetRe
 
 #[server]
 async fn fetch_recipe_detail(recipe_id: i64) -> Result<RecipeDetailResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_pool, get_repo_path};
+    use crate::server_fns::{sfn_err, extract_session_user, get_pool, get_repo_path};
     use oxigit_core::{db, git};
 
     let pool = get_pool().await?;
     let current_user = extract_session_user().await;
 
     let recipe = db::get_recipe_by_id(&pool, recipe_id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?
+        .await.map_err(sfn_err)?
         .ok_or_else(|| ServerFnError::new("Recipe not found"))?;
 
     // Get author and repo info
     let author_user = db::get_user_by_id(&pool, recipe.author_id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     let repo_db = sqlx::query_as::<_, oxigit_core::models::Repository>(
         "SELECT * FROM repositories WHERE id = ?",
     )
     .bind(recipe.repo_id)
     .fetch_one(&pool)
-    .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+    .await.map_err(sfn_err)?;
 
     let owner_user = db::get_user_by_id(&pool, repo_db.owner_id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     let db_steps = db::get_recipe_steps(&pool, recipe_id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     let steps: Vec<RecipeStepInfo> = db_steps.into_iter().map(|s| {
         let files: Vec<RecipeFileInfo> = s.files_json.as_ref()
@@ -50,7 +50,7 @@ async fn fetch_recipe_detail(recipe_id: i64) -> Result<RecipeDetailResponse, Ser
             .collect();
 
         let diff_html = s.diff_text.as_ref()
-            .map(|d| crate::pages::ai_session_detail::render_diff_public(d))
+            .map(|d| super::render_diff(d))
             .unwrap_or_default();
 
         RecipeStepInfo {
@@ -112,7 +112,7 @@ async fn replay_recipe(
     target_branch: String,
     mode: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
     use oxigit_core::{db, git};
 
     let user = extract_session_user().await
@@ -128,21 +128,21 @@ async fn replay_recipe(
     let (control_pool, pool) = get_repo_pools(&target_owner, &target_repo).await?;
 
     let (_, target_repo_db) = db::get_repository_cross(&control_pool, &pool, &target_owner, &target_repo)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     let can_push = db::can_push_repo(&pool, &target_repo_db, user.id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("No push access to target repo"));
     }
 
     let _recipe = db::get_recipe_by_id(&pool, recipe_id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?
+        .await.map_err(sfn_err)?
         .ok_or_else(|| ServerFnError::new("Recipe not found"))?;
 
     if mode == "apply" {
         let steps = db::get_recipe_steps(&pool, recipe_id)
-            .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+            .await.map_err(sfn_err)?;
 
         let repo_path = get_repo_path(&target_owner, &target_repo).await?;
         let mut steps_applied = 0i64;

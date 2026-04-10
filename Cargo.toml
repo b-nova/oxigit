@@ -20,15 +20,12 @@ leptos_axum = "0.8"
 
 # Web framework
 axum = "0.8"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.51", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "compression-gzip"] }
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
-
-# Git
-gix = { version = "0.72", default-features = false, features = ["basic", "index"] }
 
 # SSH
 russh = "0.50"

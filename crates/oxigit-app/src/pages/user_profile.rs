@@ -21,7 +21,7 @@ pub struct UserProfileInfo {
 async fn fetch_user_profile(
     username: String,
 ) -> Result<UserProfileInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
     #[cfg(feature = "saas")]
     use crate::server_fns::is_multi_tenant;
     use oxigit_core::db;
@@ -41,7 +41,7 @@ async fn fetch_user_profile(
             if is_multi_tenant().await? {
                 db::list_user_repos_from_index(&pool, user.id)
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?
+                    .map_err(sfn_err)?
                     .into_iter()
                     .filter(|r| !r.is_private || is_own_profile)
                     .map(|r| RepoInfo {
@@ -55,7 +55,7 @@ async fn fetch_user_profile(
             } else {
                 db::list_user_repositories(&pool, user.id)
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?
+                    .map_err(sfn_err)?
                     .into_iter()
                     .filter(|r| !r.is_private || is_own_profile)
                     .map(|r| RepoInfo {
@@ -72,7 +72,7 @@ async fn fetch_user_profile(
         {
             db::list_user_repositories(&pool, user.id)
                 .await
-                .map_err(|e| ServerFnError::new(e.to_string()))?
+                .map_err(sfn_err)?
                 .into_iter()
                 .filter(|r| !r.is_private || is_own_profile)
                 .map(|r| RepoInfo {

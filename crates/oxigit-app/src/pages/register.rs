@@ -12,7 +12,7 @@ async fn register_user(
     password: String,
     plan: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_control_pool, set_session_user};
+    use crate::server_fns::{sfn_err, get_control_pool, set_session_user};
     use oxigit_core::db;
 
     let pool = get_control_pool().await?;
@@ -20,29 +20,29 @@ async fn register_user(
     // First registered user becomes admin automatically
     let is_first_user = db::count_users(&pool)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))? == 0;
+        .map_err(sfn_err)? == 0;
 
     let user = db::create_user(&pool, &username, &email, &password)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if is_first_user {
         db::set_user_admin(&pool, user.id, true)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
     }
 
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{get_tenant_mgr, is_multi_tenant};
+        use crate::server_fns::{sfn_err, get_tenant_mgr, is_multi_tenant};
 
         // Create personal org for the new user
         let org = db::create_organization(&pool, &username, &username, user.id)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
         db::add_org_member(&pool, org.id, user.id, "owner")
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
 
         // Provision tenant database and directory structure in multi-tenant mode
         if is_multi_tenant().await? {
@@ -50,7 +50,7 @@ async fn register_user(
             tenant_mgr
                 .provision_tenant(&username)
                 .await
-                .map_err(|e| ServerFnError::new(e.to_string()))?;
+                .map_err(sfn_err)?;
         }
 
         set_session_user(user.id, &user.username, Some(&username)).await;
@@ -68,7 +68,7 @@ async fn register_user(
                     &pool, user.id, "self-hosted", None, p, "active", None, 1,
                 )
                 .await
-                .map_err(|e| ServerFnError::new(e.to_string()))?;
+                .map_err(sfn_err)?;
 
                 if p == "founding" {
                     let _ = db::claim_founding_slot(&pool, user.id).await;

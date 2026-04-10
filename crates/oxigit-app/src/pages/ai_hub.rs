@@ -24,7 +24,7 @@ pub async fn fetch_ai_hub(
     repo: String,
     query: String,
 ) -> Result<AiHubResponse, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
     use oxigit_core::{db, entitlements::AiAccessLevel, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -35,7 +35,7 @@ pub async fn fetch_ai_hub(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if !db::can_access_repo(&repo_db, Some(current_user.id)) {
         return Err(ServerFnError::new("Repository not found"));
@@ -46,7 +46,7 @@ pub async fn fetch_ai_hub(
     // Sessions
     let summaries = db::list_session_summaries(&pool, repo_db.id, &query)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let sessions = summaries
         .into_iter()
@@ -65,7 +65,7 @@ pub async fn fetch_ai_hub(
     // Unsessioned commits
     let unsessioned_metas = db::get_unsessioned_ai_commits(&pool, repo_db.id, &query)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     let unsessioned = unsessioned_metas
         .into_iter()

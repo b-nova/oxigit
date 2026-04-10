@@ -26,7 +26,7 @@ async fn list_collaborators(
     owner: String,
     repo: String,
 ) -> Result<Vec<CollaboratorInfo>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -36,7 +36,7 @@ async fn list_collaborators(
 
     let (_repo_owner, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Only the owner can manage collaborators"));
@@ -44,7 +44,7 @@ async fn list_collaborators(
 
     let collabs = db::list_collaborators_cross(&control_pool, &pool, repo_db.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     Ok(collabs
         .into_iter()
@@ -63,7 +63,7 @@ async fn add_collaborator(
     repo: String,
     username: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -73,7 +73,7 @@ async fn add_collaborator(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Only the owner can add collaborators"));
@@ -89,7 +89,7 @@ async fn add_collaborator(
 
     db::add_collaborator(&pool, repo_db.id, target_user.id, "write")
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     Ok(())
 }
@@ -100,7 +100,7 @@ async fn remove_collaborator(
     repo: String,
     user_id: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -110,7 +110,7 @@ async fn remove_collaborator(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Only the owner can remove collaborators"));
@@ -118,7 +118,7 @@ async fn remove_collaborator(
 
     db::remove_collaborator(&pool, repo_db.id, user_id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     Ok(())
 }
@@ -417,7 +417,7 @@ async fn install_ai_hook(
     repo: String,
     tool_id: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
@@ -427,7 +427,7 @@ async fn install_ai_hook(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Only the owner can install AI hooks"));
@@ -439,7 +439,7 @@ async fn install_ai_hook(
     let repo_path = get_repo_path(&owner, &repo).await?;
 
     let branch = git::default_branch(&repo_path)
-        .map_err(|e| ServerFnError::new(e.to_string()))?
+        .map_err(sfn_err)?
         .ok_or_else(|| ServerFnError::new("Repository has no branches"))?;
 
     let config = config_json(tool);
@@ -476,7 +476,7 @@ async fn install_ai_hook(
         &user.username,
         &format!("{}@oxigit", user.username),
     )
-    .map_err(|e| ServerFnError::new(e.to_string()))?;
+    .map_err(sfn_err)?;
 
     Ok(())
 }
@@ -542,7 +542,7 @@ async fn list_repo_webhooks(
     owner: String,
     repo: String,
 ) -> Result<Vec<WebhookInfo>, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -551,14 +551,14 @@ async fn list_repo_webhooks(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Not authorized"));
     }
 
     let hooks = db::list_webhooks(&pool, repo_db.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
     Ok(hooks.into_iter().map(|h| WebhookInfo {
         id: h.id,
         url: h.url,
@@ -574,7 +574,7 @@ async fn add_webhook(
     url: String,
     secret: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -583,7 +583,7 @@ async fn add_webhook(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Not authorized"));
     }
@@ -591,7 +591,7 @@ async fn add_webhook(
     let secret = if secret.is_empty() { None } else { Some(secret) };
     db::create_webhook(&pool, repo_db.id, &url, secret.as_deref())
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
     Ok(())
 }
 
@@ -600,7 +600,7 @@ async fn fetch_repo_visibility(
     owner: String,
     repo: String,
 ) -> Result<bool, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -610,7 +610,7 @@ async fn fetch_repo_visibility(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Not authorized"));
@@ -625,7 +625,7 @@ async fn update_visibility(
     repo: String,
     is_private: bool,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -635,7 +635,7 @@ async fn update_visibility(
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Only the owner can change visibility"));
@@ -643,7 +643,7 @@ async fn update_visibility(
 
     db::update_repository_visibility(&pool, repo_db.id, is_private)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
 
     Ok(())
 }
@@ -654,7 +654,7 @@ async fn delete_webhook(
     repo: String,
     webhook_id: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -663,14 +663,14 @@ async fn delete_webhook(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Not authorized"));
     }
 
     db::delete_webhook(&pool, webhook_id, repo_db.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
     Ok(())
 }
 
@@ -679,7 +679,7 @@ async fn get_guardrail_settings(
     owner: String,
     repo: String,
 ) -> Result<GuardrailSettingsInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools, get_user_entitlements};
     use oxigit_core::db;
     use super::GuardrailRuleInfo;
 
@@ -696,16 +696,16 @@ async fn get_guardrail_settings(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Only the owner can manage guardrails"));
     }
 
     let rules = db::get_guardrail_rules(&pool, repo_db.id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
     let config = db::get_guardrail_config(&pool, repo_db.id)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     let categories = ["security", "breaking", "performance", "quality"];
     let rule_infos: Vec<GuardrailRuleInfo> = categories.iter().map(|cat| {
@@ -734,7 +734,7 @@ async fn save_guardrail_settings(
     min_vibe_score: Option<i64>,
     max_files_per_push: Option<i64>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
     use oxigit_core::db;
 
     let user = extract_session_user().await
@@ -750,7 +750,7 @@ async fn save_guardrail_settings(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     if repo_db.owner_id != user.id {
         return Err(ServerFnError::new("Only the owner can manage guardrails"));
@@ -759,12 +759,12 @@ async fn save_guardrail_settings(
     // Save rules
     for (cat, action) in [("security", &security), ("breaking", &breaking), ("performance", &performance), ("quality", &quality)] {
         db::upsert_guardrail_rule(&pool, repo_db.id, cat, action)
-            .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+            .await.map_err(sfn_err)?;
     }
 
     // Save config
     db::upsert_guardrail_config(&pool, repo_db.id, min_vibe_score, max_files_per_push)
-        .await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        .await.map_err(sfn_err)?;
 
     // Manage pre-receive hook based on whether any block rules exist
     let has_block = [&security, &breaking, &performance, &quality].iter().any(|a| a.as_str() == "block");

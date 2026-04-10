@@ -9,6 +9,12 @@ use sqlx::SqlitePool;
 
 use crate::pages::UserInfo;
 
+/// Convert any `Display` error into `ServerFnError`.
+/// Use as `.map_err(sfn_err)` to replace verbose `.map_err(|e| ServerFnError::new(e.to_string()))`.
+pub fn sfn_err(e: impl std::fmt::Display) -> ServerFnError {
+    ServerFnError::new(e.to_string())
+}
+
 /// Application state shared via Axum Extension layer.
 #[derive(Clone)]
 pub struct AppState {
@@ -86,7 +92,7 @@ pub async fn get_tenant_pool() -> Result<SqlitePool, ServerFnError> {
         .tenant_mgr
         .get_tenant_pool(&org_slug)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))
+        .map_err(sfn_err)
 }
 
 /// Get the tenant pool for a specific repo by looking up its org in the repository index.
@@ -99,12 +105,12 @@ pub async fn get_repo_pool(owner: &str, repo: &str) -> Result<SqlitePool, Server
         let control = state.pool();
         let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
         return state
             .tenant_mgr
             .get_tenant_pool(&org_slug)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()));
+            .map_err(sfn_err);
     }
     Ok(state.pool())
 }
@@ -119,12 +125,12 @@ pub async fn get_repo_pools(owner: &str, repo: &str) -> Result<(SqlitePool, Sqli
     if state.multi_tenant {
         let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
         let tenant = state
             .tenant_mgr
             .get_tenant_pool(&org_slug)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
         return Ok((control, tenant));
     }
     Ok((control.clone(), control))
@@ -139,7 +145,7 @@ pub async fn get_repo_path(owner: &str, repo: &str) -> Result<std::path::PathBuf
         let control = state.pool();
         let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(sfn_err)?;
         return Ok(state.tenant_mgr.tenant_repos_dir(&org_slug).join(owner).join(format!("{repo}.git")));
     }
     Ok(oxigit_core::git::repo_path(&state.data_dir, owner, repo))
@@ -294,7 +300,7 @@ pub async fn require_admin() -> Result<UserInfo, ServerFnError> {
     let pool = get_pool().await?;
     if !oxigit_core::db::is_user_admin(&pool, user.id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?
+        .map_err(sfn_err)?
     {
         return Err(ServerFnError::new("Admin access required"));
     }
@@ -308,7 +314,7 @@ pub async fn get_ai_access_level(
     let pool = get_pool().await?;
     let plan = oxigit_core::db::get_user_plan(&pool, user_id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
     Ok(oxigit_core::entitlements::ai_access_for_plan(&plan))
 }
 
@@ -319,7 +325,7 @@ pub async fn get_user_entitlements(
     let pool = get_pool().await?;
     let plan = oxigit_core::db::get_user_plan(&pool, user_id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(sfn_err)?;
     Ok(oxigit_core::entitlements::for_plan(&plan))
 }
 

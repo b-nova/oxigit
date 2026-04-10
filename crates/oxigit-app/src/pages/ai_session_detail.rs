@@ -6,7 +6,9 @@ use crate::components::loading::LoadingPage;
 use crate::components::toast::use_toast;
 
 #[allow(unused_imports)]
-use super::{AiMetadataInfo, AiTimelineEntry, DiffSummaryInfo, RiskFlagInfo, SessionDetailResponse};
+use super::{
+    AiMetadataInfo, AiTimelineEntry, DiffSummaryInfo, RiskFlagInfo, SessionDetailResponse,
+};
 
 #[server]
 async fn fetch_session_detail(
@@ -14,11 +16,15 @@ async fn fetch_session_detail(
     repo: String,
     session_id: String,
 ) -> Result<SessionDetailResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_effective_llm_config, get_user_entitlements};
+    use crate::server_fns::{
+        extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools,
+        get_user_entitlements, sfn_err,
+    };
     use oxigit_core::{db, git, llm, risk};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let current_user = extract_session_user().await
+    let current_user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let entitlements = get_user_entitlements(current_user.id).await?;
@@ -60,12 +66,12 @@ async fn fetch_session_detail(
             None => ("(commit not found)".into(), String::new(), String::new()),
         };
 
-        if let Some(ref files_json) = meta.ai_files_touched {
-            if let Ok(files) = serde_json::from_str::<Vec<String>>(files_json) {
-                for f in &files {
-                    if !all_files.contains(f) {
-                        all_files.push(f.clone());
-                    }
+        if let Some(ref files_json) = meta.ai_files_touched
+            && let Ok(files) = serde_json::from_str::<Vec<String>>(files_json)
+        {
+            for f in &files {
+                if !all_files.contains(f) {
+                    all_files.push(f.clone());
                 }
             }
         }
@@ -87,7 +93,10 @@ async fn fetch_session_detail(
                 ai_model: meta.ai_model.clone(),
                 ai_prompt: meta.ai_prompt.clone(),
                 ai_session_id: meta.ai_session_id.clone(),
-                ai_files_touched: meta.ai_files_touched.as_ref().and_then(|f| serde_json::from_str(f).ok()),
+                ai_files_touched: meta
+                    .ai_files_touched
+                    .as_ref()
+                    .and_then(|f| serde_json::from_str(f).ok()),
                 ai_prompt_index: meta.ai_prompt_index,
             },
             diff_html: commit_diff,
@@ -95,8 +104,14 @@ async fn fetch_session_detail(
     }
 
     // Entries are newest-first; times: first entry is latest, last is earliest
-    let first_time = entries.last().map(|e| e.commit_time.clone()).unwrap_or_default();
-    let last_time = entries.first().map(|e| e.commit_time.clone()).unwrap_or_default();
+    let first_time = entries
+        .last()
+        .map(|e| e.commit_time.clone())
+        .unwrap_or_default();
+    let last_time = entries
+        .first()
+        .map(|e| e.commit_time.clone())
+        .unwrap_or_default();
 
     // Aggregate diff needs SHAs in oldest-first order
     let mut shas_asc = shas.clone();
@@ -106,51 +121,84 @@ async fn fetch_session_detail(
 
     // Auto-generate AI summary if LLM configured
     let cache_key = format!("session-{}", session_id);
-    let cached_summary = db::get_diff_summary(&pool, repo_db.id, &cache_key).await.ok().flatten();
+    let cached_summary = db::get_diff_summary(&pool, repo_db.id, &cache_key)
+        .await
+        .ok()
+        .flatten();
 
     let summary = if let Some(s) = cached_summary {
-        let flags: Vec<RiskFlagInfo> = s.risk_flags
+        let flags: Vec<RiskFlagInfo> = s
+            .risk_flags
             .and_then(|f| serde_json::from_str(&f).ok())
             .unwrap_or_default();
-        Some(DiffSummaryInfo { summary: s.summary, risk_flags: flags, generated_by: s.generated_by })
+        Some(DiffSummaryInfo {
+            summary: s.summary,
+            risk_flags: flags,
+            generated_by: s.generated_by,
+        })
     } else {
-        let (provider, api_key, model, base_url) = get_effective_llm_config(Some(current_user.id)).await?;
+        let (provider, api_key, model, base_url) =
+            get_effective_llm_config(Some(current_user.id)).await?;
         if provider != "none" && !diff.is_empty() {
             let first_prompt = entries.iter().find_map(|e| e.metadata.ai_prompt.clone());
-            let config = llm::LlmConfig { provider, api_key, model: model.clone(), base_url };
+            let config = llm::LlmConfig {
+                provider,
+                api_key,
+                model: model.clone(),
+                base_url,
+            };
             match llm::generate_summary(&config, &diff, first_prompt.as_deref()).await {
                 Ok(summary_text) => {
                     let risk_flags: Vec<RiskFlagInfo> = risk::scan_diff(&diff)
                         .into_iter()
-                        .map(|f| RiskFlagInfo { category: f.category.label().to_string(), message: f.message, file: f.file })
+                        .map(|f| RiskFlagInfo {
+                            category: f.category.label().to_string(),
+                            message: f.message,
+                            file: f.file,
+                        })
                         .collect();
                     let flags_json = serde_json::to_string(&risk_flags).ok();
-                    let _ = db::upsert_diff_summary(&pool, repo_db.id, &cache_key, &summary_text, flags_json.as_deref(), &model).await;
-                    Some(DiffSummaryInfo { summary: summary_text, risk_flags, generated_by: model })
+                    let _ = db::upsert_diff_summary(
+                        &pool,
+                        repo_db.id,
+                        &cache_key,
+                        &summary_text,
+                        flags_json.as_deref(),
+                        &model,
+                    )
+                    .await;
+                    Some(DiffSummaryInfo {
+                        summary: summary_text,
+                        risk_flags,
+                        generated_by: model,
+                    })
                 }
                 Err(_) => None,
             }
-        } else { None }
+        } else {
+            None
+        }
     };
 
     let can_revert = current_user.id == repo_db.owner_id;
     let branches = git::list_branches(&repo_path).unwrap_or_default();
     let default_branch = git::default_branch(&repo_path)
-        .unwrap_or(None).unwrap_or_else(|| "main".to_string());
+        .unwrap_or(None)
+        .unwrap_or_else(|| "main".to_string());
 
     // Compute vibe score
     let vibe_score = {
         use oxigit_core::vibe;
 
-        let (lines_added, lines_deleted) = git::session_diff_stats(&repo_path, &shas_asc).unwrap_or((0, 0));
-        let prompt_count = entries.iter()
+        let (lines_added, lines_deleted) =
+            git::session_diff_stats(&repo_path, &shas_asc).unwrap_or((0, 0));
+        let prompt_count = entries
+            .iter()
             .filter_map(|e| e.metadata.ai_prompt.as_ref())
             .collect::<std::collections::HashSet<_>>()
             .len()
             .max(1);
-        let risk_count = summary.as_ref()
-            .map(|s| s.risk_flags.len())
-            .unwrap_or(0);
+        let risk_count = summary.as_ref().map(|s| s.risk_flags.len()).unwrap_or(0);
         let was_reverted = git::is_session_reverted(&repo_path, &session_id);
 
         let metrics = vibe::SessionMetrics {
@@ -175,12 +223,26 @@ async fn fetch_session_detail(
     };
 
     let recipe_id = db::get_recipe_for_session(&pool, repo_db.id, &session_id)
-        .await.ok().flatten().map(|r| r.id);
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.id);
 
     Ok(SessionDetailResponse {
-        session_id, ai_tool, ai_model, entries, diff_html,
-        files_changed: all_files, first_time, last_time, summary, can_revert,
-        branches, default_branch, vibe_score, recipe_id,
+        session_id,
+        ai_tool,
+        ai_model,
+        entries,
+        diff_html,
+        files_changed: all_files,
+        first_time,
+        last_time,
+        summary,
+        can_revert,
+        branches,
+        default_branch,
+        vibe_score,
+        recipe_id,
     })
 }
 
@@ -190,10 +252,13 @@ async fn revert_session(
     repo: String,
     session_id: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{
+        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+    };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let entitlements = get_user_entitlements(user.id).await?;
@@ -206,17 +271,20 @@ async fn revert_session(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("Access denied"));
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
     let metas = db::get_ai_metadata_by_session(&pool, repo_db.id, &session_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     if metas.is_empty() {
         return Err(ServerFnError::new("Session not found"));
@@ -225,15 +293,19 @@ async fn revert_session(
     // Metas are DESC — reverse for revert (needs oldest-first)
     let mut shas: Vec<String> = metas.iter().map(|m| m.commit_sha.clone()).collect();
     shas.reverse();
-    let first_prompt = metas.last().and_then(|m| m.ai_prompt.clone()).unwrap_or_default();
+    let first_prompt = metas
+        .last()
+        .and_then(|m| m.ai_prompt.clone())
+        .unwrap_or_default();
     let short_id = &session_id[..8.min(session_id.len())];
 
     let default_branch = git::default_branch(&repo_path)
-        .unwrap_or(None).unwrap_or_else(|| "main".to_string());
+        .unwrap_or(None)
+        .unwrap_or_else(|| "main".to_string());
 
     let message = format!("Revert AI session {}: {}", short_id, first_prompt);
-    let result = git::revert_session(&repo_path, &default_branch, &shas, &message)
-        .map_err(sfn_err)?;
+    let result =
+        git::revert_session(&repo_path, &default_branch, &shas, &message).map_err(sfn_err)?;
 
     match result {
         git::RevertResult::Success => {
@@ -248,8 +320,8 @@ async fn revert_session(
             ..
         } => {
             // Get parent of conflicting commit (the revert target state)
-            let parent_sha = git::rev_parse(&repo_path, &format!("{}^", conflicting_sha))
-                .map_err(sfn_err)?;
+            let parent_sha =
+                git::rev_parse(&repo_path, &format!("{}^", conflicting_sha)).map_err(sfn_err)?;
 
             let context = serde_json::json!({
                 "session_id": session_id,
@@ -258,22 +330,26 @@ async fn revert_session(
                 "branch": default_branch,
                 "revert_message": message,
             });
-            let context_str = serde_json::to_string(&context)
-                .map_err(sfn_err)?;
+            let context_str = serde_json::to_string(&context).map_err(sfn_err)?;
 
             let conflict = db::create_merge_conflict(
-                &pool, repo_db.id, user.id,
+                &pool,
+                repo_db.id,
+                user.id,
                 "revert",
                 &current_commit,
                 &parent_sha,
                 &conflicting_sha,
                 auto_tree.as_deref(),
                 Some(&context_str),
-            ).await.map_err(sfn_err)?;
+            )
+            .await
+            .map_err(sfn_err)?;
 
             for file_path in &conflict_files {
                 db::create_conflict_file(&pool, conflict.id, file_path, "content")
-                    .await.map_err(sfn_err)?;
+                    .await
+                    .map_err(sfn_err)?;
             }
 
             leptos_axum::redirect(&format!("/{}/{}/conflicts/{}", owner, repo, conflict.id));
@@ -290,10 +366,13 @@ async fn squash_session_action(
     session_id: String,
     message: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{
+        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+    };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let entitlements = get_user_entitlements(user.id).await?;
@@ -306,17 +385,20 @@ async fn squash_session_action(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("Access denied"));
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
     let metas = db::get_ai_metadata_by_session(&pool, repo_db.id, &session_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     if metas.is_empty() {
         return Err(ServerFnError::new("Session not found"));
@@ -327,10 +409,10 @@ async fn squash_session_action(
     shas.reverse();
 
     let default_branch = git::default_branch(&repo_path)
-        .unwrap_or(None).unwrap_or_else(|| "main".to_string());
+        .unwrap_or(None)
+        .unwrap_or_else(|| "main".to_string());
 
-    git::squash_session(&repo_path, &default_branch, &shas, &message)
-        .map_err(sfn_err)?;
+    git::squash_session(&repo_path, &default_branch, &shas, &message).map_err(sfn_err)?;
 
     leptos_axum::redirect(&format!("/{}/{}/ai/{}", owner, repo, session_id));
     Ok(())
@@ -343,10 +425,13 @@ async fn cherry_pick_session_action(
     session_id: String,
     target_branch: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{
+        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+    };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let entitlements = get_user_entitlements(user.id).await?;
@@ -359,17 +444,20 @@ async fn cherry_pick_session_action(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("Access denied"));
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
     let metas = db::get_ai_metadata_by_session(&pool, repo_db.id, &session_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     if metas.is_empty() {
         return Err(ServerFnError::new("Session not found"));
@@ -379,8 +467,7 @@ async fn cherry_pick_session_action(
     let mut shas: Vec<String> = metas.iter().map(|m| m.commit_sha.clone()).collect();
     shas.reverse();
 
-    git::cherry_pick_range(&repo_path, &target_branch, &shas)
-        .map_err(sfn_err)?;
+    git::cherry_pick_range(&repo_path, &target_branch, &shas).map_err(sfn_err)?;
 
     leptos_axum::redirect(&format!("/{}/{}/ai/{}", owner, repo, session_id));
     Ok(())

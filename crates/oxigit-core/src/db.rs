@@ -3,7 +3,12 @@ use std::path::Path;
 
 use crate::auth::{hash_password, validate_repo_name, validate_username, verify_password};
 use crate::error::{OxigitError, Result};
-use crate::models::{AiCommitMetadata, AiDiffSummary, Collaborator, ContactInquiry, DeployPreview, GuardrailConfig, GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile, PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, User, UserSettings};
+use crate::models::{
+    AiCommitMetadata, AiDiffSummary, Collaborator, ContactInquiry, DeployPreview, GuardrailConfig,
+    GuardrailRule, GuardrailViolation, Issue, IssueComment, MergeConflict, MergeConflictFile,
+    PullRequest, Recipe, RecipeReplay, RecipeStep, RepoWebhook, Repository, SshKey, User,
+    UserSettings,
+};
 #[cfg(feature = "saas")]
 use crate::models::{FoundingMember, OrgMembership, Organization, Subscription};
 
@@ -19,27 +24,40 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
 
 /// Run all migrations on a single database (legacy mode).
 pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
-    sqlx::migrate!("../../migrations").run(pool).await.map_err(|e| {
-        OxigitError::Database(sqlx::Error::Protocol(format!("Migration failed: {e}")))
-    })?;
+    sqlx::migrate!("../../migrations")
+        .run(pool)
+        .await
+        .map_err(|e| {
+            OxigitError::Database(sqlx::Error::Protocol(format!("Migration failed: {e}")))
+        })?;
     Ok(())
 }
 
 /// Run control-plane migrations (users, auth, billing, orgs).
 #[cfg(feature = "saas")]
 pub async fn run_control_migrations(pool: &SqlitePool) -> Result<()> {
-    sqlx::migrate!("../../migrations_control").run(pool).await.map_err(|e| {
-        OxigitError::Database(sqlx::Error::Protocol(format!("Control migration failed: {e}")))
-    })?;
+    sqlx::migrate!("../../migrations_control")
+        .run(pool)
+        .await
+        .map_err(|e| {
+            OxigitError::Database(sqlx::Error::Protocol(format!(
+                "Control migration failed: {e}"
+            )))
+        })?;
     Ok(())
 }
 
 /// Run tenant migrations (repos, issues, PRs, AI data, etc.).
 #[cfg(feature = "saas")]
 pub async fn run_tenant_migrations(pool: &SqlitePool) -> Result<()> {
-    sqlx::migrate!("../../migrations_tenant").run(pool).await.map_err(|e| {
-        OxigitError::Database(sqlx::Error::Protocol(format!("Tenant migration failed: {e}")))
-    })?;
+    sqlx::migrate!("../../migrations_tenant")
+        .run(pool)
+        .await
+        .map_err(|e| {
+            OxigitError::Database(sqlx::Error::Protocol(format!(
+                "Tenant migration failed: {e}"
+            )))
+        })?;
     Ok(())
 }
 
@@ -86,11 +104,7 @@ pub async fn create_user(
     }
 }
 
-pub async fn authenticate_user(
-    pool: &SqlitePool,
-    username: &str,
-    password: &str,
-) -> Result<User> {
+pub async fn authenticate_user(pool: &SqlitePool, username: &str, password: &str) -> Result<User> {
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = ?")
         .bind(username)
         .fetch_optional(pool)
@@ -187,9 +201,7 @@ pub async fn create_repository_in_tenant(
 ) -> Result<Repository> {
     validate_repo_name(name)?;
 
-    let repo_path = repos_dir
-        .join(owner_username)
-        .join(format!("{name}.git"));
+    let repo_path = repos_dir.join(owner_username).join(format!("{name}.git"));
 
     std::fs::create_dir_all(&repo_path)?;
     crate::git::init_bare_repo(&repo_path)?;
@@ -274,7 +286,10 @@ pub fn can_access_repo(repo: &Repository, viewer_id: Option<i64>) -> bool {
 }
 
 /// Search public repositories. If query is empty, returns all public repos.
-pub async fn search_public_repositories(pool: &SqlitePool, query: &str) -> Result<Vec<(User, Repository)>> {
+pub async fn search_public_repositories(
+    pool: &SqlitePool,
+    query: &str,
+) -> Result<Vec<(User, Repository)>> {
     let rows = if query.is_empty() {
         sqlx::query_as::<_, (i64, String, String, String, String, i64, String, String, bool, Option<i64>, bool, String, String)>(
             "SELECT u.id, u.username, u.email, u.password_hash, u.display_name, r.id, r.name, r.description, r.is_private, r.forked_from, r.has_remix, r.created_at, r.updated_at \
@@ -301,12 +316,48 @@ pub async fn search_public_repositories(pool: &SqlitePool, query: &str) -> Resul
 
     Ok(rows
         .into_iter()
-        .map(|(uid, username, email, pw, display_name, rid, name, desc, private, forked_from, has_remix, created, updated)| {
-            (
-                User { id: uid, username, email, password_hash: pw, display_name, is_admin: false, is_disabled: false, created_at: created.clone(), updated_at: updated.clone() },
-                Repository { id: rid, owner_id: uid, name, description: desc, is_private: private, forked_from, has_remix, created_at: created, updated_at: updated },
-            )
-        })
+        .map(
+            |(
+                uid,
+                username,
+                email,
+                pw,
+                display_name,
+                rid,
+                name,
+                desc,
+                private,
+                forked_from,
+                has_remix,
+                created,
+                updated,
+            )| {
+                (
+                    User {
+                        id: uid,
+                        username,
+                        email,
+                        password_hash: pw,
+                        display_name,
+                        is_admin: false,
+                        is_disabled: false,
+                        created_at: created.clone(),
+                        updated_at: updated.clone(),
+                    },
+                    Repository {
+                        id: rid,
+                        owner_id: uid,
+                        name,
+                        description: desc,
+                        is_private: private,
+                        forked_from,
+                        has_remix,
+                        created_at: created,
+                        updated_at: updated,
+                    },
+                )
+            },
+        )
         .collect())
 }
 
@@ -360,13 +411,11 @@ pub async fn delete_ssh_key(pool: &SqlitePool, key_id: i64, user_id: i64) -> Res
 }
 
 pub async fn find_user_by_ssh_fingerprint(pool: &SqlitePool, fingerprint: &str) -> Result<User> {
-    let key = sqlx::query_as::<_, SshKey>(
-        "SELECT * FROM ssh_keys WHERE fingerprint = ?",
-    )
-    .bind(fingerprint)
-    .fetch_optional(pool)
-    .await?
-    .ok_or(OxigitError::AuthFailed)?;
+    let key = sqlx::query_as::<_, SshKey>("SELECT * FROM ssh_keys WHERE fingerprint = ?")
+        .bind(fingerprint)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(OxigitError::AuthFailed)?;
 
     get_user_by_id(pool, key.user_id).await
 }
@@ -384,7 +433,9 @@ pub async fn fork_repository(
 
     // Can't fork your own repo
     if source_repo.owner_id == fork_user_id {
-        return Err(OxigitError::InvalidInput("Cannot fork your own repository".into()));
+        return Err(OxigitError::InvalidInput(
+            "Cannot fork your own repository".into(),
+        ));
     }
 
     // Can't fork private repos you don't have access to
@@ -395,8 +446,13 @@ pub async fn fork_repository(
     let fork_user = get_user_by_id(pool, fork_user_id).await?;
 
     // Check if fork already exists
-    if get_repository(pool, &fork_user.username, source_name).await.is_ok() {
-        return Err(OxigitError::InvalidInput("You already have a repository with this name".into()));
+    if get_repository(pool, &fork_user.username, source_name)
+        .await
+        .is_ok()
+    {
+        return Err(OxigitError::InvalidInput(
+            "You already have a repository with this name".into(),
+        ));
     }
 
     let source_path = crate::git::repo_path(data_dir, &source_owner_user.username, source_name);
@@ -542,16 +598,17 @@ pub async fn create_pull_request(
         return Err(OxigitError::InvalidInput("Title is required".into()));
     }
     if source_branch == target_branch {
-        return Err(OxigitError::InvalidInput("Source and target branches must differ".into()));
+        return Err(OxigitError::InvalidInput(
+            "Source and target branches must differ".into(),
+        ));
     }
 
     // Get next PR number for this repo
-    let row: (i64,) = sqlx::query_as(
-        "SELECT COALESCE(MAX(number), 0) + 1 FROM pull_requests WHERE repo_id = ?",
-    )
-    .bind(repo_id)
-    .fetch_one(pool)
-    .await?;
+    let row: (i64,) =
+        sqlx::query_as("SELECT COALESCE(MAX(number), 0) + 1 FROM pull_requests WHERE repo_id = ?")
+            .bind(repo_id)
+            .fetch_one(pool)
+            .await?;
     let number = row.0;
 
     let pr = sqlx::query_as::<_, PullRequest>(
@@ -603,19 +660,13 @@ pub async fn list_pull_requests_cross(
     Ok(result)
 }
 
-pub async fn get_pull_request(
-    pool: &SqlitePool,
-    repo_id: i64,
-    number: i64,
-) -> Result<PullRequest> {
-    sqlx::query_as::<_, PullRequest>(
-        "SELECT * FROM pull_requests WHERE repo_id = ? AND number = ?",
-    )
-    .bind(repo_id)
-    .bind(number)
-    .fetch_optional(pool)
-    .await?
-    .ok_or(OxigitError::NotFound("Pull request not found".into()))
+pub async fn get_pull_request(pool: &SqlitePool, repo_id: i64, number: i64) -> Result<PullRequest> {
+    sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests WHERE repo_id = ? AND number = ?")
+        .bind(repo_id)
+        .bind(number)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(OxigitError::NotFound("Pull request not found".into()))
 }
 
 pub async fn merge_pull_request(
@@ -683,12 +734,11 @@ pub async fn create_issue(
         return Err(OxigitError::InvalidInput("Title is required".into()));
     }
 
-    let row: (i64,) = sqlx::query_as(
-        "SELECT COALESCE(MAX(number), 0) + 1 FROM issues WHERE repo_id = ?",
-    )
-    .bind(repo_id)
-    .fetch_one(pool)
-    .await?;
+    let row: (i64,) =
+        sqlx::query_as("SELECT COALESCE(MAX(number), 0) + 1 FROM issues WHERE repo_id = ?")
+            .bind(repo_id)
+            .fetch_one(pool)
+            .await?;
 
     let issue = sqlx::query_as::<_, Issue>(
         "INSERT INTO issues (repo_id, number, title, description, author_id) VALUES (?, ?, ?, ?, ?) RETURNING *",
@@ -737,14 +787,12 @@ pub async fn list_issues_cross(
 }
 
 pub async fn get_issue(pool: &SqlitePool, repo_id: i64, number: i64) -> Result<Issue> {
-    sqlx::query_as::<_, Issue>(
-        "SELECT * FROM issues WHERE repo_id = ? AND number = ?",
-    )
-    .bind(repo_id)
-    .bind(number)
-    .fetch_optional(pool)
-    .await?
-    .ok_or(OxigitError::NotFound("Issue not found".into()))
+    sqlx::query_as::<_, Issue>("SELECT * FROM issues WHERE repo_id = ? AND number = ?")
+        .bind(repo_id)
+        .bind(number)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(OxigitError::NotFound("Issue not found".into()))
 }
 
 pub async fn close_issue(pool: &SqlitePool, repo_id: i64, number: i64) -> Result<Issue> {
@@ -786,7 +834,9 @@ pub async fn add_issue_comment(
     .await?;
 
     sqlx::query("UPDATE issues SET updated_at = datetime('now') WHERE id = ?")
-        .bind(issue_id).execute(pool).await?;
+        .bind(issue_id)
+        .execute(pool)
+        .await?;
 
     Ok(comment)
 }
@@ -814,6 +864,7 @@ pub async fn list_issue_comments_cross(
 
 // --- AI Commit Metadata queries ---
 
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_ai_metadata(
     pool: &SqlitePool,
     repo_id: i64,
@@ -881,10 +932,7 @@ pub async fn get_ai_metadata_for_commits(
 }
 
 /// List distinct AI sessions for a repository with summary info.
-pub async fn list_ai_sessions(
-    pool: &SqlitePool,
-    repo_id: i64,
-) -> Result<Vec<AiCommitMetadata>> {
+pub async fn list_ai_sessions(pool: &SqlitePool, repo_id: i64) -> Result<Vec<AiCommitMetadata>> {
     let metas = sqlx::query_as::<_, AiCommitMetadata>(
         "SELECT * FROM ai_commit_metadata WHERE repo_id = ? ORDER BY created_at DESC",
     )
@@ -986,17 +1034,26 @@ pub async fn update_has_remix(pool: &SqlitePool, repo_id: i64, has_remix: bool) 
 }
 
 /// Update the visibility (is_private) flag for a repository.
-pub async fn update_repository_visibility(pool: &SqlitePool, repo_id: i64, is_private: bool) -> Result<()> {
-    sqlx::query("UPDATE repositories SET is_private = ?, updated_at = datetime('now') WHERE id = ?")
-        .bind(is_private)
-        .bind(repo_id)
-        .execute(pool)
-        .await?;
+pub async fn update_repository_visibility(
+    pool: &SqlitePool,
+    repo_id: i64,
+    is_private: bool,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE repositories SET is_private = ?, updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(is_private)
+    .bind(repo_id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
 /// Search public repositories that have REMIX.md (remixable).
-pub async fn search_remixable_repositories(pool: &SqlitePool, query: &str) -> Result<Vec<(User, Repository)>> {
+pub async fn search_remixable_repositories(
+    pool: &SqlitePool,
+    query: &str,
+) -> Result<Vec<(User, Repository)>> {
     let rows = if query.is_empty() {
         sqlx::query_as::<_, (i64, String, String, String, String, i64, String, String, bool, Option<i64>, bool, String, String)>(
             "SELECT u.id, u.username, u.email, u.password_hash, u.display_name, r.id, r.name, r.description, r.is_private, r.forked_from, r.has_remix, r.created_at, r.updated_at \
@@ -1023,12 +1080,48 @@ pub async fn search_remixable_repositories(pool: &SqlitePool, query: &str) -> Re
 
     Ok(rows
         .into_iter()
-        .map(|(uid, username, email, pw, display_name, rid, name, desc, private, forked_from, has_remix, created, updated)| {
-            (
-                User { id: uid, username, email, password_hash: pw, display_name, is_admin: false, is_disabled: false, created_at: created.clone(), updated_at: updated.clone() },
-                Repository { id: rid, owner_id: uid, name, description: desc, is_private: private, forked_from, has_remix, created_at: created, updated_at: updated },
-            )
-        })
+        .map(
+            |(
+                uid,
+                username,
+                email,
+                pw,
+                display_name,
+                rid,
+                name,
+                desc,
+                private,
+                forked_from,
+                has_remix,
+                created,
+                updated,
+            )| {
+                (
+                    User {
+                        id: uid,
+                        username,
+                        email,
+                        password_hash: pw,
+                        display_name,
+                        is_admin: false,
+                        is_disabled: false,
+                        created_at: created.clone(),
+                        updated_at: updated.clone(),
+                    },
+                    Repository {
+                        id: rid,
+                        owner_id: uid,
+                        name,
+                        description: desc,
+                        is_private: private,
+                        forked_from,
+                        has_remix,
+                        created_at: created,
+                        updated_at: updated,
+                    },
+                )
+            },
+        )
         .collect())
 }
 
@@ -1043,7 +1136,11 @@ pub struct SessionSummaryRow {
 }
 
 /// List session summaries for a repo (efficient GROUP BY query).
-pub async fn list_session_summaries(pool: &SqlitePool, repo_id: i64, query: &str) -> Result<Vec<SessionSummaryRow>> {
+pub async fn list_session_summaries(
+    pool: &SqlitePool,
+    repo_id: i64,
+    query: &str,
+) -> Result<Vec<SessionSummaryRow>> {
     let rows: Vec<(String, String, String, String, i64, Option<String>)> = if query.is_empty() {
         sqlx::query_as(
             "SELECT ai_session_id, ai_tool, MIN(created_at), MAX(created_at), COUNT(*), MIN(ai_prompt) \
@@ -1076,16 +1173,18 @@ pub async fn list_session_summaries(pool: &SqlitePool, repo_id: i64, query: &str
 
     Ok(rows
         .into_iter()
-        .map(|(session_id, ai_tool, first_time, last_time, commit_count, first_prompt)| {
-            SessionSummaryRow {
-                session_id,
-                ai_tool,
-                first_time,
-                last_time,
-                commit_count,
-                first_prompt,
-            }
-        })
+        .map(
+            |(session_id, ai_tool, first_time, last_time, commit_count, first_prompt)| {
+                SessionSummaryRow {
+                    session_id,
+                    ai_tool,
+                    first_time,
+                    last_time,
+                    commit_count,
+                    first_prompt,
+                }
+            },
+        )
         .collect())
 }
 
@@ -1104,6 +1203,7 @@ pub struct PromptGroupRow {
 
 /// List prompt groups for a repo: each row represents one developer prompt and the commits it produced.
 /// Groups by (ai_session_id, ai_prompt_index), falling back to (ai_session_id, ai_prompt) for legacy data.
+#[allow(clippy::type_complexity)]
 pub async fn list_prompt_groups(
     pool: &SqlitePool,
     repo_id: i64,
@@ -1116,30 +1216,46 @@ pub async fn list_prompt_groups(
     let group_key = "ai_session_id, COALESCE(CAST(ai_prompt_index AS TEXT), ai_prompt, commit_sha)";
 
     let (sql, needs_query_bind) = if query.is_empty() {
-        (format!(
-            "SELECT ai_session_id, ai_prompt_index, MIN(ai_prompt), ai_tool, MIN(ai_model), \
+        (
+            format!(
+                "SELECT ai_session_id, ai_prompt_index, MIN(ai_prompt), ai_tool, MIN(ai_model), \
              COUNT(*), MIN(created_at), MAX(created_at), GROUP_CONCAT(commit_sha, ',') \
              FROM ai_commit_metadata \
              WHERE repo_id = ? \
              GROUP BY {} \
              ORDER BY MAX(created_at) DESC \
              LIMIT ? OFFSET ?",
-            group_key
-        ), false)
+                group_key
+            ),
+            false,
+        )
     } else {
-        (format!(
-            "SELECT ai_session_id, ai_prompt_index, MIN(ai_prompt), ai_tool, MIN(ai_model), \
+        (
+            format!(
+                "SELECT ai_session_id, ai_prompt_index, MIN(ai_prompt), ai_tool, MIN(ai_model), \
              COUNT(*), MIN(created_at), MAX(created_at), GROUP_CONCAT(commit_sha, ',') \
              FROM ai_commit_metadata \
              WHERE repo_id = ? AND ai_prompt LIKE '%' || ? || '%' \
              GROUP BY {} \
              ORDER BY MAX(created_at) DESC \
              LIMIT ? OFFSET ?",
-            group_key
-        ), true)
+                group_key
+            ),
+            true,
+        )
     };
 
-    let rows: Vec<(Option<String>, Option<i64>, Option<String>, String, Option<String>, i64, String, String, String)> = {
+    let rows: Vec<(
+        Option<String>,
+        Option<i64>,
+        Option<String>,
+        String,
+        Option<String>,
+        i64,
+        String,
+        String,
+        String,
+    )> = {
         let mut q = sqlx::query_as(&sql).bind(repo_id);
         if needs_query_bind {
             q = q.bind(query);
@@ -1150,19 +1266,21 @@ pub async fn list_prompt_groups(
 
     Ok(rows
         .into_iter()
-        .map(|(session_id, prompt_index, prompt, tool, model, count, first, last, shas_csv)| {
-            PromptGroupRow {
-                ai_session_id: session_id,
-                ai_prompt_index: prompt_index,
-                ai_prompt: prompt,
-                ai_tool: tool,
-                ai_model: model,
-                commit_count: count,
-                first_time: first,
-                last_time: last,
-                commit_shas: shas_csv.split(',').map(|s| s.to_string()).collect(),
-            }
-        })
+        .map(
+            |(session_id, prompt_index, prompt, tool, model, count, first, last, shas_csv)| {
+                PromptGroupRow {
+                    ai_session_id: session_id,
+                    ai_prompt_index: prompt_index,
+                    ai_prompt: prompt,
+                    ai_tool: tool,
+                    ai_model: model,
+                    commit_count: count,
+                    first_time: first,
+                    last_time: last,
+                    commit_shas: shas_csv.split(',').map(|s| s.to_string()).collect(),
+                }
+            },
+        )
         .collect())
 }
 
@@ -1173,7 +1291,10 @@ pub async fn get_ai_metadata_for_commits_map(
     shas: &[String],
 ) -> Result<std::collections::HashMap<String, AiCommitMetadata>> {
     let metas = get_ai_metadata_for_commits(pool, repo_id, shas).await?;
-    Ok(metas.into_iter().map(|m| (m.commit_sha.clone(), m)).collect())
+    Ok(metas
+        .into_iter()
+        .map(|m| (m.commit_sha.clone(), m))
+        .collect())
 }
 
 /// Get all commits for a specific prompt within a session.
@@ -1223,12 +1344,11 @@ pub async fn count_prompt_groups(pool: &SqlitePool, repo_id: i64, query: &str) -
 // --- User Settings queries ---
 
 pub async fn get_user_settings(pool: &SqlitePool, user_id: i64) -> Result<Option<UserSettings>> {
-    let settings = sqlx::query_as::<_, UserSettings>(
-        "SELECT * FROM user_settings WHERE user_id = ?",
-    )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await?;
+    let settings =
+        sqlx::query_as::<_, UserSettings>("SELECT * FROM user_settings WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
     Ok(settings)
 }
 
@@ -1404,7 +1524,13 @@ pub async fn get_user_tool_usage(pool: &SqlitePool, user_id: i64) -> Result<Vec<
     .bind(user_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().map(|(ai_tool, commit_count)| ToolUsageRow { ai_tool, commit_count }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|(ai_tool, commit_count)| ToolUsageRow {
+            ai_tool,
+            commit_count,
+        })
+        .collect())
 }
 
 pub struct RecentSessionRow {
@@ -1416,7 +1542,11 @@ pub struct RecentSessionRow {
     pub first_prompt: Option<String>,
 }
 
-pub async fn get_user_recent_sessions(pool: &SqlitePool, user_id: i64, limit: i64) -> Result<Vec<RecentSessionRow>> {
+pub async fn get_user_recent_sessions(
+    pool: &SqlitePool,
+    user_id: i64,
+    limit: i64,
+) -> Result<Vec<RecentSessionRow>> {
     let rows: Vec<(String, String, String, i64, String, Option<String>)> = sqlx::query_as(
         "SELECT m.ai_session_id, m.ai_tool, r.name, COUNT(*), MAX(m.created_at), MIN(m.ai_prompt) \
          FROM ai_commit_metadata m JOIN repositories r ON m.repo_id = r.id \
@@ -1427,12 +1557,27 @@ pub async fn get_user_recent_sessions(pool: &SqlitePool, user_id: i64, limit: i6
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().map(|(session_id, ai_tool, repo_name, commit_count, last_time, first_prompt)| {
-        RecentSessionRow { session_id, ai_tool, repo_name, commit_count, last_time, first_prompt }
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(
+            |(session_id, ai_tool, repo_name, commit_count, last_time, first_prompt)| {
+                RecentSessionRow {
+                    session_id,
+                    ai_tool,
+                    repo_name,
+                    commit_count,
+                    last_time,
+                    first_prompt,
+                }
+            },
+        )
+        .collect())
 }
 
-pub async fn get_user_risk_summaries(pool: &SqlitePool, user_id: i64) -> Result<Vec<AiDiffSummary>> {
+pub async fn get_user_risk_summaries(
+    pool: &SqlitePool,
+    user_id: i64,
+) -> Result<Vec<AiDiffSummary>> {
     let rows = sqlx::query_as::<_, AiDiffSummary>(
         "SELECT d.* FROM ai_diff_summaries d JOIN repositories r ON d.repo_id = r.id \
          WHERE r.owner_id = ? AND d.risk_flags IS NOT NULL AND d.risk_flags != '[]'",
@@ -1458,9 +1603,19 @@ pub struct SessionDataRow {
 }
 
 /// Get session data for all sessions in a repo (for vibe scoring).
+#[allow(clippy::type_complexity)]
 pub async fn get_repo_session_data(pool: &SqlitePool, repo_id: i64) -> Result<Vec<SessionDataRow>> {
     let group_key = "COALESCE(CAST(ai_prompt_index AS TEXT), ai_prompt, commit_sha)";
-    let rows: Vec<(String, String, i64, i64, String, String, String, Option<String>)> = sqlx::query_as(&format!(
+    let rows: Vec<(
+        String,
+        String,
+        i64,
+        i64,
+        String,
+        String,
+        String,
+        Option<String>,
+    )> = sqlx::query_as(&format!(
         "SELECT ai_session_id, ai_tool, COUNT(*), \
          COUNT(DISTINCT {}), \
          MIN(created_at), MAX(created_at), GROUP_CONCAT(commit_sha, ','), MIN(ai_prompt) \
@@ -1475,22 +1630,35 @@ pub async fn get_repo_session_data(pool: &SqlitePool, repo_id: i64) -> Result<Ve
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(|(sid, tool, cc, pc, ft, lt, shas, fp)| SessionDataRow {
-        session_id: sid,
-        ai_tool: tool,
-        commit_count: cc,
-        prompt_count: pc,
-        first_time: ft,
-        last_time: lt,
-        commit_shas: shas.split(',').map(|s| s.to_string()).collect(),
-        first_prompt: fp,
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|(sid, tool, cc, pc, ft, lt, shas, fp)| SessionDataRow {
+            session_id: sid,
+            ai_tool: tool,
+            commit_count: cc,
+            prompt_count: pc,
+            first_time: ft,
+            last_time: lt,
+            commit_shas: shas.split(',').map(|s| s.to_string()).collect(),
+            first_prompt: fp,
+        })
+        .collect())
 }
 
 /// Get session data across all repos owned by a user (for user-level vibe scoring).
+#[allow(clippy::type_complexity)]
 pub async fn get_user_session_data(pool: &SqlitePool, user_id: i64) -> Result<Vec<SessionDataRow>> {
     let group_key = "COALESCE(CAST(m.ai_prompt_index AS TEXT), m.ai_prompt, m.commit_sha)";
-    let rows: Vec<(String, String, i64, i64, String, String, String, Option<String>)> = sqlx::query_as(&format!(
+    let rows: Vec<(
+        String,
+        String,
+        i64,
+        i64,
+        String,
+        String,
+        String,
+        Option<String>,
+    )> = sqlx::query_as(&format!(
         "SELECT m.ai_session_id, m.ai_tool, COUNT(*), \
          COUNT(DISTINCT {}), \
          MIN(m.created_at), MAX(m.created_at), GROUP_CONCAT(m.commit_sha, ','), MIN(m.ai_prompt) \
@@ -1505,20 +1673,24 @@ pub async fn get_user_session_data(pool: &SqlitePool, user_id: i64) -> Result<Ve
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(|(sid, tool, cc, pc, ft, lt, shas, fp)| SessionDataRow {
-        session_id: sid,
-        ai_tool: tool,
-        commit_count: cc,
-        prompt_count: pc,
-        first_time: ft,
-        last_time: lt,
-        commit_shas: shas.split(',').map(|s| s.to_string()).collect(),
-        first_prompt: fp,
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|(sid, tool, cc, pc, ft, lt, shas, fp)| SessionDataRow {
+            session_id: sid,
+            ai_tool: tool,
+            commit_count: cc,
+            prompt_count: pc,
+            first_time: ft,
+            last_time: lt,
+            commit_shas: shas.split(',').map(|s| s.to_string()).collect(),
+            first_prompt: fp,
+        })
+        .collect())
 }
 
 // --- Merge Conflict Resolution queries ---
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_merge_conflict(
     pool: &SqlitePool,
     repo_id: i64,
@@ -1566,16 +1738,17 @@ pub async fn create_conflict_file(
 }
 
 pub async fn get_merge_conflict(pool: &SqlitePool, id: i64) -> Result<Option<MergeConflict>> {
-    let row = sqlx::query_as::<_, MergeConflict>(
-        "SELECT * FROM merge_conflicts WHERE id = ?",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await?;
+    let row = sqlx::query_as::<_, MergeConflict>("SELECT * FROM merge_conflicts WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
     Ok(row)
 }
 
-pub async fn get_conflict_files(pool: &SqlitePool, conflict_id: i64) -> Result<Vec<MergeConflictFile>> {
+pub async fn get_conflict_files(
+    pool: &SqlitePool,
+    conflict_id: i64,
+) -> Result<Vec<MergeConflictFile>> {
     let rows = sqlx::query_as::<_, MergeConflictFile>(
         "SELECT * FROM merge_conflict_files WHERE merge_conflict_id = ? ORDER BY file_path",
     )
@@ -1643,12 +1816,11 @@ pub async fn upsert_guardrail_rule(
 }
 
 pub async fn get_guardrail_rules(pool: &SqlitePool, repo_id: i64) -> Result<Vec<GuardrailRule>> {
-    let rules = sqlx::query_as::<_, GuardrailRule>(
-        "SELECT * FROM guardrail_rules WHERE repo_id = ?",
-    )
-    .bind(repo_id)
-    .fetch_all(pool)
-    .await?;
+    let rules =
+        sqlx::query_as::<_, GuardrailRule>("SELECT * FROM guardrail_rules WHERE repo_id = ?")
+            .bind(repo_id)
+            .fetch_all(pool)
+            .await?;
     Ok(rules)
 }
 
@@ -1671,16 +1843,19 @@ pub async fn upsert_guardrail_config(
     Ok(())
 }
 
-pub async fn get_guardrail_config(pool: &SqlitePool, repo_id: i64) -> Result<Option<GuardrailConfig>> {
-    let config = sqlx::query_as::<_, GuardrailConfig>(
-        "SELECT * FROM guardrail_config WHERE repo_id = ?",
-    )
-    .bind(repo_id)
-    .fetch_optional(pool)
-    .await?;
+pub async fn get_guardrail_config(
+    pool: &SqlitePool,
+    repo_id: i64,
+) -> Result<Option<GuardrailConfig>> {
+    let config =
+        sqlx::query_as::<_, GuardrailConfig>("SELECT * FROM guardrail_config WHERE repo_id = ?")
+            .bind(repo_id)
+            .fetch_optional(pool)
+            .await?;
     Ok(config)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_guardrail_violation(
     pool: &SqlitePool,
     repo_id: i64,
@@ -1729,6 +1904,7 @@ pub async fn list_guardrail_violations(
 
 // --- Recipe queries ---
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_recipe(
     pool: &SqlitePool,
     repo_id: i64,
@@ -1755,6 +1931,7 @@ pub async fn create_recipe(
     Ok(recipe)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_recipe_step(
     pool: &SqlitePool,
     recipe_id: i64,
@@ -1778,7 +1955,9 @@ pub async fn create_recipe_step(
 
 pub async fn get_recipe_by_id(pool: &SqlitePool, id: i64) -> Result<Option<Recipe>> {
     let recipe = sqlx::query_as::<_, Recipe>("SELECT * FROM recipes WHERE id = ?")
-        .bind(id).fetch_optional(pool).await?;
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
     Ok(recipe)
 }
 
@@ -1786,15 +1965,23 @@ pub async fn get_recipe_steps(pool: &SqlitePool, recipe_id: i64) -> Result<Vec<R
     let steps = sqlx::query_as::<_, RecipeStep>(
         "SELECT * FROM recipe_steps WHERE recipe_id = ? ORDER BY step_order ASC",
     )
-    .bind(recipe_id).fetch_all(pool).await?;
+    .bind(recipe_id)
+    .fetch_all(pool)
+    .await?;
     Ok(steps)
 }
 
-pub async fn get_recipe_for_session(pool: &SqlitePool, repo_id: i64, session_id: &str) -> Result<Option<Recipe>> {
-    let recipe = sqlx::query_as::<_, Recipe>(
-        "SELECT * FROM recipes WHERE repo_id = ? AND session_id = ?",
-    )
-    .bind(repo_id).bind(session_id).fetch_optional(pool).await?;
+pub async fn get_recipe_for_session(
+    pool: &SqlitePool,
+    repo_id: i64,
+    session_id: &str,
+) -> Result<Option<Recipe>> {
+    let recipe =
+        sqlx::query_as::<_, Recipe>("SELECT * FROM recipes WHERE repo_id = ? AND session_id = ?")
+            .bind(repo_id)
+            .bind(session_id)
+            .fetch_optional(pool)
+            .await?;
     Ok(recipe)
 }
 
@@ -1827,7 +2014,10 @@ pub async fn search_public_recipes(
              ORDER BY {} LIMIT ? OFFSET ?",
             order_clause
         ))
-        .bind(limit).bind(offset).fetch_all(pool).await?
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?
     } else {
         sqlx::query_as(&format!(
             "SELECT r.* FROM recipes r JOIN repositories rep ON r.repo_id = rep.id \
@@ -1843,12 +2033,19 @@ pub async fn search_public_recipes(
     let mut results = Vec::new();
     for recipe in recipes {
         let author: Option<(String,)> = sqlx::query_as("SELECT username FROM users WHERE id = ?")
-            .bind(recipe.author_id).fetch_optional(pool).await?;
-        let repo_info: Option<(String, i64)> = sqlx::query_as("SELECT name, owner_id FROM repositories WHERE id = ?")
-            .bind(recipe.repo_id).fetch_optional(pool).await?;
+            .bind(recipe.author_id)
+            .fetch_optional(pool)
+            .await?;
+        let repo_info: Option<(String, i64)> =
+            sqlx::query_as("SELECT name, owner_id FROM repositories WHERE id = ?")
+                .bind(recipe.repo_id)
+                .fetch_optional(pool)
+                .await?;
         let (repo_name, owner_id) = repo_info.unwrap_or(("unknown".into(), 0));
         let owner: Option<(String,)> = sqlx::query_as("SELECT username FROM users WHERE id = ?")
-            .bind(owner_id).fetch_optional(pool).await?;
+            .bind(owner_id)
+            .fetch_optional(pool)
+            .await?;
 
         results.push(RecipeWithContext {
             author_username: author.map(|a| a.0).unwrap_or("unknown".into()),
@@ -1865,7 +2062,9 @@ pub async fn count_public_recipes(pool: &SqlitePool, query: &str) -> Result<i64>
         sqlx::query_as(
             "SELECT COUNT(*) FROM recipes r JOIN repositories rep ON r.repo_id = rep.id \
              WHERE r.is_public = 1 AND rep.is_private = 0",
-        ).fetch_one(pool).await?
+        )
+        .fetch_one(pool)
+        .await?
     } else {
         sqlx::query_as(
             "SELECT COUNT(*) FROM recipes r JOIN repositories rep ON r.repo_id = rep.id \
@@ -1878,10 +2077,13 @@ pub async fn count_public_recipes(pool: &SqlitePool, query: &str) -> Result<i64>
 
 pub async fn increment_replay_count(pool: &SqlitePool, recipe_id: i64) -> Result<()> {
     sqlx::query("UPDATE recipes SET replay_count = replay_count + 1 WHERE id = ?")
-        .bind(recipe_id).execute(pool).await?;
+        .bind(recipe_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_recipe_replay(
     pool: &SqlitePool,
     recipe_id: i64,
@@ -1909,21 +2111,37 @@ pub async fn create_recipe_replay(
 #[cfg(feature = "saas")]
 pub async fn get_subscription(pool: &SqlitePool, user_id: i64) -> Result<Option<Subscription>> {
     let sub = sqlx::query_as::<_, Subscription>("SELECT * FROM subscriptions WHERE user_id = ?")
-        .bind(user_id).fetch_optional(pool).await?;
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
     Ok(sub)
 }
 
 #[cfg(feature = "saas")]
-pub async fn get_subscription_by_stripe_customer(pool: &SqlitePool, stripe_customer_id: &str) -> Result<Option<Subscription>> {
-    let sub = sqlx::query_as::<_, Subscription>("SELECT * FROM subscriptions WHERE stripe_customer_id = ?")
-        .bind(stripe_customer_id).fetch_optional(pool).await?;
+pub async fn get_subscription_by_stripe_customer(
+    pool: &SqlitePool,
+    stripe_customer_id: &str,
+) -> Result<Option<Subscription>> {
+    let sub = sqlx::query_as::<_, Subscription>(
+        "SELECT * FROM subscriptions WHERE stripe_customer_id = ?",
+    )
+    .bind(stripe_customer_id)
+    .fetch_optional(pool)
+    .await?;
     Ok(sub)
 }
 
 #[cfg(feature = "saas")]
-pub async fn get_subscription_by_stripe_subscription(pool: &SqlitePool, stripe_subscription_id: &str) -> Result<Option<Subscription>> {
-    let sub = sqlx::query_as::<_, Subscription>("SELECT * FROM subscriptions WHERE stripe_subscription_id = ?")
-        .bind(stripe_subscription_id).fetch_optional(pool).await?;
+pub async fn get_subscription_by_stripe_subscription(
+    pool: &SqlitePool,
+    stripe_subscription_id: &str,
+) -> Result<Option<Subscription>> {
+    let sub = sqlx::query_as::<_, Subscription>(
+        "SELECT * FROM subscriptions WHERE stripe_subscription_id = ?",
+    )
+    .bind(stripe_subscription_id)
+    .fetch_optional(pool)
+    .await?;
     Ok(sub)
 }
 
@@ -1981,8 +2199,11 @@ pub async fn update_subscription_status(
         "UPDATE subscriptions SET status = ?, current_period_end = ?, updated_at = datetime('now') \
          WHERE stripe_subscription_id = ?",
     )
-    .bind(status).bind(current_period_end).bind(stripe_subscription_id)
-    .execute(pool).await?;
+    .bind(status)
+    .bind(current_period_end)
+    .bind(stripe_subscription_id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -2016,7 +2237,8 @@ pub async fn get_user_plan(pool: &SqlitePool, user_id: i64) -> Result<String> {
 #[cfg(feature = "saas")]
 pub async fn count_founding_members(pool: &SqlitePool) -> Result<i64> {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM founding_members")
-        .fetch_one(pool).await?;
+        .fetch_one(pool)
+        .await?;
     Ok(count)
 }
 
@@ -2031,7 +2253,9 @@ pub async fn claim_founding_slot(pool: &SqlitePool, user_id: i64) -> Result<Opti
          WHERE (SELECT COUNT(*) FROM founding_members) < 100 \
          RETURNING *",
     )
-    .bind(user_id).fetch_optional(pool).await?;
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
     Ok(result.map(|fm| fm.slot_number))
 }
 
@@ -2075,51 +2299,65 @@ pub async fn get_founding_member_slot_by_username(
 
 pub async fn is_user_admin(pool: &SqlitePool, user_id: i64) -> Result<bool> {
     let (val,): (bool,) = sqlx::query_as("SELECT is_admin FROM users WHERE id = ?")
-        .bind(user_id).fetch_one(pool).await?;
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
     Ok(val)
 }
 
 pub async fn is_user_disabled(pool: &SqlitePool, user_id: i64) -> Result<bool> {
     let (val,): (bool,) = sqlx::query_as("SELECT is_disabled FROM users WHERE id = ?")
-        .bind(user_id).fetch_one(pool).await?;
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
     Ok(val)
 }
 
 pub async fn set_user_admin(pool: &SqlitePool, user_id: i64, is_admin: bool) -> Result<()> {
     sqlx::query("UPDATE users SET is_admin = ?, updated_at = datetime('now') WHERE id = ?")
-        .bind(is_admin).bind(user_id).execute(pool).await?;
+        .bind(is_admin)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
 pub async fn set_user_disabled(pool: &SqlitePool, user_id: i64, disabled: bool) -> Result<()> {
     sqlx::query("UPDATE users SET is_disabled = ?, updated_at = datetime('now') WHERE id = ?")
-        .bind(disabled).bind(user_id).execute(pool).await?;
+        .bind(disabled)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
 pub async fn list_all_users(pool: &SqlitePool) -> Result<Vec<User>> {
     let users = sqlx::query_as::<_, User>("SELECT * FROM users ORDER BY created_at DESC")
-        .fetch_all(pool).await?;
+        .fetch_all(pool)
+        .await?;
     Ok(users)
 }
 
 pub async fn count_users(pool: &SqlitePool) -> Result<i64> {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-        .fetch_one(pool).await?;
+        .fetch_one(pool)
+        .await?;
     Ok(count)
 }
 
 pub async fn count_repositories(pool: &SqlitePool) -> Result<i64> {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM repositories")
-        .fetch_one(pool).await?;
+        .fetch_one(pool)
+        .await?;
     Ok(count)
 }
 
 pub async fn count_private_repositories(pool: &SqlitePool, owner_id: i64) -> Result<i64> {
-    let (count,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM repositories WHERE owner_id = ? AND is_private = 1",
-    )
-    .bind(owner_id).fetch_one(pool).await?;
+    let (count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM repositories WHERE owner_id = ? AND is_private = 1")
+            .bind(owner_id)
+            .fetch_one(pool)
+            .await?;
     Ok(count)
 }
 
@@ -2130,7 +2368,9 @@ pub async fn count_private_repos_from_index(pool: &SqlitePool, owner_id: i64) ->
     let (count,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM repository_index WHERE owner_id = ? AND is_private = 1",
     )
-    .bind(owner_id).fetch_one(pool).await?;
+    .bind(owner_id)
+    .fetch_one(pool)
+    .await?;
     Ok(count)
 }
 
@@ -2139,7 +2379,8 @@ pub async fn subscription_breakdown(pool: &SqlitePool) -> Result<Vec<(String, i6
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT plan, COUNT(*) FROM subscriptions WHERE status = 'active' GROUP BY plan",
     )
-    .fetch_all(pool).await?;
+    .fetch_all(pool)
+    .await?;
     Ok(rows)
 }
 
@@ -2154,8 +2395,11 @@ pub async fn admin_override_plan(pool: &SqlitePool, user_id: i64, plan: &str) ->
            status = 'active', \
            updated_at = datetime('now')",
     )
-    .bind(user_id).bind(user_id).bind(plan)
-    .execute(pool).await?;
+    .bind(user_id)
+    .bind(user_id)
+    .bind(plan)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -2190,7 +2434,10 @@ pub async fn get_organization_by_slug(pool: &SqlitePool, slug: &str) -> Result<O
 }
 
 #[cfg(feature = "saas")]
-pub async fn list_user_organizations(pool: &SqlitePool, user_id: i64) -> Result<Vec<(Organization, String)>> {
+pub async fn list_user_organizations(
+    pool: &SqlitePool,
+    user_id: i64,
+) -> Result<Vec<(Organization, String)>> {
     let rows: Vec<(i64, String, String, i64, String, String, String)> = sqlx::query_as(
         "SELECT o.id, o.slug, o.display_name, o.created_by, o.created_at, o.updated_at, m.role \
          FROM organizations o \
@@ -2203,12 +2450,21 @@ pub async fn list_user_organizations(pool: &SqlitePool, user_id: i64) -> Result<
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, slug, display_name, created_by, created_at, updated_at, role)| {
-            (
-                Organization { id, slug, display_name, created_by, created_at, updated_at },
-                role,
-            )
-        })
+        .map(
+            |(id, slug, display_name, created_by, created_at, updated_at, role)| {
+                (
+                    Organization {
+                        id,
+                        slug,
+                        display_name,
+                        created_by,
+                        created_at,
+                        updated_at,
+                    },
+                    role,
+                )
+            },
+        )
         .collect())
 }
 
@@ -2248,13 +2504,12 @@ pub async fn get_org_membership(
 
 #[cfg(feature = "saas")]
 pub async fn is_org_member(pool: &SqlitePool, org_id: i64, user_id: i64) -> Result<bool> {
-    let (count,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM org_memberships WHERE org_id = ? AND user_id = ?",
-    )
-    .bind(org_id)
-    .bind(user_id)
-    .fetch_one(pool)
-    .await?;
+    let (count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM org_memberships WHERE org_id = ? AND user_id = ?")
+            .bind(org_id)
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
     Ok(count > 0)
 }
 
@@ -2283,12 +2538,35 @@ pub async fn list_org_members(pool: &SqlitePool, org_id: i64) -> Result<Vec<(Use
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, username, email, password_hash, display_name, is_admin, is_disabled, created_at, updated_at, role)| {
-            (
-                User { id, username, email, password_hash, display_name, is_admin, is_disabled, created_at, updated_at },
+        .map(
+            |(
+                id,
+                username,
+                email,
+                password_hash,
+                display_name,
+                is_admin,
+                is_disabled,
+                created_at,
+                updated_at,
                 role,
-            )
-        })
+            )| {
+                (
+                    User {
+                        id,
+                        username,
+                        email,
+                        password_hash,
+                        display_name,
+                        is_admin,
+                        is_disabled,
+                        created_at,
+                        updated_at,
+                    },
+                    role,
+                )
+            },
+        )
         .collect())
 }
 
@@ -2296,7 +2574,11 @@ pub async fn list_org_members(pool: &SqlitePool, org_id: i64) -> Result<Vec<(Use
 
 /// Look up which org owns a repository by owner/repo name.
 #[cfg(feature = "saas")]
-pub async fn lookup_repo_org(pool: &SqlitePool, owner_username: &str, repo_name: &str) -> Result<String> {
+pub async fn lookup_repo_org(
+    pool: &SqlitePool,
+    owner_username: &str,
+    repo_name: &str,
+) -> Result<String> {
     let (org_slug,): (String,) = sqlx::query_as(
         "SELECT org_slug FROM repository_index WHERE owner_username = ? AND repo_name = ?",
     )
@@ -2304,7 +2586,9 @@ pub async fn lookup_repo_org(pool: &SqlitePool, owner_username: &str, repo_name:
     .bind(repo_name)
     .fetch_optional(pool)
     .await?
-    .ok_or(OxigitError::NotFound("Repository not found in index".into()))?;
+    .ok_or(OxigitError::NotFound(
+        "Repository not found in index".into(),
+    ))?;
     Ok(org_slug)
 }
 
@@ -2341,7 +2625,10 @@ pub async fn register_repo_in_index(
 
 /// List repos owned by a user from the global index (for multi-tenant repo listing).
 #[cfg(feature = "saas")]
-pub async fn list_user_repos_from_index(pool: &SqlitePool, owner_id: i64) -> Result<Vec<crate::models::RepositoryIndexEntry>> {
+pub async fn list_user_repos_from_index(
+    pool: &SqlitePool,
+    owner_id: i64,
+) -> Result<Vec<crate::models::RepositoryIndexEntry>> {
     let rows = sqlx::query_as::<_, crate::models::RepositoryIndexEntry>(
         "SELECT id, org_slug, owner_id, owner_username, repo_name, description, is_private, created_at, updated_at \
          FROM repository_index WHERE owner_id = ? ORDER BY updated_at DESC",
@@ -2354,7 +2641,10 @@ pub async fn list_user_repos_from_index(pool: &SqlitePool, owner_id: i64) -> Res
 
 /// Search public repos from the global index (for multi-tenant explore page).
 #[cfg(feature = "saas")]
-pub async fn search_public_repos_from_index(pool: &SqlitePool, query: &str) -> Result<Vec<crate::models::RepositoryIndexEntry>> {
+pub async fn search_public_repos_from_index(
+    pool: &SqlitePool,
+    query: &str,
+) -> Result<Vec<crate::models::RepositoryIndexEntry>> {
     let rows = if query.is_empty() {
         sqlx::query_as::<_, crate::models::RepositoryIndexEntry>(
             "SELECT id, org_slug, owner_id, owner_username, repo_name, description, is_private, created_at, updated_at \

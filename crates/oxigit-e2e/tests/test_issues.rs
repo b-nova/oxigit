@@ -8,15 +8,22 @@ async fn create_and_list_issue() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("myproject", "test", false).await;
 
-    let resp = client.create_issue("alice", "myproject", "Bug report", "Something is broken").await;
+    let resp = client
+        .create_issue("alice", "myproject", "Bug report", "Something is broken")
+        .await;
     assert!(resp.status().is_success() || resp.status().is_redirection());
 
     let resp = client.list_issues("alice", "myproject", "open").await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Bug report"), "issue should appear in list: {body}");
+    assert!(
+        body.contains("Bug report"),
+        "issue should appear in list: {body}"
+    );
 }
 
 /// Test: view issue detail.
@@ -25,14 +32,29 @@ async fn view_issue_detail() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("myproject", "test", false).await;
-    client.create_issue("alice", "myproject", "Feature request", "Please add dark mode").await;
+    client
+        .create_issue(
+            "alice",
+            "myproject",
+            "Feature request",
+            "Please add dark mode",
+        )
+        .await;
 
     let resp = client.get_issue("alice", "myproject", 1).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Feature request"), "should show title: {body}");
-    assert!(body.contains("dark mode"), "should show description: {body}");
+    assert!(
+        body.contains("Feature request"),
+        "should show title: {body}"
+    );
+    assert!(
+        body.contains("dark mode"),
+        "should show description: {body}"
+    );
 }
 
 /// Test: add comment to issue.
@@ -41,16 +63,25 @@ async fn add_comment_to_issue() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("myproject", "test", false).await;
-    client.create_issue("alice", "myproject", "Discussion", "Let's discuss").await;
+    client
+        .create_issue("alice", "myproject", "Discussion", "Let's discuss")
+        .await;
 
-    let resp = client.add_issue_comment("alice", "myproject", 1, "Great idea!").await;
+    let resp = client
+        .add_issue_comment("alice", "myproject", 1, "Great idea!")
+        .await;
     assert!(resp.status().is_success() || resp.status().is_redirection());
 
     let resp = client.get_issue("alice", "myproject", 1).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Great idea!"), "comment should appear: {body}");
+    assert!(
+        body.contains("Great idea!"),
+        "comment should appear: {body}"
+    );
 }
 
 /// Test: close and reopen issue.
@@ -59,9 +90,13 @@ async fn close_and_reopen_issue() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("myproject", "test", false).await;
-    client.create_issue("alice", "myproject", "To close", "Will be closed").await;
+    client
+        .create_issue("alice", "myproject", "To close", "Will be closed")
+        .await;
 
     // Close
     let resp = client.close_issue("alice", "myproject", 1).await;
@@ -86,16 +121,27 @@ async fn issue_numbers_increment() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("myproject", "test", false).await;
 
-    client.create_issue("alice", "myproject", "Issue one", "").await;
-    client.create_issue("alice", "myproject", "Issue two", "").await;
-    client.create_issue("alice", "myproject", "Issue three", "").await;
+    client
+        .create_issue("alice", "myproject", "Issue one", "")
+        .await;
+    client
+        .create_issue("alice", "myproject", "Issue two", "")
+        .await;
+    client
+        .create_issue("alice", "myproject", "Issue three", "")
+        .await;
 
     let resp = client.get_issue("alice", "myproject", 3).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Issue three"), "issue #3 should exist: {body}");
+    assert!(
+        body.contains("Issue three"),
+        "issue #3 should exist: {body}"
+    );
 }
 
 /// Test: private repo issues not accessible without auth.
@@ -104,15 +150,22 @@ async fn private_repo_issues_denied() {
     let server = TestServer::start().await;
     let alice = server.client();
 
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     alice.create_repo("secret", "private", true).await;
-    alice.create_issue("alice", "secret", "Secret issue", "").await;
+    alice
+        .create_issue("alice", "secret", "Secret issue", "")
+        .await;
 
     let anon = server.client();
     let resp = anon.list_issues("alice", "secret", "open").await;
     let body = resp.text().await.unwrap();
     assert!(
-        body.contains("not found") || body.contains("Not found") || body.contains("error") || body.is_empty(),
+        body.contains("not found")
+            || body.contains("Not found")
+            || body.contains("error")
+            || body.is_empty(),
         "anonymous should not see private repo issues: {body}"
     );
 }

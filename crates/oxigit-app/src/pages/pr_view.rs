@@ -27,12 +27,8 @@ pub struct PrDetail {
 }
 
 #[server]
-async fn get_pr(
-    owner: String,
-    repo: String,
-    number: i64,
-) -> Result<PrDetail, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
+async fn get_pr(owner: String, repo: String, number: i64) -> Result<PrDetail, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -55,7 +51,12 @@ async fn get_pr(
         .map_err(sfn_err)?;
 
     let merged_by = if let Some(uid) = pr.merged_by {
-        Some(db::get_user_by_id(&control_pool, uid).await.map(|u| u.username).unwrap_or_default())
+        Some(
+            db::get_user_by_id(&control_pool, uid)
+                .await
+                .map(|u| u.username)
+                .unwrap_or_default(),
+        )
     } else {
         None
     };
@@ -77,12 +78,12 @@ async fn get_pr(
             })
             .collect();
 
-        let diff = git::branch_diff(&repo_path, &pr.target_branch, &pr.source_branch)
-            .unwrap_or_default();
+        let diff =
+            git::branch_diff(&repo_path, &pr.target_branch, &pr.source_branch).unwrap_or_default();
         let diff_html = super::render_diff(&diff);
 
-        let mergeable = git::can_merge(&repo_path, &pr.target_branch, &pr.source_branch)
-            .unwrap_or(false);
+        let mergeable =
+            git::can_merge(&repo_path, &pr.target_branch, &pr.source_branch).unwrap_or(false);
 
         (commits, diff_html, mergeable)
     } else {
@@ -112,12 +113,8 @@ async fn get_pr(
 }
 
 #[server]
-async fn merge_pr(
-    owner: String,
-    repo: String,
-    number: i64,
-) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
+async fn merge_pr(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
@@ -139,7 +136,10 @@ async fn merge_pr(
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
-    let message = format!("Merge pull request #{} from {}\n\n{}", pr.number, pr.source_branch, pr.title);
+    let message = format!(
+        "Merge pull request #{} from {}\n\n{}",
+        pr.number, pr.source_branch, pr.title
+    );
 
     git::merge_branches(&repo_path, &pr.target_branch, &pr.source_branch, &message)
         .map_err(sfn_err)?;
@@ -153,12 +153,8 @@ async fn merge_pr(
 }
 
 #[server]
-async fn close_pr(
-    owner: String,
-    repo: String,
-    number: i64,
-) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
+async fn close_pr(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -192,12 +188,15 @@ async fn get_pr_diff_review(
     repo: String,
     number: i64,
 ) -> Result<DiffReviewData, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_effective_llm_config};
+    use crate::server_fns::{
+        extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools, sfn_err,
+    };
     use oxigit_core::{db, git, llm, risk};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await;
-    let (llm_provider, api_key, model, base_url) = get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
+    let (llm_provider, api_key, model, base_url) =
+        get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
@@ -240,7 +239,8 @@ async fn get_pr_diff_review(
 
     // Auto-generate summary if LLM is configured and no cache exists
     let summary = if let Some(s) = cached {
-        let flags: Vec<RiskFlagInfo> = s.risk_flags
+        let flags: Vec<RiskFlagInfo> = s
+            .risk_flags
             .and_then(|f| serde_json::from_str(&f).ok())
             .unwrap_or_default();
         Some(DiffSummaryInfo {
@@ -249,11 +249,24 @@ async fn get_pr_diff_review(
             generated_by: s.generated_by,
         })
     } else if llm_available && !diff.is_empty() {
-        let config = llm::LlmConfig { provider: llm_provider.clone(), api_key, model: model.clone(), base_url };
+        let config = llm::LlmConfig {
+            provider: llm_provider.clone(),
+            api_key,
+            model: model.clone(),
+            base_url,
+        };
         match llm::generate_summary(&config, &diff, None).await {
             Ok(summary_text) => {
                 let flags_json = serde_json::to_string(&risk_flags).ok();
-                let _ = db::upsert_diff_summary(&pool, repo_db.id, &cache_key, &summary_text, flags_json.as_deref(), &model).await;
+                let _ = db::upsert_diff_summary(
+                    &pool,
+                    repo_db.id,
+                    &cache_key,
+                    &summary_text,
+                    flags_json.as_deref(),
+                    &model,
+                )
+                .await;
                 Some(DiffSummaryInfo {
                     summary: summary_text,
                     risk_flags: risk_flags.clone(),
@@ -279,7 +292,9 @@ async fn generate_pr_diff_summary(
     repo: String,
     number: i64,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_effective_llm_config};
+    use crate::server_fns::{
+        extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools, sfn_err,
+    };
     use oxigit_core::{db, git, llm, risk};
 
     let user = extract_session_user()
@@ -305,10 +320,15 @@ async fn generate_pr_diff_summary(
         .map_err(sfn_err)?;
 
     let repo_path = get_repo_path(&owner, &repo).await?;
-    let diff = git::branch_diff(&repo_path, &pr.target_branch, &pr.source_branch)
-        .map_err(sfn_err)?;
+    let diff =
+        git::branch_diff(&repo_path, &pr.target_branch, &pr.source_branch).map_err(sfn_err)?;
 
-    let config = llm::LlmConfig { provider, api_key, model: model.clone(), base_url };
+    let config = llm::LlmConfig {
+        provider,
+        api_key,
+        model: model.clone(),
+        base_url,
+    };
     let summary = llm::generate_summary(&config, &diff, None)
         .await
         .map_err(sfn_err)?;
@@ -325,9 +345,16 @@ async fn generate_pr_diff_summary(
     let flags_json = serde_json::to_string(&risk_flags).ok();
     let cache_key = format!("pr-{}-diff", number);
 
-    db::upsert_diff_summary(&pool, repo_db.id, &cache_key, &summary, flags_json.as_deref(), &model)
-        .await
-        .map_err(sfn_err)?;
+    db::upsert_diff_summary(
+        &pool,
+        repo_db.id,
+        &cache_key,
+        &summary,
+        flags_json.as_deref(),
+        &model,
+    )
+    .await
+    .map_err(sfn_err)?;
 
     Ok(DiffSummaryInfo {
         summary,
@@ -341,7 +368,13 @@ pub fn PrViewPage() -> impl IntoView {
     let params = use_params_map();
     let owner = move || params.read().get("owner").unwrap_or_default();
     let repo = move || params.read().get("repo").unwrap_or_default();
-    let number = move || params.read().get("number").and_then(|n| n.parse::<i64>().ok()).unwrap_or(0);
+    let number = move || {
+        params
+            .read()
+            .get("number")
+            .and_then(|n| n.parse::<i64>().ok())
+            .unwrap_or(0)
+    };
 
     let pr = Resource::new(
         move || (owner(), repo(), number()),
@@ -479,8 +512,8 @@ pub fn PrViewPage() -> impl IntoView {
                                     {move || {
                                         Suspend::new(async move {
                                             let review_data = pr_review.await.ok();
-                                            let has_risk = review_data.as_ref().map_or(false, |r| !r.risk_flags.is_empty());
-                                            let has_summary = review_data.as_ref().map_or(false, |r| r.cached_summary.is_some());
+                                            let has_risk = review_data.as_ref().is_some_and(|r| !r.risk_flags.is_empty());
+                                            let has_summary = review_data.as_ref().is_some_and(|r| r.cached_summary.is_some());
 
                                             if !has_risk && !has_summary {
                                                 return view! { <div></div> }.into_any();

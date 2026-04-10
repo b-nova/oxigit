@@ -33,9 +33,21 @@ pub async fn send_inquiry_notification(
     );
 
     let email_msg = Message::builder()
-        .from(config.from.parse().map_err(|e| OxigitError::Email(format!("Invalid from address: {e}")))?)
-        .reply_to(email.parse().map_err(|e| OxigitError::Email(format!("Invalid reply-to address: {e}")))?)
-        .to(config.contact_email.parse().map_err(|e| OxigitError::Email(format!("Invalid contact address: {e}")))?)
+        .from(
+            config
+                .from
+                .parse()
+                .map_err(|e| OxigitError::Email(format!("Invalid from address: {e}")))?,
+        )
+        .reply_to(
+            email
+                .parse()
+                .map_err(|e| OxigitError::Email(format!("Invalid reply-to address: {e}")))?,
+        )
+        .to(config
+            .contact_email
+            .parse()
+            .map_err(|e| OxigitError::Email(format!("Invalid contact address: {e}")))?)
         .subject(subject)
         .header(ContentType::TEXT_PLAIN)
         .body(body)
@@ -49,7 +61,9 @@ pub async fn send_inquiry_notification(
         .credentials(creds)
         .build();
 
-    mailer.send(email_msg).await
+    mailer
+        .send(email_msg)
+        .await
         .map_err(|e| OxigitError::Email(format!("Failed to send email: {e}")))?;
 
     Ok(())

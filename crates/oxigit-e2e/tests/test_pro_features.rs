@@ -28,7 +28,10 @@ async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str, secr
         .await
         .unwrap();
     let status = resp.status().as_u16();
-    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {status}");
+    assert!(
+        status == 200 || status == 404,
+        "Stripe webhook returned unexpected status: {status}"
+    );
 }
 
 /// Helper: simulate claiming a founding member slot via Stripe webhook.
@@ -57,7 +60,10 @@ async fn upgrade_to_founding(client: &TestClient, base_url: &str, user_id: &str,
         .await
         .unwrap();
     let status = resp.status().as_u16();
-    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {status}");
+    assert!(
+        status == 200 || status == 404,
+        "Stripe webhook returned unexpected status: {status}"
+    );
 }
 
 /// Test: free user can access AI Hub page (not blocked).
@@ -66,7 +72,9 @@ async fn free_user_ai_hub_preview_mode() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
 
@@ -91,7 +99,9 @@ async fn free_user_metrics_limited() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
 
@@ -116,7 +126,9 @@ async fn free_user_prompt_history_limited() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
 
@@ -142,7 +154,9 @@ async fn pro_user_can_access_ai_hub() {
     let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
 
     client.login("alice", "password123").await;
@@ -167,10 +181,15 @@ async fn pro_user_can_access_ai_hub() {
 async fn founding_member_badge_on_profile() {
     let secret = "whsec_founding_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !server.has_saas().await { eprintln!("SKIPPED: saas"); return; }
+    if !server.has_saas().await {
+        eprintln!("SKIPPED: saas");
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_founding(&client, &client.base_url.clone(), "1", secret).await;
 
     let resp = client
@@ -194,7 +213,9 @@ async fn pro_badge_on_profile() {
     let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
 
     let resp = client
@@ -215,10 +236,15 @@ async fn pro_badge_on_profile() {
 #[tokio::test]
 async fn free_user_no_badge_on_profile() {
     let server = TestServer::start().await;
-    if !server.has_saas().await { eprintln!("SKIPPED: saas"); return; }
+    if !server.has_saas().await {
+        eprintln!("SKIPPED: saas");
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
 
     let resp = client
         .client
@@ -228,7 +254,9 @@ async fn free_user_no_badge_on_profile() {
         .unwrap();
     let body = resp.text().await.unwrap();
     assert!(
-        !body.contains("Founding Member") && !body.contains("badge-flat") && !body.contains("badge-team"),
+        !body.contains("Founding Member")
+            && !body.contains("badge-flat")
+            && !body.contains("badge-team"),
         "Free user should have no plan badge: {body}"
     );
 }
@@ -237,7 +265,10 @@ async fn free_user_no_badge_on_profile() {
 #[tokio::test]
 async fn register_with_plan_redirects_to_pricing() {
     let server = TestServer::start_with_stripe("whsec_plan_redirect_test").await;
-    if !server.has_saas().await { eprintln!("SKIPPED: saas"); return; }
+    if !server.has_saas().await {
+        eprintln!("SKIPPED: saas");
+        return;
+    }
     let client = server.client();
 
     // Register with plan=flat via the server function API
@@ -250,7 +281,10 @@ async fn register_with_plan_redirects_to_pricing() {
         .unwrap();
 
     let resp = no_redirect_client
-        .post(format!("{}/api/register_user14969902946520757255", client.base_url))
+        .post(format!(
+            "{}/api/register_user14969902946520757255",
+            client.base_url
+        ))
         .header("content-type", "application/x-www-form-urlencoded")
         .body("username=alice&email=alice%40test.com&password=password123&plan=flat")
         .send()
@@ -259,9 +293,15 @@ async fn register_with_plan_redirects_to_pricing() {
 
     // Leptos redirects return a 3xx with Location header
     let status = resp.status().as_u16();
-    let location = resp.headers().get("location").and_then(|v| v.to_str().ok()).unwrap_or("");
+    let location = resp
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     assert!(
-        (status >= 300 && status < 400 && location.contains("/pricing") && location.contains("checkout=flat"))
+        ((300..400).contains(&status)
+            && location.contains("/pricing")
+            && location.contains("checkout=flat"))
             || location.contains("pricing"),
         "register with plan=flat should redirect to pricing checkout, got status={status} location={location}"
     );
@@ -273,7 +313,9 @@ async fn free_user_commit_view_shows_badge_hides_prompt() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
 

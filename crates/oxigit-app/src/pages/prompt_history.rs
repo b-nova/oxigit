@@ -14,15 +14,18 @@ async fn fetch_prompt_history(
     query: String,
     page: i64,
 ) -> Result<PromptHistoryResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
-    use oxigit_core::{db, entitlements::AiAccessLevel, git};
     use super::PromptCommitInfo;
+    use crate::server_fns::{
+        extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools, sfn_err,
+    };
+    use oxigit_core::{db, entitlements::AiAccessLevel, git};
 
     const PAGE_SIZE: i64 = 20;
     const FREE_LIMIT: i64 = 10;
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let current_user = extract_session_user().await
+    let current_user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let ai_access = get_ai_access_level(current_user.id).await?;

@@ -5,20 +5,20 @@ pub mod billing;
 pub mod billing_details;
 pub mod blame;
 pub mod commit_view;
-pub mod contact;
-pub mod conflict_resolve;
-pub mod explore;
 pub mod commits;
+pub mod conflict_resolve;
+pub mod contact;
+pub mod explore;
 pub mod home;
 pub mod issue_list;
 pub mod issue_new;
 pub mod issue_view;
-pub mod pr_list;
-pub mod pr_new;
-pub mod pr_view;
 pub mod login;
 pub mod org_new;
 pub mod org_settings;
+pub mod pr_list;
+pub mod pr_new;
+pub mod pr_view;
 pub mod pricing;
 pub mod profile_edit;
 pub mod prompt_detail;
@@ -26,11 +26,11 @@ pub mod prompt_history;
 pub mod recipe_detail;
 pub mod recipe_marketplace;
 pub mod recipe_share;
-pub mod repo_metrics;
 pub mod register;
 pub mod remix_guide;
 pub mod repo_blob;
 pub mod repo_list;
+pub mod repo_metrics;
 pub mod repo_new;
 pub mod repo_settings;
 pub mod repo_view;
@@ -52,18 +52,38 @@ pub fn render_diff(diff: &str) -> String {
                 html.push_str("</pre></div>");
             }
             in_file = true;
-            let _ = write!(html, r#"<div class="diff-file"><div class="diff-header">{}</div><pre class="diff-content">"#, escape_html(line));
+            let _ = write!(
+                html,
+                r#"<div class="diff-file"><div class="diff-header">{}</div><pre class="diff-content">"#,
+                escape_html(line)
+            );
         } else if line.starts_with("+++") || line.starts_with("---") {
-            let _ = write!(html, r#"<span class="diff-meta">{}</span>"#, escape_html(line));
+            let _ = write!(
+                html,
+                r#"<span class="diff-meta">{}</span>"#,
+                escape_html(line)
+            );
             html.push('\n');
         } else if line.starts_with("@@") {
-            let _ = write!(html, r#"<span class="diff-hunk">{}</span>"#, escape_html(line));
+            let _ = write!(
+                html,
+                r#"<span class="diff-hunk">{}</span>"#,
+                escape_html(line)
+            );
             html.push('\n');
         } else if line.starts_with('+') {
-            let _ = write!(html, r#"<span class="diff-add">{}</span>"#, escape_html(line));
+            let _ = write!(
+                html,
+                r#"<span class="diff-add">{}</span>"#,
+                escape_html(line)
+            );
             html.push('\n');
         } else if line.starts_with('-') {
-            let _ = write!(html, r#"<span class="diff-del">{}</span>"#, escape_html(line));
+            let _ = write!(
+                html,
+                r#"<span class="diff-del">{}</span>"#,
+                escape_html(line)
+            );
             html.push('\n');
         } else {
             let _ = write!(html, "{}", escape_html(line));
@@ -79,7 +99,9 @@ pub fn render_diff(diff: &str) -> String {
 
 #[cfg(feature = "ssr")]
 pub fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -514,7 +536,7 @@ pub struct OrgListItem {
 pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
+        use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -541,7 +563,7 @@ pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
 pub async fn switch_org(slug: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, set_session_org};
+        use crate::server_fns::{extract_session_user, get_control_pool, set_session_org, sfn_err};
         use oxigit_core::db;
 
         let user = extract_session_user()

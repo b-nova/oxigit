@@ -8,11 +8,19 @@ async fn test_blame_shows_ai_attribution() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("blamerepo", "Blame test", false).await;
 
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "blamerepo");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "blamerepo",
+    );
     let dest = server.data_dir.path().join("clone-blame");
     git_clone_http(&clone_url, &dest);
     init_repo_config(&dest);
@@ -45,9 +53,16 @@ async fn test_blame_shows_ai_attribution() {
     // Should show the file content
     assert!(body.contains("app.rs"), "Expected file name in blame view");
     // Should show AI attribution
-    assert!(body.contains("claude-code"), "Expected AI tool badge in blame, got: {}", &body[..500.min(body.len())]);
+    assert!(
+        body.contains("claude-code"),
+        "Expected AI tool badge in blame, got: {}",
+        &body[..500.min(body.len())]
+    );
     // Should show percentage stats
-    assert!(body.contains("AI-generated") || body.contains("AI lines"), "Expected AI stats in blame view");
+    assert!(
+        body.contains("AI-generated") || body.contains("AI lines"),
+        "Expected AI stats in blame view"
+    );
 }
 
 /// Test that blame page works for files with no AI-generated lines.
@@ -58,7 +73,9 @@ async fn test_blame_no_ai_lines() {
 
     client.register("bob", "bob@test.com", "password123").await;
     client.login("bob", "password123").await;
-    client.create_repo("humanrepo", "Human-only repo", false).await;
+    client
+        .create_repo("humanrepo", "Human-only repo", false)
+        .await;
 
     let clone_url = http_clone_url(&server.base_url, "bob", "password123", "bob", "humanrepo");
     let dest = server.data_dir.path().join("clone-human");
@@ -72,7 +89,10 @@ async fn test_blame_no_ai_lines() {
     let resp = client.get("/bob/humanrepo/blame/manual.rs").await;
     let body = resp.text().await.unwrap();
     assert!(body.contains("manual.rs"), "Expected file name");
-    assert!(body.contains("No AI-generated lines"), "Expected no-AI message for human-only file");
+    assert!(
+        body.contains("No AI-generated lines"),
+        "Expected no-AI message for human-only file"
+    );
 }
 
 /// Test that blob view includes a Blame button.
@@ -81,7 +101,9 @@ async fn test_blob_view_has_blame_button() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("carol", "carol@test.com", "password123").await;
+    client
+        .register("carol", "carol@test.com", "password123")
+        .await;
     client.login("carol", "password123").await;
     client.create_repo("btnrepo", "Button test", false).await;
 
@@ -97,5 +119,8 @@ async fn test_blob_view_has_blame_button() {
     let resp = client.get("/carol/btnrepo/blob/code.rs").await;
     let body = resp.text().await.unwrap();
     assert!(body.contains("Blame"), "Expected Blame button in blob view");
-    assert!(body.contains("/carol/btnrepo/blame/code.rs"), "Expected Blame link URL");
+    assert!(
+        body.contains("/carol/btnrepo/blame/code.rs"),
+        "Expected Blame link URL"
+    );
 }

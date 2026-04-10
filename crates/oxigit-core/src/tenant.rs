@@ -98,10 +98,7 @@ impl TenantPoolManager {
 
         // Create directory structure
         tokio::fs::create_dir_all(&repos_dir).await.map_err(|e| {
-            OxigitError::InvalidInput(format!(
-                "Failed to create tenant directory: {}",
-                e
-            ))
+            OxigitError::InvalidInput(format!("Failed to create tenant directory: {}", e))
         })?;
 
         // Create and migrate tenant database

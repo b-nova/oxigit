@@ -7,17 +7,17 @@ use crate::components::icons::{IconFile, IconFolder, IconLock, IconSearch};
 use crate::components::loading::{LoadingCard, LoadingPage};
 
 #[allow(unused_imports)]
-use super::{CommitSummary, RepoInfo, RepoTreeResponse, TreeEntryInfo};
+use super::ai_hub::{AiHubResponse, fetch_ai_hub};
 #[allow(unused_imports)]
-use super::ai_hub::{fetch_ai_hub, AiHubResponse};
+use super::commits::{CommitEntry, fetch_commits};
 #[allow(unused_imports)]
-use super::commits::{fetch_commits, CommitEntry};
+use super::issue_list::{IssueSummary, list_issues};
 #[allow(unused_imports)]
-use super::issue_list::{list_issues, IssueSummary};
-#[allow(unused_imports)]
-use super::pr_list::{list_prs, PrSummary};
+use super::pr_list::{PrSummary, list_prs};
 #[allow(unused_imports)]
 use super::{AiMetadataInfo, AiTimelineEntry, SessionListItem, SessionListResponse, ViolationInfo};
+#[allow(unused_imports)]
+use super::{CommitSummary, RepoInfo, RepoTreeResponse, TreeEntryInfo};
 
 #[server]
 async fn fetch_repo_tree(
@@ -26,7 +26,9 @@ async fn fetch_repo_tree(
     git_ref: String,
     path: String,
 ) -> Result<RepoTreeResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_base_url, get_repo_path, get_repo_pools};
+    use crate::server_fns::{
+        extract_session_user, get_base_url, get_repo_path, get_repo_pools, sfn_err,
+    };
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -44,8 +46,7 @@ async fn fetch_repo_tree(
 
     let repo_path = get_repo_path(&owner, &repo).await?;
 
-    let branches = git::list_branches(&repo_path)
-        .unwrap_or_default();
+    let branches = git::list_branches(&repo_path).unwrap_or_default();
 
     let effective_ref = if git_ref.is_empty() {
         git::default_branch(&repo_path)
@@ -74,8 +75,13 @@ async fn fetch_repo_tree(
         });
 
     // Fork info (before moving fields out of repo_db)
-    let forked_from = match db::get_fork_source_cross(&control_pool, &pool, &repo_db).await.unwrap_or(None) {
-        Some((fork_owner, fork_repo)) => Some(format!("{}/{}", fork_owner.username, fork_repo.name)),
+    let forked_from = match db::get_fork_source_cross(&control_pool, &pool, &repo_db)
+        .await
+        .unwrap_or(None)
+    {
+        Some((fork_owner, fork_repo)) => {
+            Some(format!("{}/{}", fork_owner.username, fork_repo.name))
+        }
         None => None,
     };
 
@@ -95,15 +101,15 @@ async fn fetch_repo_tree(
         let readme_names = ["README.md", "readme.md", "Readme.md"];
         let mut readme = None;
         for name in &readme_names {
-            if let Ok(content) = git::read_blob(&repo_path, &effective_ref, name) {
-                if let Ok(text) = String::from_utf8(content) {
-                    use pulldown_cmark::{Parser, html::push_html};
-                    let parser = Parser::new(&text);
-                    let mut output = String::new();
-                    push_html(&mut output, parser);
-                    readme = Some(output);
-                    break;
-                }
+            if let Ok(content) = git::read_blob(&repo_path, &effective_ref, name)
+                && let Ok(text) = String::from_utf8(content)
+            {
+                use pulldown_cmark::{Parser, html::push_html};
+                let parser = Parser::new(&text);
+                let mut output = String::new();
+                push_html(&mut output, parser);
+                readme = Some(output);
+                break;
             }
         }
         let remix = if let Ok(content) = git::read_blob(&repo_path, &effective_ref, "REMIX.md") {
@@ -113,8 +119,12 @@ async fn fetch_repo_tree(
                 let mut output = String::new();
                 push_html(&mut output, parser);
                 Some(output)
-            } else { None }
-        } else { None };
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         (readme, remix)
     } else {
         (None, None)
@@ -137,9 +147,11 @@ async fn fetch_repo_tree(
 
 #[server]
 async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_data_dir, get_repo_path, get_repo_pools};
     #[cfg(feature = "saas")]
     use crate::server_fns::is_multi_tenant;
+    use crate::server_fns::{
+        extract_session_user, get_data_dir, get_repo_path, get_repo_pools, sfn_err,
+    };
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
@@ -149,7 +161,9 @@ async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
 
     // Check if source repo has REMIX.md before forking
     let source_path = get_repo_path(&owner, &repo).await?;
-    let default_ref = git::default_branch(&source_path).unwrap_or(None).unwrap_or_else(|| "main".to_string());
+    let default_ref = git::default_branch(&source_path)
+        .unwrap_or(None)
+        .unwrap_or_else(|| "main".to_string());
     let has_remix = git::read_blob(&source_path, &default_ref, "REMIX.md").is_ok();
 
     #[cfg(feature = "saas")]
@@ -161,10 +175,10 @@ async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
         let tenant_mgr = get_tenant_mgr().await?;
         let fork_repos_dir = tenant_mgr.tenant_repos_dir(&user.username);
         // Ensure the fork target directory exists
-        std::fs::create_dir_all(&fork_repos_dir)
-            .map_err(sfn_err)?;
+        std::fs::create_dir_all(&fork_repos_dir).map_err(sfn_err)?;
         // Get the fork user's tenant pool for inserting the forked repo record
-        let fork_pool = tenant_mgr.get_tenant_pool(&user.username)
+        let fork_pool = tenant_mgr
+            .get_tenant_pool(&user.username)
             .await
             .map_err(sfn_err)?;
         // Source repo: resolve from source tenant
@@ -178,9 +192,10 @@ async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
             return Err(ServerFnError::new("Repository not found"));
         }
         // Clone bare repo on disk
-        let fork_path = fork_repos_dir.join(&user.username).join(format!("{}.git", repo));
-        std::fs::create_dir_all(fork_path.parent().unwrap())
-            .map_err(sfn_err)?;
+        let fork_path = fork_repos_dir
+            .join(&user.username)
+            .join(format!("{}.git", repo));
+        std::fs::create_dir_all(fork_path.parent().unwrap()).map_err(sfn_err)?;
         let output = std::process::Command::new("git")
             .args(["clone", "--bare"])
             .arg(&source_path)
@@ -188,15 +203,35 @@ async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
             .output()
             .map_err(sfn_err)?;
         if !output.status.success() {
-            return Err(ServerFnError::new(format!("Failed to fork: {}", String::from_utf8_lossy(&output.stderr))));
+            return Err(ServerFnError::new(format!(
+                "Failed to fork: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
         }
         // Insert into fork user's tenant DB
         let forked = db::create_repository_in_tenant(
-            &fork_pool, user.id, &user.username, &repo, &source_repo.description, false, &fork_repos_dir,
-        ).await.map_err(sfn_err)?;
+            &fork_pool,
+            user.id,
+            &user.username,
+            &repo,
+            &source_repo.description,
+            false,
+            &fork_repos_dir,
+        )
+        .await
+        .map_err(sfn_err)?;
         // Register in global index
-        db::register_repo_in_index(&_control_pool, &user.username, user.id, &user.username, &repo, &source_repo.description, false)
-            .await.map_err(sfn_err)?;
+        db::register_repo_in_index(
+            &_control_pool,
+            &user.username,
+            user.id,
+            &user.username,
+            &repo,
+            &source_repo.description,
+            false,
+        )
+        .await
+        .map_err(sfn_err)?;
         if has_remix {
             leptos_axum::redirect(&format!("/{}/{}/remix-guide", user.username, forked.name));
         } else {
@@ -515,20 +550,20 @@ fn CodeTabContent(
                     <div class="setup-section">
                         <h3 class="setup-heading">"…or create a new repository on the command line"</h3>
                         <pre class="setup-code">{format!("\
-echo \"# {}\" >> README.md\n\
-git init\n\
-git add README.md\n\
-git commit -m \"first commit\"\n\
-git branch -M main\n\
-git remote add origin {}\n\
-git push -u origin main", display_repo_name, new_repo_url)}</pre>
+    echo \"# {}\" >> README.md\n\
+    git init\n\
+    git add README.md\n\
+    git commit -m \"first commit\"\n\
+    git branch -M main\n\
+    git remote add origin {}\n\
+    git push -u origin main", display_repo_name, new_repo_url)}</pre>
                     </div>
                     <div class="setup-section">
                         <h3 class="setup-heading">"…or push an existing repository from the command line"</h3>
                         <pre class="setup-code">{format!("\
-git remote add origin {}\n\
-git branch -M main\n\
-git push -u origin main", existing_repo_url)}</pre>
+    git remote add origin {}\n\
+    git branch -M main\n\
+    git push -u origin main", existing_repo_url)}</pre>
                     </div>
                 </div>
             }.into_any()

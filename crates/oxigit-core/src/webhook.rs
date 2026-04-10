@@ -66,8 +66,8 @@ pub async fn fire_push_webhooks(
         if let Some(ref secret) = hook.secret {
             use hmac::{Hmac, Mac};
             use sha2::Sha256;
-            let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
-                .expect("HMAC key error");
+            let mut mac =
+                Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC key error");
             mac.update(body.as_bytes());
             let signature = hex::encode(mac.finalize().into_bytes());
             request = request.header("X-Oxigit-Signature", format!("sha256={}", signature));
@@ -75,11 +75,7 @@ pub async fn fire_push_webhooks(
 
         match request.body(body.clone()).send().await {
             Ok(resp) => {
-                tracing::info!(
-                    "Webhook fired to {} — status {}",
-                    hook.url,
-                    resp.status()
-                );
+                tracing::info!("Webhook fired to {} — status {}", hook.url, resp.status());
             }
             Err(e) => {
                 tracing::warn!("Webhook failed for {}: {}", hook.url, e);

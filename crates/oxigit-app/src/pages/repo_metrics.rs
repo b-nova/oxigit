@@ -12,11 +12,14 @@ async fn fetch_repo_metrics(
     owner: String,
     repo: String,
 ) -> Result<RepoMetricsResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
+    use crate::server_fns::{
+        extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools, sfn_err,
+    };
     use oxigit_core::{db, entitlements::AiAccessLevel, git, risk, vibe};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let current_user = extract_session_user().await
+    let current_user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let ai_access = get_ai_access_level(current_user.id).await?;
@@ -50,7 +53,8 @@ async fn fetch_repo_metrics(
     };
 
     let mut session_scores = Vec::new();
-    let mut tool_scores: std::collections::HashMap<String, (i64, u64)> = std::collections::HashMap::new();
+    let mut tool_scores: std::collections::HashMap<String, (i64, u64)> =
+        std::collections::HashMap::new();
     let mut total_prompts = 0i64;
     let mut all_risk_flags: Vec<super::RiskFlagInfo> = Vec::new();
 
@@ -58,44 +62,54 @@ async fn fetch_repo_metrics(
         let shas = sd.commit_shas.clone();
 
         // Get diff stats
-        let (lines_added, lines_deleted) = git::session_diff_stats(&repo_path, &shas).unwrap_or((0, 0));
+        let (lines_added, lines_deleted) =
+            git::session_diff_stats(&repo_path, &shas).unwrap_or((0, 0));
 
         // Get risk flags from cached summary or scan
         let cache_key = format!("session-{}", sd.session_id);
-        let risk_count = if let Ok(Some(summary)) = db::get_diff_summary(&pool, repo_db.id, &cache_key).await {
-            if let Some(flags_json) = &summary.risk_flags {
-                let flags: Vec<super::RiskFlagInfo> = serde_json::from_str(flags_json).unwrap_or_default();
-                let count = flags.len();
-                all_risk_flags.extend(flags);
-                count
-            } else { 0 }
-        } else {
-            // Compute from diff if no cached summary
-            let diff = git::session_aggregate_diff(&repo_path, &shas).unwrap_or_default();
-            if !diff.is_empty() {
-                let flags = risk::scan_diff(&diff);
-                let count = flags.len();
-                for f in flags {
-                    all_risk_flags.push(super::RiskFlagInfo {
-                        category: f.category.label().to_string(),
-                        message: f.message,
-                        file: f.file,
-                    });
+        let risk_count =
+            if let Ok(Some(summary)) = db::get_diff_summary(&pool, repo_db.id, &cache_key).await {
+                if let Some(flags_json) = &summary.risk_flags {
+                    let flags: Vec<super::RiskFlagInfo> =
+                        serde_json::from_str(flags_json).unwrap_or_default();
+                    let count = flags.len();
+                    all_risk_flags.extend(flags);
+                    count
+                } else {
+                    0
                 }
-                count
-            } else { 0 }
-        };
+            } else {
+                // Compute from diff if no cached summary
+                let diff = git::session_aggregate_diff(&repo_path, &shas).unwrap_or_default();
+                if !diff.is_empty() {
+                    let flags = risk::scan_diff(&diff);
+                    let count = flags.len();
+                    for f in flags {
+                        all_risk_flags.push(super::RiskFlagInfo {
+                            category: f.category.label().to_string(),
+                            message: f.message,
+                            file: f.file,
+                        });
+                    }
+                    count
+                } else {
+                    0
+                }
+            };
 
         // Get file count from commit metadata
         let files_touched = {
             let metas = db::get_ai_metadata_by_session(&pool, repo_db.id, &sd.session_id)
-                .await.unwrap_or_default();
+                .await
+                .unwrap_or_default();
             let mut files: Vec<String> = Vec::new();
             for meta in &metas {
-                if let Some(ref fj) = meta.ai_files_touched {
-                    if let Ok(fs) = serde_json::from_str::<Vec<String>>(fj) {
-                        for f in fs {
-                            if !files.contains(&f) { files.push(f); }
+                if let Some(ref fj) = meta.ai_files_touched
+                    && let Ok(fs) = serde_json::from_str::<Vec<String>>(fj)
+                {
+                    for f in fs {
+                        if !files.contains(&f) {
+                            files.push(f);
                         }
                     }
                 }

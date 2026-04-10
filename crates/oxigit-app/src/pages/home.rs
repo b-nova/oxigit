@@ -3,11 +3,11 @@ use leptos::prelude::*;
 use crate::components::icons::{IconBranch, IconPlus, IconRepo, IconRust, IconSearch, IconServer};
 
 #[allow(unused_imports)]
-use super::{get_current_user, DashboardData, RecentSessionInfo, RiskCountInfo, ToolUsageInfo};
+use super::{DashboardData, RecentSessionInfo, RiskCountInfo, ToolUsageInfo, get_current_user};
 
 #[server]
 async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
     use oxigit_core::{db, vibe};
     use std::collections::HashMap;
 
@@ -25,7 +25,10 @@ async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
         .await
         .map_err(sfn_err)?
         .into_iter()
-        .map(|t| ToolUsageInfo { ai_tool: t.ai_tool, commit_count: t.commit_count })
+        .map(|t| ToolUsageInfo {
+            ai_tool: t.ai_tool,
+            commit_count: t.commit_count,
+        })
         .collect();
 
     let recent_sessions = db::get_user_recent_sessions(&pool, user.id, 5)
@@ -49,11 +52,11 @@ async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
 
     let mut risk_map: HashMap<String, i64> = HashMap::new();
     for row in &risk_rows {
-        if let Some(ref flags_json) = row.risk_flags {
-            if let Ok(flags) = serde_json::from_str::<Vec<super::RiskFlagInfo>>(flags_json) {
-                for flag in flags {
-                    *risk_map.entry(flag.category).or_insert(0) += 1;
-                }
+        if let Some(ref flags_json) = row.risk_flags
+            && let Ok(flags) = serde_json::from_str::<Vec<super::RiskFlagInfo>>(flags_json)
+        {
+            for flag in flags {
+                *risk_map.entry(flag.category).or_insert(0) += 1;
             }
         }
     }
@@ -65,7 +68,8 @@ async fn fetch_dashboard() -> Result<Option<DashboardData>, ServerFnError> {
     // Compute user-level vibe score from recent sessions
     let user_vibe_score = {
         let session_data = db::get_user_session_data(&pool, user.id)
-            .await.unwrap_or_default();
+            .await
+            .unwrap_or_default();
         if session_data.is_empty() {
             None
         } else {

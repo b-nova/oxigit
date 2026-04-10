@@ -1,7 +1,7 @@
 mod harness;
 
 use harness::{
-    create_commit, git_clone_http, git_push, http_clone_url, init_repo_config, TestServer,
+    TestServer, create_commit, git_clone_http, git_push, http_clone_url, init_repo_config,
 };
 
 #[tokio::test]
@@ -9,7 +9,9 @@ async fn test_private_repo_not_visible_to_other_user() {
     let server = TestServer::start().await;
 
     let alice = server.client();
-    let _ = alice.register("alice", "alice@example.com", "password123").await;
+    let _ = alice
+        .register("alice", "alice@example.com", "password123")
+        .await;
     let _ = alice.create_repo("secret", "Private repo", true).await;
 
     let bob = server.client();
@@ -20,8 +22,12 @@ async fn test_private_repo_not_visible_to_other_user() {
     let body = resp.text().await.unwrap();
     // Should either be an error status, contain error text, or be empty (denied)
     assert!(
-        !status.is_success() || body.contains("error") || body.contains("Error")
-            || body.contains("not found") || body.contains("Not found") || body.is_empty(),
+        !status.is_success()
+            || body.contains("error")
+            || body.contains("Error")
+            || body.contains("not found")
+            || body.contains("Not found")
+            || body.is_empty(),
         "bob should not see alice's private repo, got status={status} body={body}"
     );
 }
@@ -31,8 +37,12 @@ async fn test_public_repo_visible_to_others() {
     let server = TestServer::start().await;
 
     let alice = server.client();
-    let _ = alice.register("alice", "alice@example.com", "password123").await;
-    let _ = alice.create_repo("public-project", "Public repo", false).await;
+    let _ = alice
+        .register("alice", "alice@example.com", "password123")
+        .await;
+    let _ = alice
+        .create_repo("public-project", "Public repo", false)
+        .await;
 
     let clone_dir = server.data_dir.path().join("alice_clone");
     let url = http_clone_url(
@@ -70,7 +80,9 @@ async fn test_private_repo_visible_to_owner() {
     let server = TestServer::start().await;
 
     let alice = server.client();
-    let _ = alice.register("alice", "alice@example.com", "password123").await;
+    let _ = alice
+        .register("alice", "alice@example.com", "password123")
+        .await;
     let _ = alice.create_repo("my-secret", "Private", true).await;
 
     let clone_dir = server.data_dir.path().join("owner_clone");

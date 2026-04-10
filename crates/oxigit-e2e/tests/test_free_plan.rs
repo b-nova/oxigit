@@ -19,10 +19,14 @@ async fn require_saas(server: &TestServer) -> bool {
 #[tokio::test]
 async fn free_plan_unlimited_public_repos() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
 
     for i in 1..=6 {
@@ -49,10 +53,14 @@ async fn free_plan_unlimited_public_repos() {
 #[tokio::test]
 async fn free_plan_allows_5_private_repos() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
 
     for i in 1..=5 {
@@ -75,10 +83,14 @@ async fn free_plan_allows_5_private_repos() {
 #[tokio::test]
 async fn free_plan_blocks_6th_private_repo() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
 
     // Create the allowed 5 private repos
@@ -109,10 +121,14 @@ async fn free_plan_blocks_6th_private_repo() {
 #[tokio::test]
 async fn free_plan_ai_commit_badges() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
 
@@ -148,10 +164,14 @@ async fn free_plan_ai_commit_badges() {
 #[tokio::test]
 async fn free_plan_ai_hub_preview() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
 
@@ -198,10 +218,14 @@ async fn free_plan_ai_hub_preview() {
 #[tokio::test]
 async fn free_plan_30_day_metrics() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
 
@@ -247,10 +271,14 @@ async fn free_plan_30_day_metrics() {
 #[tokio::test]
 async fn free_plan_recent_prompts_10() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
 
@@ -306,10 +334,14 @@ async fn free_plan_recent_prompts_10() {
 #[tokio::test]
 async fn free_plan_subscription_page() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
 
     let resp = client

@@ -1,8 +1,8 @@
 mod harness;
 
 use harness::{
-    create_commit, git_clone_http, git_pull, git_push, http_clone_url, http_clone_url_no_auth,
-    TestServer,
+    TestServer, create_commit, git_clone_http, git_pull, git_push, http_clone_url,
+    http_clone_url_no_auth,
 };
 use std::path::Path;
 
@@ -11,7 +11,9 @@ async fn test_clone_empty_public_repo() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
     let _ = client.create_repo("empty-repo", "Empty", false).await;
 
     let clone_dir = server.data_dir.path().join("clone_empty");
@@ -31,12 +33,20 @@ async fn test_push_and_clone_http() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
     let _ = client.create_repo("myproject", "Test project", false).await;
 
     // Clone with auth
     let clone1 = server.data_dir.path().join("clone1");
-    let url = http_clone_url(&server.base_url, "alice", "password123", "alice", "myproject");
+    let url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "myproject",
+    );
     let output = git_clone_http(&url, &clone1);
     assert!(
         output.status.success(),
@@ -79,10 +89,18 @@ async fn test_push_and_pull_http() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
     let _ = client.create_repo("pulltest", "Pull test", false).await;
 
-    let url = http_clone_url(&server.base_url, "alice", "password123", "alice", "pulltest");
+    let url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "pulltest",
+    );
 
     // Clone twice
     let clone1 = server.data_dir.path().join("pull_clone1");
@@ -123,12 +141,18 @@ async fn test_push_wrong_user_http() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
-    let _ = client.create_repo("alice-repo", "Alice's repo", false).await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
+    let _ = client
+        .create_repo("alice-repo", "Alice's repo", false)
+        .await;
 
     // Register bob
     let client2 = server.client();
-    let _ = client2.register("bob", "bob@example.com", "password123").await;
+    let _ = client2
+        .register("bob", "bob@example.com", "password123")
+        .await;
 
     // Clone alice's repo as bob (public, so clone works)
     let clone_dir = server.data_dir.path().join("bob_clone");
@@ -159,7 +183,9 @@ async fn test_clone_public_repo_no_auth() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
     let _ = client.create_repo("public-repo", "Public", false).await;
 
     // Push some content first (need auth for push)
@@ -195,7 +221,9 @@ async fn test_clone_private_repo_no_auth() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
     let _ = client.create_repo("private-repo", "Private", true).await;
 
     // Clone without auth — should fail

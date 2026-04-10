@@ -37,23 +37,17 @@ pub struct AdminDashboardData {
 
 #[server]
 async fn get_admin_dashboard() -> Result<AdminDashboardData, ServerFnError> {
-    use crate::server_fns::{sfn_err, get_data_dir, get_pool, require_admin};
+    use crate::server_fns::{get_data_dir, get_pool, require_admin, sfn_err};
     use oxigit_core::db;
 
     require_admin().await?;
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
 
-    let user_count = db::count_users(&pool)
-        .await
-        .map_err(sfn_err)?;
-    let repo_count = db::count_repositories(&pool)
-        .await
-        .map_err(sfn_err)?;
+    let user_count = db::count_users(&pool).await.map_err(sfn_err)?;
+    let repo_count = db::count_repositories(&pool).await.map_err(sfn_err)?;
     #[cfg(feature = "saas")]
-    let subscription_breakdown = db::subscription_breakdown(&pool)
-        .await
-        .map_err(sfn_err)?;
+    let subscription_breakdown = db::subscription_breakdown(&pool).await.map_err(sfn_err)?;
     #[cfg(not(feature = "saas"))]
     let subscription_breakdown = vec![];
 
@@ -86,9 +80,7 @@ async fn get_admin_dashboard() -> Result<AdminDashboardData, ServerFnError> {
     };
 
     // Fetch all users with their plans
-    let all_users = db::list_all_users(&pool)
-        .await
-        .map_err(sfn_err)?;
+    let all_users = db::list_all_users(&pool).await.map_err(sfn_err)?;
 
     let mut users = Vec::with_capacity(all_users.len());
     for u in all_users {
@@ -132,7 +124,7 @@ async fn get_admin_dashboard() -> Result<AdminDashboardData, ServerFnError> {
 
 #[server]
 async fn admin_toggle_disabled(user_id: i64, disabled: bool) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, get_pool, require_admin};
+    use crate::server_fns::{get_pool, require_admin, sfn_err};
     use oxigit_core::db;
 
     require_admin().await?;
@@ -161,7 +153,9 @@ async fn admin_set_plan(user_id: i64, plan: String) -> Result<(), ServerFnError>
     #[cfg(not(feature = "saas"))]
     {
         let _ = (user_id, plan);
-        return Err(ServerFnError::new("Plan management requires the SaaS edition"));
+        Err(ServerFnError::new(
+            "Plan management requires the SaaS edition",
+        ))
     }
 }
 

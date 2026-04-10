@@ -10,7 +10,9 @@ async fn commit_history_shows_commits() {
     let tmp = tempfile::tempdir().unwrap();
 
     // Setup: register, create repo, push commits
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("myrepo", "test repo", false).await;
 
     let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "myrepo");
@@ -26,8 +28,14 @@ async fn commit_history_shows_commits() {
     let resp = client.fetch_commits("alice", "myrepo").await;
     let body = resp.text().await.unwrap();
 
-    assert!(body.contains("First commit"), "should contain first commit message");
-    assert!(body.contains("Second commit"), "should contain second commit message");
+    assert!(
+        body.contains("First commit"),
+        "should contain first commit message"
+    );
+    assert!(
+        body.contains("Second commit"),
+        "should contain second commit message"
+    );
 }
 
 /// Test: commit history returns empty for repo with no commits.
@@ -43,7 +51,10 @@ async fn commit_history_empty_repo() {
     let body = resp.text().await.unwrap();
 
     // Should succeed but return empty list
-    assert!(!body.contains("error") || body.contains("[]"), "should not error for empty repo");
+    assert!(
+        !body.contains("error") || body.contains("[]"),
+        "should not error for empty repo"
+    );
 }
 
 /// Test: cannot view commits of private repo without auth.
@@ -52,7 +63,9 @@ async fn commit_history_private_repo_denied() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("carol", "carol@test.com", "password123").await;
+    client
+        .register("carol", "carol@test.com", "password123")
+        .await;
     client.create_repo("secret", "private repo", true).await;
 
     // New client without session

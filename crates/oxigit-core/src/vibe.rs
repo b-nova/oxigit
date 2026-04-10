@@ -2,8 +2,6 @@
 ///
 /// Computes a 0–100 quality score for an AI coding session based on
 /// efficiency, risk, churn, scope, and revert status.
-
-/// Raw metrics collected from a session's commits and diffs.
 pub struct SessionMetrics {
     pub commit_count: usize,
     pub prompt_count: usize,
@@ -88,7 +86,7 @@ pub fn grade_from_score(score: u8) -> char {
 }
 
 fn clamp(v: f64) -> f64 {
-    v.max(0.0).min(1.0)
+    v.clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
@@ -139,7 +137,11 @@ mod tests {
             was_reverted: false,
         };
         let s = compute_vibe_score(&m);
-        assert!(s.score >= 40 && s.score <= 80, "Expected B/C grade, got score={}", s.score);
+        assert!(
+            s.score >= 40 && s.score <= 80,
+            "Expected B/C grade, got score={}",
+            s.score
+        );
     }
 
     #[test]

@@ -10,7 +10,9 @@ async fn remix_fork_redirects_to_guide() {
 
     // Alice creates a repo with REMIX.md
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     alice.create_repo("starter", "starter project", false).await;
 
     let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "starter");
@@ -49,7 +51,9 @@ async fn remix_guide_shows_content_and_clone_url() {
     let tmp = tempfile::tempdir().unwrap();
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     alice.create_repo("starter", "starter project", false).await;
 
     let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "starter");
@@ -95,7 +99,9 @@ async fn fork_without_remix_md_skips_guide() {
     let tmp = tempfile::tempdir().unwrap();
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     alice.create_repo("plain", "no remix", false).await;
 
     let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "plain");
@@ -127,10 +133,20 @@ async fn remix_guide_renders_markdown_html() {
     let tmp = tempfile::tempdir().unwrap();
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
-    alice.create_repo("template", "template project", false).await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
+    alice
+        .create_repo("template", "template project", false)
+        .await;
 
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "template");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "template",
+    );
     let repo_dir = tmp.path().join("template");
     git_clone_http(&clone_url, &repo_dir);
     init_repo_config(&repo_dir);

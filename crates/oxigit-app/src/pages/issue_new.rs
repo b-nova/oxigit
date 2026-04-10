@@ -10,7 +10,7 @@ async fn create_issue(
     title: String,
     description: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -38,7 +38,10 @@ pub fn IssueNewPage() -> impl IntoView {
 
     let create_action = ServerAction::<CreateIssue>::new();
     let error = move || {
-        create_action.value().get().and_then(|r| r.err().map(|e| e.to_string()))
+        create_action
+            .value()
+            .get()
+            .and_then(|r| r.err().map(|e| e.to_string()))
     };
 
     view! {

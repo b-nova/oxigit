@@ -33,14 +33,21 @@ pub fn scan_diff(diff: &str) -> Vec<RiskFlag> {
     let mut current_file: Option<String> = None;
 
     // Compile patterns once
-    let re_api_key = Regex::new(r#"(?i)(api[_-]?key|secret[_-]?key|auth[_-]?token|password)\s*[:=]\s*["'][^"']{8,}"#).unwrap();
+    let re_api_key = Regex::new(
+        r#"(?i)(api[_-]?key|secret[_-]?key|auth[_-]?token|password)\s*[:=]\s*["'][^"']{8,}"#,
+    )
+    .unwrap();
     let re_hardcoded_secret = Regex::new(r"(AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|sk-[a-zA-Z0-9]{32,}|-----BEGIN (RSA |EC )?PRIVATE KEY)").unwrap();
-    let re_sql_inject = Regex::new(r#"(?i)format!\s*\(\s*"[^"]*(?:SELECT|INSERT|UPDATE|DELETE|DROP)[^"]*\{"#).unwrap();
+    let re_sql_inject =
+        Regex::new(r#"(?i)format!\s*\(\s*"[^"]*(?:SELECT|INSERT|UPDATE|DELETE|DROP)[^"]*\{"#)
+            .unwrap();
     let re_eval = Regex::new(r"(?i)\b(eval|exec)\s*\(").unwrap();
     let re_unsafe = Regex::new(r"\bunsafe\s*\{").unwrap();
     let re_todo = Regex::new(r"(?i)\b(TODO|FIXME|HACK|XXX|WORKAROUND)\b").unwrap();
-    let re_pub_removed = Regex::new(r"^pub\s+(fn|struct|enum|trait|type|const|static)\s+\w+").unwrap();
-    let re_export_removed = Regex::new(r"^export\s+(function|const|let|class|default|type|interface)\s+").unwrap();
+    let re_pub_removed =
+        Regex::new(r"^pub\s+(fn|struct|enum|trait|type|const|static)\s+\w+").unwrap();
+    let re_export_removed =
+        Regex::new(r"^export\s+(function|const|let|class|default|type|interface)\s+").unwrap();
 
     for line in diff.lines() {
         // Track current file
@@ -72,7 +79,9 @@ pub fn scan_diff(diff: &str) -> Vec<RiskFlag> {
             if re_hardcoded_secret.is_match(content) {
                 flags.push(RiskFlag {
                     category: RiskCategory::Security,
-                    message: "Detected known secret pattern (AWS key, GitHub token, or private key)".into(),
+                    message:
+                        "Detected known secret pattern (AWS key, GitHub token, or private key)"
+                            .into(),
                     file: file.clone(),
                 });
             }

@@ -36,7 +36,10 @@ async fn upgrade_to_team(client: &TestClient, base_url: &str, user_id: &str, sec
         .await
         .unwrap();
     let status = resp.status().as_u16();
-    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {status}");
+    assert!(
+        status == 200 || status == 404,
+        "Stripe webhook returned unexpected status: {status}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -47,10 +50,14 @@ async fn upgrade_to_team(client: &TestClient, base_url: &str, user_id: &str, sec
 #[tokio::test]
 async fn create_org_succeeds() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
 
     let resp = client.create_org("myorg", "My Organization").await;
@@ -65,10 +72,14 @@ async fn create_org_succeeds() {
 #[tokio::test]
 async fn list_my_orgs_shows_created_org() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_org("devteam", "Dev Team").await;
 
@@ -93,10 +104,14 @@ async fn list_my_orgs_shows_created_org() {
 #[tokio::test]
 async fn switch_org_works_for_member() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_org("myorg", "My Org").await;
 
@@ -113,10 +128,14 @@ async fn switch_org_works_for_member() {
 #[tokio::test]
 async fn switch_org_blocked_for_non_member() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     alice.login("alice", "password123").await;
     alice.create_org("secretorg", "Secret Org").await;
 
@@ -140,10 +159,14 @@ async fn switch_org_blocked_for_non_member() {
 #[tokio::test]
 async fn free_user_blocked_from_org_settings() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_org("myorg", "My Org").await;
 
@@ -161,10 +184,14 @@ async fn free_user_blocked_from_org_settings() {
 async fn team_user_can_access_org_settings() {
     let secret = "whsec_team_settings_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_org("myorg", "My Org").await;
@@ -190,10 +217,14 @@ async fn team_user_can_access_org_settings() {
 async fn non_member_blocked_from_org_settings() {
     let secret = "whsec_team_non_member_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&alice, &alice.base_url.clone(), "1", secret).await;
     alice.login("alice", "password123").await;
     alice.create_org("secretorg", "Secret Org").await;
@@ -220,10 +251,14 @@ async fn non_member_blocked_from_org_settings() {
 async fn owner_can_add_member() {
     let secret = "whsec_team_add_member_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&alice, &alice.base_url.clone(), "1", secret).await;
     alice.login("alice", "password123").await;
     alice.create_org("devteam", "Dev Team").await;
@@ -254,10 +289,14 @@ async fn owner_can_add_member() {
 async fn owner_can_add_admin() {
     let secret = "whsec_team_add_admin_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&alice, &alice.base_url.clone(), "1", secret).await;
     alice.login("alice", "password123").await;
     alice.create_org("devteam", "Dev Team").await;
@@ -284,10 +323,14 @@ async fn owner_can_add_admin() {
 async fn owner_can_remove_member() {
     let secret = "whsec_team_remove_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&alice, &alice.base_url.clone(), "1", secret).await;
     alice.login("alice", "password123").await;
     alice.create_org("devteam", "Dev Team").await;
@@ -325,10 +368,14 @@ async fn owner_can_remove_member() {
 async fn owner_cannot_remove_self() {
     let secret = "whsec_team_remove_self_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&alice, &alice.base_url.clone(), "1", secret).await;
     alice.login("alice", "password123").await;
     alice.create_org("devteam", "Dev Team").await;
@@ -347,10 +394,14 @@ async fn owner_cannot_remove_self() {
 async fn non_owner_cannot_add_member() {
     let secret = "whsec_team_non_owner_add_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&alice, &alice.base_url.clone(), "1", secret).await;
     alice.login("alice", "password123").await;
     alice.create_org("devteam", "Dev Team").await;
@@ -364,7 +415,9 @@ async fn non_owner_cannot_add_member() {
 
     // Register charlie
     let charlie = server.client();
-    charlie.register("charlie", "charlie@test.com", "password123").await;
+    charlie
+        .register("charlie", "charlie@test.com", "password123")
+        .await;
 
     // Bob (member, not owner) tries to add charlie
     bob.login("bob", "password123").await;
@@ -381,10 +434,14 @@ async fn non_owner_cannot_add_member() {
 async fn non_owner_cannot_remove_member() {
     let secret = "whsec_team_non_owner_rm_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&alice, &alice.base_url.clone(), "1", secret).await;
     alice.login("alice", "password123").await;
     alice.create_org("devteam", "Dev Team").await;
@@ -394,7 +451,9 @@ async fn non_owner_cannot_remove_member() {
     upgrade_to_team(&bob, &bob.base_url.clone(), "2", secret).await;
 
     let charlie = server.client();
-    charlie.register("charlie", "charlie@test.com", "password123").await;
+    charlie
+        .register("charlie", "charlie@test.com", "password123")
+        .await;
 
     // Alice adds bob and charlie
     alice.add_org_member("devteam", "bob", "member").await;
@@ -414,10 +473,14 @@ async fn non_owner_cannot_remove_member() {
 #[tokio::test]
 async fn free_user_blocked_from_add_member() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_org("myorg", "My Org").await;
 
@@ -438,10 +501,14 @@ async fn free_user_blocked_from_add_member() {
 #[tokio::test]
 async fn free_user_blocked_from_remove_member() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_org("myorg", "My Org").await;
 
@@ -459,10 +526,14 @@ async fn free_user_blocked_from_remove_member() {
 async fn add_nonexistent_user_fails() {
     let secret = "whsec_team_nonexist_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&alice, &alice.base_url.clone(), "1", secret).await;
     alice.login("alice", "password123").await;
     alice.create_org("devteam", "Dev Team").await;
@@ -480,10 +551,14 @@ async fn add_nonexistent_user_fails() {
 async fn added_member_can_list_and_switch_org() {
     let secret = "whsec_team_member_access_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&alice, &alice.base_url.clone(), "1", secret).await;
     alice.login("alice", "password123").await;
     alice.create_org("devteam", "Dev Team").await;
@@ -518,10 +593,14 @@ async fn added_member_can_list_and_switch_org() {
 async fn org_settings_page_shows_members() {
     let secret = "whsec_team_page_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_team(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_org("myorg", "My Org").await;

@@ -10,10 +10,18 @@ async fn fork_public_repo() {
 
     // Alice creates a repo with content
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     alice.create_repo("original", "the original", false).await;
 
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "original");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "original",
+    );
     let repo_dir = tmp.path().join("original");
     git_clone_http(&clone_url, &repo_dir);
     init_repo_config(&repo_dir);
@@ -35,12 +43,18 @@ async fn fork_public_repo() {
     // Bob should now have the repo in their list
     let resp = bob.list_repos().await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("original"), "forked repo should appear in bob's repos: {body}");
+    assert!(
+        body.contains("original"),
+        "forked repo should appear in bob's repos: {body}"
+    );
 
     // Bob should be able to browse the forked repo
     let resp = bob.fetch_repo_tree("bob", "original", "", "").await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("README.md"), "forked repo should have the file: {body}");
+    assert!(
+        body.contains("README.md"),
+        "forked repo should have the file: {body}"
+    );
 }
 
 /// Test: cannot fork your own repo.
@@ -49,7 +63,9 @@ async fn cannot_fork_own_repo() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("myrepo", "mine", false).await;
 
     let resp = client.fork_repo("alice", "myrepo").await;
@@ -67,7 +83,9 @@ async fn cannot_fork_private_repo() {
     let server = TestServer::start().await;
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     alice.create_repo("secret", "private", true).await;
 
     let bob = server.client();
@@ -88,11 +106,19 @@ async fn fork_shows_source_info() {
     let tmp = tempfile::tempdir().unwrap();
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     alice.create_repo("upstream", "the source", false).await;
 
     // Push a commit so the repo isn't empty
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "upstream");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "upstream",
+    );
     let repo_dir = tmp.path().join("upstream");
     git_clone_http(&clone_url, &repo_dir);
     init_repo_config(&repo_dir);

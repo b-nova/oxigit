@@ -36,6 +36,7 @@ pub fn ErrorDisplay(#[prop(into)] error: String) -> impl IntoView {
     } else {
         view! {
             <div class="flash flash-error">{error}</div>
-        }.into_any()
+        }
+        .into_any()
     }
 }

@@ -17,7 +17,9 @@ use crate::db;
 /// 4. Copy tenant data (repos, issues, PRs, etc.) into each tenant DB
 /// 5. Move git repo directories into tenant layout
 /// 6. Rename `oxigit.db` to `oxigit.db.bak`
-pub async fn migrate_legacy_to_multi_tenant(data_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn migrate_legacy_to_multi_tenant(
+    data_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     let legacy_path = data_dir.join("oxigit.db");
     if !legacy_path.exists() {
         return Err(format!("No oxigit.db found at {}", legacy_path.display()).into());
@@ -52,7 +54,9 @@ pub async fn migrate_legacy_to_multi_tenant(data_dir: &Path) -> Result<(), Box<d
 
     tracing::info!("Migrating {} users...", users.len());
 
-    for (id, username, email, password_hash, is_admin, is_disabled, created_at, updated_at) in &users {
+    for (id, username, email, password_hash, is_admin, is_disabled, created_at, updated_at) in
+        &users
+    {
         sqlx::query(
             "INSERT INTO users (id, username, email, password_hash, is_admin, is_disabled, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -134,12 +138,11 @@ pub async fn migrate_legacy_to_multi_tenant(data_dir: &Path) -> Result<(), Box<d
         tracing::info!("  Provisioning tenant for user '{}'...", username);
 
         // Create org if it doesn't exist yet
-        let existing_org: Option<(i64,)> = sqlx::query_as(
-            "SELECT id FROM organizations WHERE slug = ?",
-        )
-        .bind(username)
-        .fetch_optional(&control)
-        .await?;
+        let existing_org: Option<(i64,)> =
+            sqlx::query_as("SELECT id FROM organizations WHERE slug = ?")
+                .bind(username)
+                .fetch_optional(&control)
+                .await?;
 
         let org_id = if let Some((id,)) = existing_org {
             id
@@ -183,7 +186,17 @@ pub async fn migrate_legacy_to_multi_tenant(data_dir: &Path) -> Result<(), Box<d
         .fetch_all(&legacy)
         .await?;
 
-        for (repo_id, name, description, is_private, forked_from, has_remix, created_at, updated_at) in &repos {
+        for (
+            repo_id,
+            name,
+            description,
+            is_private,
+            forked_from,
+            has_remix,
+            created_at,
+            updated_at,
+        ) in &repos
+        {
             sqlx::query(
                 "INSERT INTO repositories (id, owner_id, name, description, is_private, forked_from, has_remix, created_at, updated_at) \
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -333,7 +346,21 @@ async fn copy_repo_data(
     .bind(repo_id)
     .fetch_all(legacy)
     .await?;
-    for (id, repo_id, number, title, description, author_id, source_branch, target_branch, status, merged_by, created_at, updated_at) in rows {
+    for (
+        id,
+        repo_id,
+        number,
+        title,
+        description,
+        author_id,
+        source_branch,
+        target_branch,
+        status,
+        merged_by,
+        created_at,
+        updated_at,
+    ) in rows
+    {
         sqlx::query(
             "INSERT INTO pull_requests (id, repo_id, number, title, description, author_id, source_branch, target_branch, status, merged_by, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -352,7 +379,8 @@ async fn copy_repo_data(
     .bind(repo_id)
     .fetch_all(legacy)
     .await?;
-    for (id, repo_id, number, title, description, author_id, status, created_at, updated_at) in rows {
+    for (id, repo_id, number, title, description, author_id, status, created_at, updated_at) in rows
+    {
         sqlx::query(
             "INSERT INTO issues (id, repo_id, number, title, description, author_id, status, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -363,12 +391,10 @@ async fn copy_repo_data(
     }
 
     // Issue comments (via issue IDs)
-    let issue_ids: Vec<(i64,)> = sqlx::query_as(
-        "SELECT id FROM issues WHERE repo_id = ?",
-    )
-    .bind(repo_id)
-    .fetch_all(legacy)
-    .await?;
+    let issue_ids: Vec<(i64,)> = sqlx::query_as("SELECT id FROM issues WHERE repo_id = ?")
+        .bind(repo_id)
+        .fetch_all(legacy)
+        .await?;
     for (issue_id,) in issue_ids {
         let comments: Vec<(i64, i64, i64, String, String)> = sqlx::query_as(
             "SELECT id, issue_id, author_id, body, created_at FROM issue_comments WHERE issue_id = ?",
@@ -391,7 +417,19 @@ async fn copy_repo_data(
     .bind(repo_id)
     .fetch_all(legacy)
     .await?;
-    for (id, repo_id, commit_sha, ai_tool, ai_model, ai_prompt, ai_session_id, ai_files_touched, ai_prompt_index, created_at) in rows {
+    for (
+        id,
+        repo_id,
+        commit_sha,
+        ai_tool,
+        ai_model,
+        ai_prompt,
+        ai_session_id,
+        ai_files_touched,
+        ai_prompt_index,
+        created_at,
+    ) in rows
+    {
         sqlx::query(
             "INSERT INTO ai_commit_metadata (id, repo_id, commit_sha, ai_tool, ai_model, ai_prompt, ai_session_id, ai_files_touched, ai_prompt_index, created_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -432,7 +470,16 @@ async fn copy_repo_data(
             .execute(tenant).await?;
     }
 
-    let rows: Vec<(i64, i64, String, String, Option<String>, String, String, String)> = sqlx::query_as(
+    let rows: Vec<(
+        i64,
+        i64,
+        String,
+        String,
+        Option<String>,
+        String,
+        String,
+        String,
+    )> = sqlx::query_as(
         "SELECT id, repo_id, commit_sha, branch, preview_url, status, created_at, updated_at \
          FROM deploy_previews WHERE repo_id = ?",
     )
@@ -481,7 +528,20 @@ async fn copy_repo_data(
     .bind(repo_id)
     .fetch_all(legacy)
     .await?;
-    for (id, repo_id, commit_sha, ref_name, rule_category, action_taken, severity, message, file_path, pushed_by, created_at) in rows {
+    for (
+        id,
+        repo_id,
+        commit_sha,
+        ref_name,
+        rule_category,
+        action_taken,
+        severity,
+        message,
+        file_path,
+        pushed_by,
+        created_at,
+    ) in rows
+    {
         sqlx::query(
             "INSERT INTO guardrail_violations (id, repo_id, commit_sha, ref_name, rule_category, action_taken, severity, message, file_path, pushed_by, created_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -492,12 +552,10 @@ async fn copy_repo_data(
     }
 
     // Recipes
-    let recipes: Vec<(i64,)> = sqlx::query_as(
-        "SELECT id FROM recipes WHERE repo_id = ?",
-    )
-    .bind(repo_id)
-    .fetch_all(legacy)
-    .await?;
+    let recipes: Vec<(i64,)> = sqlx::query_as("SELECT id FROM recipes WHERE repo_id = ?")
+        .bind(repo_id)
+        .fetch_all(legacy)
+        .await?;
 
     let rows: Vec<(i64, i64, String, i64, String, String, String, Option<String>, Option<String>, i64, i64, Option<i64>, i64, bool, String)> = sqlx::query_as(
         "SELECT id, repo_id, session_id, author_id, title, description, ai_tool, ai_model, tags, prompt_count, file_count, vibe_score, replay_count, is_public, created_at \
@@ -506,7 +564,24 @@ async fn copy_repo_data(
     .bind(repo_id)
     .fetch_all(legacy)
     .await?;
-    for (id, repo_id, session_id, author_id, title, description, ai_tool, ai_model, tags, prompt_count, file_count, vibe_score, replay_count, is_public, created_at) in rows {
+    for (
+        id,
+        repo_id,
+        session_id,
+        author_id,
+        title,
+        description,
+        ai_tool,
+        ai_model,
+        tags,
+        prompt_count,
+        file_count,
+        vibe_score,
+        replay_count,
+        is_public,
+        created_at,
+    ) in rows
+    {
         sqlx::query(
             "INSERT INTO recipes (id, repo_id, session_id, author_id, title, description, ai_tool, ai_model, tags, prompt_count, file_count, vibe_score, replay_count, is_public, created_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -526,7 +601,18 @@ async fn copy_repo_data(
         .bind(recipe_id)
         .fetch_all(legacy)
         .await?;
-        for (id, recipe_id, step_order, prompt_text, prompt_index, commit_message, files_json, diff_text, created_at) in steps {
+        for (
+            id,
+            recipe_id,
+            step_order,
+            prompt_text,
+            prompt_index,
+            commit_message,
+            files_json,
+            diff_text,
+            created_at,
+        ) in steps
+        {
             sqlx::query(
                 "INSERT INTO recipe_steps (id, recipe_id, step_order, prompt_text, prompt_index, commit_message, files_json, diff_text, created_at) \
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -543,7 +629,19 @@ async fn copy_repo_data(
         .bind(recipe_id)
         .fetch_all(legacy)
         .await?;
-        for (id, recipe_id, user_id, target_repo_id, target_branch, mode, status, steps_applied, error_message, created_at) in replays {
+        for (
+            id,
+            recipe_id,
+            user_id,
+            target_repo_id,
+            target_branch,
+            mode,
+            status,
+            steps_applied,
+            error_message,
+            created_at,
+        ) in replays
+        {
             sqlx::query(
                 "INSERT INTO recipe_replays (id, recipe_id, user_id, target_repo_id, target_branch, mode, status, steps_applied, error_message, created_at) \
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -562,7 +660,21 @@ async fn copy_repo_data(
     .bind(repo_id)
     .fetch_all(legacy)
     .await?;
-    for (id, repo_id, user_id, operation_type, target_ref, source_ref, merge_base, auto_tree, context_json, status, created_at, updated_at) in &conflicts {
+    for (
+        id,
+        repo_id,
+        user_id,
+        operation_type,
+        target_ref,
+        source_ref,
+        merge_base,
+        auto_tree,
+        context_json,
+        status,
+        created_at,
+        updated_at,
+    ) in &conflicts
+    {
         sqlx::query(
             "INSERT INTO merge_conflicts (id, repo_id, user_id, operation_type, target_ref, source_ref, merge_base, auto_tree, context_json, status, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -579,7 +691,16 @@ async fn copy_repo_data(
         .bind(conflict_id)
         .fetch_all(legacy)
         .await?;
-        for (id, merge_conflict_id, file_path, conflict_type, resolution, resolved_content, resolved_at) in files {
+        for (
+            id,
+            merge_conflict_id,
+            file_path,
+            conflict_type,
+            resolution,
+            resolved_content,
+            resolved_at,
+        ) in files
+        {
             sqlx::query(
                 "INSERT INTO merge_conflict_files (id, merge_conflict_id, file_path, conflict_type, resolution, resolved_content, resolved_at) \
                  VALUES (?, ?, ?, ?, ?, ?, ?)",

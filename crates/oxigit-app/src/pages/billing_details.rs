@@ -18,7 +18,9 @@ pub struct InvoiceInfo {
 async fn fetch_invoices() -> Result<Vec<InvoiceInfo>, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_stripe_config};
+        use crate::server_fns::{
+            extract_session_user, get_control_pool, get_stripe_config, sfn_err,
+        };
         use oxigit_core::{billing, db};
 
         let user = extract_session_user()

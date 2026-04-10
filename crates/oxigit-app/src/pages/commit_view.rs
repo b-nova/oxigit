@@ -24,7 +24,9 @@ async fn fetch_commit_diff(
     repo: String,
     sha: String,
 ) -> Result<CommitDetail, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
+    use crate::server_fns::{
+        extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools, sfn_err,
+    };
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -39,8 +41,7 @@ async fn fetch_commit_diff(
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
-    let (commit_info, diff) = git::show_commit_diff(&repo_path, &sha)
-        .map_err(sfn_err)?;
+    let (commit_info, diff) = git::show_commit_diff(&repo_path, &sha).map_err(sfn_err)?;
 
     // Render diff as HTML with line coloring
     let diff_html = super::render_diff(&diff);
@@ -48,7 +49,9 @@ async fn fetch_commit_diff(
     // Fetch AI metadata — free users see tool/model badges, Flat+ sees full details
     use oxigit_core::entitlements::AiAccessLevel;
     let ai_access = match current_user.as_ref() {
-        Some(u) => get_ai_access_level(u.id).await.unwrap_or(AiAccessLevel::Limited),
+        Some(u) => get_ai_access_level(u.id)
+            .await
+            .unwrap_or(AiAccessLevel::Limited),
         None => AiAccessLevel::Limited,
     };
     let ai_metadata = {
@@ -64,14 +67,19 @@ async fn fetch_commit_diff(
                     ai_model: m.ai_model,
                     ai_prompt: if is_full { m.ai_prompt } else { None },
                     ai_session_id: if is_full { m.ai_session_id } else { None },
-                    ai_files_touched: m.ai_files_touched.and_then(|f| serde_json::from_str(&f).ok()),
+                    ai_files_touched: m
+                        .ai_files_touched
+                        .and_then(|f| serde_json::from_str(&f).ok()),
                     ai_prompt_index: m.ai_prompt_index,
                 }
             })
     };
 
     // Check for deploy preview
-    let preview = db::get_deploy_preview(&pool, repo_db.id, &sha).await.ok().flatten();
+    let preview = db::get_deploy_preview(&pool, repo_db.id, &sha)
+        .await
+        .ok()
+        .flatten();
 
     Ok(CommitDetail {
         commit: CommitSummary {
@@ -86,6 +94,7 @@ async fn fetch_commit_diff(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 #[server]
 async fn attach_ai_metadata(
     owner: String,
@@ -97,7 +106,7 @@ async fn attach_ai_metadata(
     ai_session_id: Option<String>,
     ai_files_touched: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -146,12 +155,15 @@ async fn get_diff_review(
     repo: String,
     sha: String,
 ) -> Result<DiffReviewData, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools};
+    use crate::server_fns::{
+        extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools, sfn_err,
+    };
     use oxigit_core::{db, git, llm, risk};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let current_user = extract_session_user().await;
-    let (llm_provider, api_key, model, base_url) = get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
+    let (llm_provider, api_key, model, base_url) =
+        get_effective_llm_config(current_user.as_ref().map(|u| u.id)).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
@@ -162,8 +174,7 @@ async fn get_diff_review(
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
-    let (_, diff) = git::show_commit_diff(&repo_path, &sha)
-        .map_err(sfn_err)?;
+    let (_, diff) = git::show_commit_diff(&repo_path, &sha).map_err(sfn_err)?;
 
     let risk_flags: Vec<RiskFlagInfo> = risk::scan_diff(&diff)
         .into_iter()
@@ -184,7 +195,8 @@ async fn get_diff_review(
 
     // Auto-generate summary if LLM is configured and no cache exists
     let summary = if let Some(s) = cached {
-        let flags: Vec<RiskFlagInfo> = s.risk_flags
+        let flags: Vec<RiskFlagInfo> = s
+            .risk_flags
             .and_then(|f| serde_json::from_str(&f).ok())
             .unwrap_or_default();
         Some(DiffSummaryInfo {
@@ -194,12 +206,28 @@ async fn get_diff_review(
         })
     } else if llm_available {
         let ai_prompt = db::get_ai_metadata_for_commit(&pool, repo_db.id, &sha)
-            .await.ok().flatten().and_then(|m| m.ai_prompt);
-        let config = llm::LlmConfig { provider: llm_provider.clone(), api_key, model: model.clone(), base_url };
+            .await
+            .ok()
+            .flatten()
+            .and_then(|m| m.ai_prompt);
+        let config = llm::LlmConfig {
+            provider: llm_provider.clone(),
+            api_key,
+            model: model.clone(),
+            base_url,
+        };
         match llm::generate_summary(&config, &diff, ai_prompt.as_deref()).await {
             Ok(summary_text) => {
                 let flags_json = serde_json::to_string(&risk_flags).ok();
-                let _ = db::upsert_diff_summary(&pool, repo_db.id, &sha, &summary_text, flags_json.as_deref(), &model).await;
+                let _ = db::upsert_diff_summary(
+                    &pool,
+                    repo_db.id,
+                    &sha,
+                    &summary_text,
+                    flags_json.as_deref(),
+                    &model,
+                )
+                .await;
                 Some(DiffSummaryInfo {
                     summary: summary_text,
                     risk_flags: risk_flags.clone(),
@@ -225,7 +253,10 @@ async fn generate_diff_summary(
     repo: String,
     sha: String,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{
+        extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools,
+        get_user_entitlements, sfn_err,
+    };
     use oxigit_core::{db, git, llm, risk};
 
     let user = extract_session_user()
@@ -255,8 +286,7 @@ async fn generate_diff_summary(
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
-    let (_, diff) = git::show_commit_diff(&repo_path, &sha)
-        .map_err(sfn_err)?;
+    let (_, diff) = git::show_commit_diff(&repo_path, &sha).map_err(sfn_err)?;
 
     // Get AI prompt context if available
     let ai_prompt = db::get_ai_metadata_for_commit(&pool, repo_db.id, &sha)
@@ -265,7 +295,12 @@ async fn generate_diff_summary(
         .flatten()
         .and_then(|m| m.ai_prompt);
 
-    let config = llm::LlmConfig { provider, api_key, model: model.clone(), base_url };
+    let config = llm::LlmConfig {
+        provider,
+        api_key,
+        model: model.clone(),
+        base_url,
+    };
     let summary = llm::generate_summary(&config, &diff, ai_prompt.as_deref())
         .await
         .map_err(sfn_err)?;
@@ -281,9 +316,16 @@ async fn generate_diff_summary(
 
     let flags_json = serde_json::to_string(&risk_flags).ok();
 
-    db::upsert_diff_summary(&pool, repo_db.id, &sha, &summary, flags_json.as_deref(), &model)
-        .await
-        .map_err(sfn_err)?;
+    db::upsert_diff_summary(
+        &pool,
+        repo_db.id,
+        &sha,
+        &summary,
+        flags_json.as_deref(),
+        &model,
+    )
+    .await
+    .map_err(sfn_err)?;
 
     Ok(DiffSummaryInfo {
         summary,
@@ -383,8 +425,8 @@ pub fn CommitViewPage() -> impl IntoView {
                                     {move || {
                                         Suspend::new(async move {
                                             let review_data = review.await.ok();
-                                            let has_risk = review_data.as_ref().map_or(false, |r| !r.risk_flags.is_empty());
-                                            let has_summary = review_data.as_ref().map_or(false, |r| r.cached_summary.is_some());
+                                            let has_risk = review_data.as_ref().is_some_and(|r| !r.risk_flags.is_empty());
+                                            let has_summary = review_data.as_ref().is_some_and(|r| r.cached_summary.is_some());
 
                                             if !has_risk && !has_summary {
                                                 return view! { <div></div> }.into_any();

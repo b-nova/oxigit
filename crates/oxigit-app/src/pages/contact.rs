@@ -9,7 +9,7 @@ pub async fn submit_contact_inquiry(
     company: String,
     message: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, get_control_pool, get_smtp_config};
+    use crate::server_fns::{get_control_pool, get_smtp_config, sfn_err};
     use oxigit_core::{db, email};
 
     if name.trim().is_empty() || email.trim().is_empty() || message.trim().is_empty() {
@@ -18,21 +18,28 @@ pub async fn submit_contact_inquiry(
 
     let pool = get_control_pool().await?;
 
-    db::insert_contact_inquiry(&pool, name.trim(), email.trim(), company.trim(), message.trim())
-        .await
-        .map_err(sfn_err)?;
+    db::insert_contact_inquiry(
+        &pool,
+        name.trim(),
+        email.trim(),
+        company.trim(),
+        message.trim(),
+    )
+    .await
+    .map_err(sfn_err)?;
 
     // Send email notification if SMTP is configured
-    if let Ok(Some(smtp)) = get_smtp_config().await {
-        if let Err(e) = email::send_inquiry_notification(
+    if let Ok(Some(smtp)) = get_smtp_config().await
+        && let Err(e) = email::send_inquiry_notification(
             &smtp,
             name.trim(),
             email.trim(),
             company.trim(),
             message.trim(),
-        ).await {
-            tracing::warn!("Failed to send contact inquiry email: {}", e);
-        }
+        )
+        .await
+    {
+        tracing::warn!("Failed to send contact inquiry email: {}", e);
     }
 
     Ok(())
@@ -42,7 +49,12 @@ pub async fn submit_contact_inquiry(
 pub fn ContactPage() -> impl IntoView {
     let submit_action = ServerAction::<SubmitContactInquiry>::new();
     let submitted = move || matches!(submit_action.value().get(), Some(Ok(())));
-    let error = move || submit_action.value().get().and_then(|r| r.err().map(|e| e.to_string()));
+    let error = move || {
+        submit_action
+            .value()
+            .get()
+            .and_then(|r| r.err().map(|e| e.to_string()))
+    };
 
     view! {
         <div class="page-header">

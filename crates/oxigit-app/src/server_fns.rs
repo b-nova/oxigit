@@ -63,9 +63,13 @@ impl AppState {
     /// In saas mode, this is the control plane pool. In open-source mode, the single DB pool.
     pub fn pool(&self) -> SqlitePool {
         #[cfg(feature = "saas")]
-        { return self.tenant_mgr.control_pool().clone(); }
+        {
+            return self.tenant_mgr.control_pool().clone();
+        }
         #[cfg(not(feature = "saas"))]
-        { self.pool.clone() }
+        {
+            self.pool.clone()
+        }
     }
 }
 
@@ -118,7 +122,10 @@ pub async fn get_repo_pool(owner: &str, repo: &str) -> Result<SqlitePool, Server
 /// Get both the control pool and tenant pool for a repo.
 /// In non-saas or legacy mode, both pools are the same.
 #[allow(unused_variables)]
-pub async fn get_repo_pools(owner: &str, repo: &str) -> Result<(SqlitePool, SqlitePool), ServerFnError> {
+pub async fn get_repo_pools(
+    owner: &str,
+    repo: &str,
+) -> Result<(SqlitePool, SqlitePool), ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
     let control = state.pool();
     #[cfg(feature = "saas")]
@@ -146,14 +153,19 @@ pub async fn get_repo_path(owner: &str, repo: &str) -> Result<std::path::PathBuf
         let org_slug = oxigit_core::db::lookup_repo_org(&control, owner, repo)
             .await
             .map_err(sfn_err)?;
-        return Ok(state.tenant_mgr.tenant_repos_dir(&org_slug).join(owner).join(format!("{repo}.git")));
+        return Ok(state
+            .tenant_mgr
+            .tenant_repos_dir(&org_slug)
+            .join(owner)
+            .join(format!("{repo}.git")));
     }
     Ok(oxigit_core::git::repo_path(&state.data_dir, owner, repo))
 }
 
 /// Get the TenantPoolManager for advanced operations (provisioning, etc.).
 #[cfg(feature = "saas")]
-pub async fn get_tenant_mgr() -> Result<Arc<oxigit_core::tenant::TenantPoolManager>, ServerFnError> {
+pub async fn get_tenant_mgr() -> Result<Arc<oxigit_core::tenant::TenantPoolManager>, ServerFnError>
+{
     let Extension(state): Extension<AppState> = extract().await?;
     Ok(state.tenant_mgr.clone())
 }
@@ -174,24 +186,44 @@ pub async fn get_data_dir() -> Result<PathBuf, ServerFnError> {
     Ok(state.data_dir)
 }
 
-pub async fn get_llm_config() -> Result<(String, Option<String>, String, Option<String>), ServerFnError> {
+pub async fn get_llm_config()
+-> Result<(String, Option<String>, String, Option<String>), ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
-    Ok((state.llm_provider, state.llm_api_key, state.llm_model, state.llm_base_url))
+    Ok((
+        state.llm_provider,
+        state.llm_api_key,
+        state.llm_model,
+        state.llm_base_url,
+    ))
 }
 
 /// Resolve effective LLM config: user settings override server defaults.
-pub async fn get_effective_llm_config(user_id: Option<i64>) -> Result<(String, Option<String>, String, Option<String>), ServerFnError> {
+pub async fn get_effective_llm_config(
+    user_id: Option<i64>,
+) -> Result<(String, Option<String>, String, Option<String>), ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
     let pool = state.pool();
-    let (mut provider, mut api_key, mut model, mut base_url) =
-        (state.llm_provider, state.llm_api_key, state.llm_model, state.llm_base_url);
+    let (mut provider, mut api_key, mut model, mut base_url) = (
+        state.llm_provider,
+        state.llm_api_key,
+        state.llm_model,
+        state.llm_base_url,
+    );
 
-    if let Some(uid) = user_id {
-        if let Ok(Some(settings)) = oxigit_core::db::get_user_settings(&pool, uid).await {
-            if let Some(p) = settings.llm_provider { provider = p; }
-            if let Some(k) = settings.llm_api_key { api_key = Some(k); }
-            if let Some(m) = settings.llm_model { model = m; }
-            if let Some(u) = settings.llm_base_url { base_url = Some(u); }
+    if let Some(uid) = user_id
+        && let Ok(Some(settings)) = oxigit_core::db::get_user_settings(&pool, uid).await
+    {
+        if let Some(p) = settings.llm_provider {
+            provider = p;
+        }
+        if let Some(k) = settings.llm_api_key {
+            api_key = Some(k);
+        }
+        if let Some(m) = settings.llm_model {
+            model = m;
+        }
+        if let Some(u) = settings.llm_base_url {
+            base_url = Some(u);
         }
     }
 
@@ -230,7 +262,13 @@ pub async fn get_stripe_config() -> Result<Option<StripeConfig>, ServerFnError> 
 /// Extract SMTP configuration. Returns None if SMTP is not configured.
 pub async fn get_smtp_config() -> Result<Option<oxigit_core::email::SmtpConfig>, ServerFnError> {
     let Extension(state): Extension<AppState> = extract().await?;
-    match (&state.smtp_host, &state.smtp_user, &state.smtp_password, &state.smtp_from, &state.contact_email) {
+    match (
+        &state.smtp_host,
+        &state.smtp_user,
+        &state.smtp_password,
+        &state.smtp_from,
+        &state.contact_email,
+    ) {
         (Some(host), Some(user), Some(password), Some(from), Some(contact_email)) => {
             Ok(Some(oxigit_core::email::SmtpConfig {
                 host: host.clone(),
@@ -372,7 +410,12 @@ pub async fn clear_session() {
 
 /// Sign a session value: "user_id:username:org_slug:hmac_hex"
 /// When org_slug is None, format is "user_id:username:hmac_hex" (backward compat).
-fn sign_session_cookie(user_id: i64, username: &str, org_slug: Option<&str>, secret: &[u8]) -> String {
+fn sign_session_cookie(
+    user_id: i64,
+    username: &str,
+    org_slug: Option<&str>,
+    secret: &[u8],
+) -> String {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
 
@@ -393,9 +436,7 @@ fn verify_session_cookie(value: &str, secret: &[u8]) -> Option<UserInfo> {
     use sha2::Sha256;
 
     // Signature is always the last colon-separated segment
-    let mut parts = value.rsplitn(2, ':');
-    let signature_hex = parts.next()?;
-    let payload = parts.next()?;
+    let (payload, signature_hex) = value.rsplit_once(':')?;
 
     // Verify HMAC
     let mut mac = Hmac::<Sha256>::new_from_slice(secret).ok()?;
@@ -409,7 +450,11 @@ fn verify_session_cookie(value: &str, secret: &[u8]) -> Option<UserInfo> {
         2 => {
             let id: i64 = payload_parts[0].parse().ok()?;
             let username = payload_parts[1].to_string();
-            Some(UserInfo { id, username, active_org_slug: None })
+            Some(UserInfo {
+                id,
+                username,
+                active_org_slug: None,
+            })
         }
         3 => {
             let id: i64 = payload_parts[0].parse().ok()?;
@@ -418,7 +463,11 @@ fn verify_session_cookie(value: &str, secret: &[u8]) -> Option<UserInfo> {
             Some(UserInfo {
                 id,
                 username,
-                active_org_slug: if org_slug.is_empty() { None } else { Some(org_slug) },
+                active_org_slug: if org_slug.is_empty() {
+                    None
+                } else {
+                    Some(org_slug)
+                },
             })
         }
         _ => None,

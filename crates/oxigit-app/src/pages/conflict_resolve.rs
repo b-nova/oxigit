@@ -12,19 +12,22 @@ async fn fetch_conflict_detail(
     repo: String,
     conflict_id: i64,
 ) -> Result<ConflictDetailResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
-    use oxigit_core::db;
     use super::ConflictFileInfo;
+    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
+    use oxigit_core::db;
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let conflict = db::get_merge_conflict(&pool, conflict_id)
-        .await.map_err(sfn_err)?
+        .await
+        .map_err(sfn_err)?
         .ok_or_else(|| ServerFnError::new("Conflict not found"))?;
 
     if conflict.repo_id != repo_db.id || conflict.user_id != user.id {
@@ -32,15 +35,19 @@ async fn fetch_conflict_detail(
     }
 
     let files = db::get_conflict_files(&pool, conflict_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
-    let file_infos: Vec<ConflictFileInfo> = files.iter().map(|f| ConflictFileInfo {
-        id: f.id,
-        file_path: f.file_path.clone(),
-        conflict_type: f.conflict_type.clone(),
-        resolution: f.resolution.clone(),
-        is_resolved: f.resolution.is_some(),
-    }).collect();
+    let file_infos: Vec<ConflictFileInfo> = files
+        .iter()
+        .map(|f| ConflictFileInfo {
+            id: f.id,
+            file_path: f.file_path.clone(),
+            conflict_type: f.conflict_type.clone(),
+            resolution: f.resolution.clone(),
+            is_resolved: f.resolution.is_some(),
+        })
+        .collect();
 
     let all_resolved = file_infos.iter().all(|f| f.is_resolved);
 
@@ -64,18 +71,21 @@ async fn fetch_conflict_file_content(
     conflict_id: i64,
     file_path: String,
 ) -> Result<ConflictFileContentResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let conflict = db::get_merge_conflict(&pool, conflict_id)
-        .await.map_err(sfn_err)?
+        .await
+        .map_err(sfn_err)?
         .ok_or_else(|| ServerFnError::new("Conflict not found"))?;
 
     if conflict.repo_id != repo_db.id || conflict.user_id != user.id {
@@ -85,20 +95,26 @@ async fn fetch_conflict_file_content(
     let repo_path = get_repo_path(&owner, &repo).await?;
 
     let ours = git::read_blob(&repo_path, &conflict.target_ref, &file_path)
-        .ok().map(|b| String::from_utf8_lossy(&b).to_string());
+        .ok()
+        .map(|b| String::from_utf8_lossy(&b).to_string());
     let theirs = git::read_blob(&repo_path, &conflict.source_ref, &file_path)
-        .ok().map(|b| String::from_utf8_lossy(&b).to_string());
+        .ok()
+        .map(|b| String::from_utf8_lossy(&b).to_string());
 
     // Check if this file already has a resolution saved
     let files = db::get_conflict_files(&pool, conflict_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
     let file_record = files.iter().find(|f| f.file_path == file_path);
     let resolved_content = file_record.and_then(|f| f.resolved_content.clone());
 
     let (ours_label, theirs_label) = if conflict.operation_type == "revert" {
         let short_target = &conflict.target_ref[..7.min(conflict.target_ref.len())];
         let short_source = &conflict.source_ref[..7.min(conflict.source_ref.len())];
-        (format!("Current ({})", short_target), format!("Reverted ({})", short_source))
+        (
+            format!("Current ({})", short_target),
+            format!("Reverted ({})", short_source),
+        )
     } else {
         (conflict.target_ref, conflict.source_ref)
     };
@@ -122,18 +138,21 @@ async fn resolve_file(
     resolution: String,
     manual_content: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let conflict = db::get_merge_conflict(&pool, conflict_id)
-        .await.map_err(sfn_err)?
+        .await
+        .map_err(sfn_err)?
         .ok_or_else(|| ServerFnError::new("Conflict not found"))?;
 
     if conflict.repo_id != repo_db.id || conflict.user_id != user.id {
@@ -142,23 +161,29 @@ async fn resolve_file(
 
     // Get file info for the path
     let files = db::get_conflict_files(&pool, conflict_id)
-        .await.map_err(sfn_err)?;
-    let file_record = files.iter().find(|f| f.id == file_id)
+        .await
+        .map_err(sfn_err)?;
+    let file_record = files
+        .iter()
+        .find(|f| f.id == file_id)
         .ok_or_else(|| ServerFnError::new("File not found"))?;
 
     let repo_path = get_repo_path(&owner, &repo).await?;
 
     let content: Option<String> = match resolution.as_str() {
         "ours" => git::read_blob(&repo_path, &conflict.target_ref, &file_record.file_path)
-            .ok().map(|b| String::from_utf8_lossy(&b).to_string()),
+            .ok()
+            .map(|b| String::from_utf8_lossy(&b).to_string()),
         "theirs" => git::read_blob(&repo_path, &conflict.source_ref, &file_record.file_path)
-            .ok().map(|b| String::from_utf8_lossy(&b).to_string()),
+            .ok()
+            .map(|b| String::from_utf8_lossy(&b).to_string()),
         "manual" => manual_content,
         _ => return Err(ServerFnError::new("Invalid resolution")),
     };
 
     db::resolve_conflict_file(&pool, file_id, &resolution, content.as_deref())
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     leptos_axum::redirect(&format!("/{}/{}/conflicts/{}", owner, repo, conflict_id));
     Ok(())
@@ -170,18 +195,21 @@ async fn complete_resolution(
     repo: String,
     conflict_id: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let conflict = db::get_merge_conflict(&pool, conflict_id)
-        .await.map_err(sfn_err)?
+        .await
+        .map_err(sfn_err)?
         .ok_or_else(|| ServerFnError::new("Conflict not found"))?;
 
     if conflict.repo_id != repo_db.id || conflict.user_id != user.id {
@@ -189,20 +217,25 @@ async fn complete_resolution(
     }
 
     let files = db::get_conflict_files(&pool, conflict_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     // Verify all files resolved
     if files.iter().any(|f| f.resolution.is_none()) {
         return Err(ServerFnError::new("Not all files are resolved"));
     }
 
-    let auto_tree = conflict.auto_tree
+    let auto_tree = conflict
+        .auto_tree
         .ok_or_else(|| ServerFnError::new("No auto-merged tree available"))?;
 
     // Build resolutions list
-    let resolutions: Vec<(String, String)> = files.iter()
+    let resolutions: Vec<(String, String)> = files
+        .iter()
         .filter_map(|f| {
-            f.resolved_content.as_ref().map(|c| (f.file_path.clone(), c.clone()))
+            f.resolved_content
+                .as_ref()
+                .map(|c| (f.file_path.clone(), c.clone()))
         })
         .collect();
 
@@ -210,23 +243,31 @@ async fn complete_resolution(
 
     if conflict.operation_type == "revert" {
         // Revert: single-parent commit, then continue reverting remaining SHAs
-        let ctx: serde_json::Value = conflict.context_json.as_deref()
+        let ctx: serde_json::Value = conflict
+            .context_json
+            .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or(serde_json::json!({}));
 
         let branch = ctx.get("branch").and_then(|v| v.as_str()).unwrap_or("main");
-        let revert_message = ctx.get("revert_message").and_then(|v| v.as_str()).unwrap_or("Revert");
-        let remaining_shas: Vec<String> = ctx.get("remaining_shas")
+        let revert_message = ctx
+            .get("revert_message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Revert");
+        let remaining_shas: Vec<String> = ctx
+            .get("remaining_shas")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
         // Get the current branch tip to use as parent
         let branch_ref = format!("refs/heads/{}", branch);
-        let branch_tip = git::rev_parse(&repo_path, &branch_ref)
-            .map_err(sfn_err)?;
+        let branch_tip = git::rev_parse(&repo_path, &branch_ref).map_err(sfn_err)?;
 
         // Create the resolution commit with a single parent (branch tip)
-        let resolve_msg = format!("Resolve revert conflict: {}", &conflict.merge_base[..7.min(conflict.merge_base.len())]);
+        let resolve_msg = format!(
+            "Resolve revert conflict: {}",
+            &conflict.merge_base[..7.min(conflict.merge_base.len())]
+        );
         let parents = vec![branch_tip.as_str()];
 
         let _resolution_sha = git::apply_conflict_resolutions(
@@ -236,13 +277,16 @@ async fn complete_resolution(
             &parents,
             &resolve_msg,
             branch,
-        ).map_err(sfn_err)?;
+        )
+        .map_err(sfn_err)?;
 
         db::complete_merge_conflict(&pool, conflict_id)
-            .await.map_err(sfn_err)?;
+            .await
+            .map_err(sfn_err)?;
 
         // Remove the conflicting commit from remaining (it was just resolved)
-        let still_remaining: Vec<String> = remaining_shas.iter()
+        let still_remaining: Vec<String> = remaining_shas
+            .iter()
             .filter(|s| **s != conflict.merge_base)
             .cloned()
             .collect();
@@ -275,34 +319,45 @@ async fn complete_resolution(
                         "branch": branch,
                         "revert_message": revert_message,
                     });
-                    let new_ctx_str = serde_json::to_string(&new_ctx)
-                        .map_err(sfn_err)?;
+                    let new_ctx_str = serde_json::to_string(&new_ctx).map_err(sfn_err)?;
 
                     let new_conflict = db::create_merge_conflict(
-                        &pool, repo_db.id, user.id,
+                        &pool,
+                        repo_db.id,
+                        user.id,
                         "revert",
                         &current_commit,
                         &parent_sha,
                         &conflicting_sha,
                         new_auto_tree.as_deref(),
                         Some(&new_ctx_str),
-                    ).await.map_err(sfn_err)?;
+                    )
+                    .await
+                    .map_err(sfn_err)?;
 
                     for file_path in &conflict_files {
                         db::create_conflict_file(&pool, new_conflict.id, file_path, "content")
-                            .await.map_err(sfn_err)?;
+                            .await
+                            .map_err(sfn_err)?;
                     }
 
-                    leptos_axum::redirect(&format!("/{}/{}/conflicts/{}", owner, repo, new_conflict.id));
+                    leptos_axum::redirect(&format!(
+                        "/{}/{}/conflicts/{}",
+                        owner, repo, new_conflict.id
+                    ));
                     return Ok(());
                 }
             }
         }
 
         // Redirect back to session/prompt detail
-        let redirect_url = if let Some(session_id) = ctx.get("session_id").and_then(|v| v.as_str()) {
+        let redirect_url = if let Some(session_id) = ctx.get("session_id").and_then(|v| v.as_str())
+        {
             if let Some(prompt_index) = ctx.get("prompt_index").and_then(|v| v.as_i64()) {
-                format!("/{}/{}/ai/{}/prompt/{}", owner, repo, session_id, prompt_index)
+                format!(
+                    "/{}/{}/ai/{}/prompt/{}",
+                    owner, repo, session_id, prompt_index
+                )
             } else {
                 format!("/{}/{}/ai/{}", owner, repo, session_id)
             }
@@ -313,13 +368,17 @@ async fn complete_resolution(
         leptos_axum::redirect(&redirect_url);
     } else {
         // Merge: two-parent commit (existing behavior)
-        let message = format!("Resolve {} conflicts: {} -> {}",
-            conflict.operation_type, conflict.source_ref, conflict.target_ref);
+        let message = format!(
+            "Resolve {} conflicts: {} -> {}",
+            conflict.operation_type, conflict.source_ref, conflict.target_ref
+        );
 
         let parents = vec![conflict.target_ref.as_str(), conflict.source_ref.as_str()];
 
         // Extract branch name from target_ref (strip refs/heads/ if present)
-        let branch = conflict.target_ref.strip_prefix("refs/heads/")
+        let branch = conflict
+            .target_ref
+            .strip_prefix("refs/heads/")
             .unwrap_or(&conflict.target_ref);
 
         git::apply_conflict_resolutions(
@@ -329,10 +388,12 @@ async fn complete_resolution(
             &parents,
             &message,
             branch,
-        ).map_err(sfn_err)?;
+        )
+        .map_err(sfn_err)?;
 
         db::complete_merge_conflict(&pool, conflict_id)
-            .await.map_err(sfn_err)?;
+            .await
+            .map_err(sfn_err)?;
 
         // Redirect back based on context
         let redirect_url = if let Some(ref ctx) = conflict.context_json {
@@ -361,18 +422,21 @@ async fn cancel_resolution(
     repo: String,
     conflict_id: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
     use oxigit_core::db;
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let conflict = db::get_merge_conflict(&pool, conflict_id)
-        .await.map_err(sfn_err)?
+        .await
+        .map_err(sfn_err)?
         .ok_or_else(|| ServerFnError::new("Conflict not found"))?;
 
     if conflict.repo_id != repo_db.id || conflict.user_id != user.id {
@@ -380,7 +444,8 @@ async fn cancel_resolution(
     }
 
     db::cancel_merge_conflict(&pool, conflict_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     leptos_axum::redirect(&format!("/{}/{}", owner, repo));
     Ok(())
@@ -392,7 +457,9 @@ pub fn ConflictResolvePage() -> impl IntoView {
     let owner = move || params.read().get("owner").unwrap_or_default();
     let repo = move || params.read().get("repo").unwrap_or_default();
     let conflict_id = move || {
-        params.read().get("conflict_id")
+        params
+            .read()
+            .get("conflict_id")
             .and_then(|s| s.parse::<i64>().ok())
             .unwrap_or(0)
     };

@@ -26,7 +26,10 @@ async fn setup_user_with_repo(
         username,
         repo_name,
     );
-    let dest = server.data_dir.path().join(format!("clone-{username}-{repo_name}"));
+    let dest = server
+        .data_dir
+        .path()
+        .join(format!("clone-{username}-{repo_name}"));
     git_clone_http(&clone_url, &dest);
     init_repo_config(&dest);
     create_commit(&dest, "README.md", "# hook test", "initial commit");
@@ -45,7 +48,9 @@ async fn test_install_claude_code_hooks() {
     let server = TestServer::start().await;
     let (client, _dest) = setup_user_with_repo(&server, "alice", "ccrepo").await;
 
-    let resp = client.install_ai_hook("alice", "ccrepo", "claude-code").await;
+    let resp = client
+        .install_ai_hook("alice", "ccrepo", "claude-code")
+        .await;
     let status = resp.status();
     assert!(
         status.is_success() || status.is_redirection(),
@@ -130,10 +135,7 @@ async fn test_install_codex_hooks() {
         body.contains("UserPromptSubmit"),
         "Codex config must contain UserPromptSubmit"
     );
-    assert!(
-        body.contains("5000"),
-        "Codex config timeout must be 5000ms"
-    );
+    assert!(body.contains("5000"), "Codex config timeout must be 5000ms");
 
     // Verify universal prepare-commit-msg hook is installed
     let resp = client
@@ -155,7 +157,9 @@ async fn test_install_gemini_hooks() {
     let server = TestServer::start().await;
     let (client, _dest) = setup_user_with_repo(&server, "carol", "gemrepo").await;
 
-    let resp = client.install_ai_hook("carol", "gemrepo", "gemini-cli").await;
+    let resp = client
+        .install_ai_hook("carol", "gemrepo", "gemini-cli")
+        .await;
     let status = resp.status();
     assert!(
         status.is_success() || status.is_redirection(),
@@ -283,17 +287,16 @@ async fn test_check_hooks_status_lifecycle() {
     );
 
     // Install claude-code
-    client.install_ai_hook("eve", "lifecycle", "claude-code").await;
+    client
+        .install_ai_hook("eve", "lifecycle", "claude-code")
+        .await;
     let resp = client.check_installed_hooks("eve", "lifecycle").await;
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("claude-code"),
         "claude-code should appear after install"
     );
-    assert!(
-        !body.contains("codex"),
-        "codex should not appear yet"
-    );
+    assert!(!body.contains("codex"), "codex should not appear yet");
 
     // Install codex
     client.install_ai_hook("eve", "lifecycle", "codex").await;

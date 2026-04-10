@@ -27,7 +27,9 @@ fn sign_webhook(payload: &str, secret: &str, timestamp: &str) -> String {
 #[tokio::test]
 async fn pricing_page_renders() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
     let resp = client
@@ -39,17 +41,31 @@ async fn pricing_page_renders() {
     assert_eq!(resp.status().as_u16(), 200);
 
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Free"), "pricing page should show Free plan: {body}");
-    assert!(body.contains("Flat"), "pricing page should show Flat plan: {body}");
-    assert!(body.contains("Team"), "pricing page should show Team plan: {body}");
-    assert!(body.contains("Founding Member"), "pricing page should show Founding Member: {body}");
+    assert!(
+        body.contains("Free"),
+        "pricing page should show Free plan: {body}"
+    );
+    assert!(
+        body.contains("Flat"),
+        "pricing page should show Flat plan: {body}"
+    );
+    assert!(
+        body.contains("Team"),
+        "pricing page should show Team plan: {body}"
+    );
+    assert!(
+        body.contains("Founding Member"),
+        "pricing page should show Founding Member: {body}"
+    );
 }
 
 /// Test: subscription page redirects unauthenticated users (shows error or login prompt).
 #[tokio::test]
 async fn subscription_page_requires_auth() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
     let resp = client
@@ -71,10 +87,14 @@ async fn subscription_page_requires_auth() {
 #[tokio::test]
 async fn subscription_page_shows_for_authenticated_user() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
 
     let resp = client
@@ -86,14 +106,19 @@ async fn subscription_page_shows_for_authenticated_user() {
     assert_eq!(resp.status().as_u16(), 200);
 
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Free") || body.contains("Subscription"), "subscription page should show plan info: {body}");
+    assert!(
+        body.contains("Free") || body.contains("Subscription"),
+        "subscription page should show plan info: {body}"
+    );
 }
 
 /// Test: webhook rejects requests without Stripe-Signature header.
 #[tokio::test]
 async fn webhook_rejects_missing_signature() {
     let server = TestServer::start_with_stripe("whsec_test_secret").await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
     let resp = client
@@ -111,7 +136,9 @@ async fn webhook_rejects_missing_signature() {
 #[tokio::test]
 async fn webhook_rejects_invalid_signature() {
     let server = TestServer::start_with_stripe("whsec_test_secret").await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
     let resp = client
@@ -131,11 +158,15 @@ async fn webhook_rejects_invalid_signature() {
 async fn webhook_processes_checkout_completed() {
     let secret = "whsec_test_secret";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
     // Register a user first (user_id will be 1)
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
 
     let payload = r#"{"type":"checkout.session.completed","data":{"object":{"client_reference_id":"1","customer":"cus_test123","subscription":"sub_test123","metadata":{"plan":"flat"}}}}"#;
     let timestamp = "1234567890";
@@ -162,7 +193,10 @@ async fn webhook_processes_checkout_completed() {
         .await
         .unwrap();
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Flat"), "subscription page should show Flat plan after checkout: {body}");
+    assert!(
+        body.contains("Flat"),
+        "subscription page should show Flat plan after checkout: {body}"
+    );
 }
 
 /// Test: webhook handles subscription.deleted by canceling.
@@ -170,10 +204,14 @@ async fn webhook_processes_checkout_completed() {
 async fn webhook_handles_subscription_deleted() {
     let secret = "whsec_test_secret";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
 
     // First create a subscription via checkout
     let payload = r#"{"type":"checkout.session.completed","data":{"object":{"client_reference_id":"1","customer":"cus_test456","subscription":"sub_test456","metadata":{"plan":"flat"}}}}"#;
@@ -191,7 +229,8 @@ async fn webhook_handles_subscription_deleted() {
         .unwrap();
 
     // Now delete the subscription
-    let payload2 = r#"{"type":"customer.subscription.deleted","data":{"object":{"id":"sub_test456"}}}"#;
+    let payload2 =
+        r#"{"type":"customer.subscription.deleted","data":{"object":{"id":"sub_test456"}}}"#;
     let timestamp2 = "1234567891";
     let signature2 = sign_webhook(payload2, secret, timestamp2);
 
@@ -226,7 +265,9 @@ async fn webhook_handles_subscription_deleted() {
 #[tokio::test]
 async fn webhook_returns_503_when_not_configured() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
     let resp = client

@@ -28,7 +28,10 @@ async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str, secr
         .await
         .unwrap();
     let status = resp.status().as_u16();
-    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {status}");
+    assert!(
+        status == 200 || status == 404,
+        "Stripe webhook returned unexpected status: {status}"
+    );
 }
 
 /// Test: add a webhook and verify it appears in the list.
@@ -38,7 +41,9 @@ async fn add_and_list_webhooks() {
     let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
@@ -65,7 +70,9 @@ async fn delete_webhook() {
     let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
@@ -78,7 +85,10 @@ async fn delete_webhook() {
     // List to confirm and extract ID (webhook_id is typically 1 for first webhook)
     let resp = client.list_repo_webhooks("alice", "myrepo").await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("example.com/hook"), "webhook should exist before delete");
+    assert!(
+        body.contains("example.com/hook"),
+        "webhook should exist before delete"
+    );
 
     // Delete webhook (first webhook ID is 1)
     client.delete_webhook("alice", "myrepo", 1).await;
@@ -99,7 +109,9 @@ async fn webhook_requires_repo_owner() {
     let server = TestServer::start_with_stripe(secret).await;
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_pro(&alice, &alice.base_url.clone(), "1", secret).await;
     alice.login("alice", "password123").await;
     alice.create_repo("myrepo", "test repo", false).await;
@@ -127,7 +139,9 @@ async fn deploy_callback_updates_preview() {
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("webapp", "test", false).await;
@@ -142,7 +156,12 @@ async fn deploy_callback_updates_preview() {
     let repo_dir = tmp.path().join("webapp");
     git_clone_http(&clone_url, &repo_dir);
     init_repo_config(&repo_dir);
-    create_commit(&repo_dir, "index.html", "<h1>Hello</h1>\n", "initial commit");
+    create_commit(
+        &repo_dir,
+        "index.html",
+        "<h1>Hello</h1>\n",
+        "initial commit",
+    );
     git_push(&repo_dir);
     let sha = get_head_sha(&repo_dir);
 
@@ -183,7 +202,9 @@ async fn deploy_callback_blocked_for_free_plan() {
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("webapp", "test", false).await;
 
@@ -230,7 +251,9 @@ async fn deploy_preview_shown_on_commit_view() {
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("webapp", "test", false).await;

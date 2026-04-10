@@ -5,12 +5,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use tokio::process::Command;
-use tracing;
 
 use sqlx::SqlitePool;
 
-use oxigit_core::{db, guardrail};
 use oxigit_core::git::repo_path;
+use oxigit_core::{db, guardrail};
 
 use crate::AppState;
 
@@ -47,8 +46,11 @@ fn extract_basic_auth(headers: &HeaderMap) -> Option<(String, String)> {
     let auth = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let encoded = auth.strip_prefix("Basic ")?;
     let decoded = String::from_utf8(
-        base64::engine::general_purpose::STANDARD.decode(encoded).ok()?
-    ).ok()?;
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .ok()?,
+    )
+    .ok()?;
     let mut parts = decoded.splitn(2, ':');
     let username = parts.next()?.to_string();
     let password = parts.next()?.to_string();
@@ -87,26 +89,27 @@ pub async fn info_refs(
     };
 
     // Verify repo exists and check access (users in control DB, repos in tenant DB)
-    let (_, repo_db) = match db::get_repository_cross(&control_pool, &repo_pool, &owner, repo_name).await {
-        Ok(r) => r,
-        Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
-    };
+    let (_, repo_db) =
+        match db::get_repository_cross(&control_pool, &repo_pool, &owner, repo_name).await {
+            Ok(r) => r,
+            Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
+        };
 
     // For private repos, require auth for all operations (including clone)
     if repo_db.is_private || service == "git-receive-pack" {
         match extract_basic_auth(&headers) {
             Some((username, password)) => {
-                let auth_user = match db::authenticate_user(&control_pool, &username, &password).await {
-                    Ok(u) => u,
-                    Err(_) => return auth_required(),
-                };
+                let auth_user =
+                    match db::authenticate_user(&control_pool, &username, &password).await {
+                        Ok(u) => u,
+                        Err(_) => return auth_required(),
+                    };
                 // For push: check owner or collaborator
-                if service == "git-receive-pack" {
-                    if let Ok(can) = db::can_push_repo(&repo_pool, &repo_db, auth_user.id).await {
-                        if !can {
-                            return (StatusCode::FORBIDDEN, "Access denied").into_response();
-                        }
-                    }
+                if service == "git-receive-pack"
+                    && let Ok(can) = db::can_push_repo(&repo_pool, &repo_db, auth_user.id).await
+                    && !can
+                {
+                    return (StatusCode::FORBIDDEN, "Access denied").into_response();
                 } else if repo_db.is_private && !db::can_access_repo(&repo_db, Some(auth_user.id)) {
                     return (StatusCode::FORBIDDEN, "Access denied").into_response();
                 }
@@ -132,7 +135,11 @@ pub async fn info_refs(
     let output = match output {
         Ok(o) if o.status.success() => o,
         Ok(o) => {
-            tracing::error!("git {} failed: {}", service, String::from_utf8_lossy(&o.stderr));
+            tracing::error!(
+                "git {} failed: {}",
+                service,
+                String::from_utf8_lossy(&o.stderr)
+            );
             return (StatusCode::INTERNAL_SERVER_ERROR, "Git command failed").into_response();
         }
         Err(e) => {
@@ -203,16 +210,23 @@ pub async fn receive_pack(
                 Ok(u) => u,
                 Err(_) => return auth_required(),
             };
-            let (_, repo_db) = match db::get_repository_cross(&control_pool, &repo_pool, &owner, repo_name).await {
+            let (_, repo_db) = match db::get_repository_cross(
+                &control_pool,
+                &repo_pool,
+                &owner,
+                repo_name,
+            )
+            .await
+            {
                 Ok(r) => r,
                 Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
             };
             repo_db_id = repo_db.id;
             repo_owner_id = repo_db.owner_id;
-            if let Ok(can) = db::can_push_repo(&repo_pool, &repo_db, auth_user.id).await {
-                if !can {
-                    return (StatusCode::FORBIDDEN, "Access denied").into_response();
-                }
+            if let Ok(can) = db::can_push_repo(&repo_pool, &repo_db, auth_user.id).await
+                && !can
+            {
+                return (StatusCode::FORBIDDEN, "Access denied").into_response();
             }
         }
         None => return auth_required(),
@@ -272,7 +286,14 @@ pub async fn deploy_callback(
         Err((status, msg)) => return (status, msg).into_response(),
     };
 
-    let (_, repo_db) = match db::get_repository_cross(&control_pool, &repo_pool, &payload.repo_owner, &payload.repo_name).await {
+    let (_, repo_db) = match db::get_repository_cross(
+        &control_pool,
+        &repo_pool,
+        &payload.repo_owner,
+        &payload.repo_name,
+    )
+    .await
+    {
         Ok(r) => r,
         Err(_) => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
     };
@@ -283,7 +304,11 @@ pub async fn deploy_callback(
         .unwrap_or_else(|_| "free".into());
     let ent = oxigit_core::entitlements::for_plan(&owner_plan);
     if !ent.deploy_previews {
-        return (StatusCode::FORBIDDEN, "Deploy previews require a Pro or higher plan").into_response();
+        return (
+            StatusCode::FORBIDDEN,
+            "Deploy previews require a Pro or higher plan",
+        )
+            .into_response();
     }
 
     match db::update_deploy_preview(
@@ -312,7 +337,12 @@ async fn run_git_service(service: &str, repo_path: &std::path::Path, input: &[u8
     run_git_service_with_env(service, repo_path, input, &[]).await
 }
 
-async fn run_git_service_with_env(service: &str, repo_path: &std::path::Path, input: &[u8], env_vars: &[(String, String)]) -> Response {
+async fn run_git_service_with_env(
+    service: &str,
+    repo_path: &std::path::Path,
+    input: &[u8],
+    env_vars: &[(String, String)],
+) -> Response {
     use tokio::io::AsyncWriteExt;
 
     // Strip "git-" prefix: "git-upload-pack" -> "upload-pack" as git subcommand
@@ -327,8 +357,7 @@ async fn run_git_service_with_env(service: &str, repo_path: &std::path::Path, in
     for (key, val) in env_vars {
         cmd.env(key, val);
     }
-    let mut child = match cmd.spawn()
-    {
+    let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
             tracing::error!("Failed to spawn git {}: {}", service, e);
@@ -404,7 +433,10 @@ pub async fn guardrail_check(
     };
 
     let diff = params.get("diff").cloned().unwrap_or_default();
-    let file_count: usize = params.get("file_count").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    let file_count: usize = params
+        .get("file_count")
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0);
     let commit_ref = params.get("ref").cloned().unwrap_or_default();
     let new_sha = params.get("new").cloned().unwrap_or_default();
 
@@ -428,10 +460,16 @@ pub async fn guardrail_check(
         return (StatusCode::OK, "OK").into_response();
     }
 
-    let config = db::get_guardrail_config(&pool, repo_id).await.ok().flatten();
+    let config = db::get_guardrail_config(&pool, repo_id)
+        .await
+        .ok()
+        .flatten();
 
     let violations = guardrail::evaluate_diff(&block_rules, &config, &diff, file_count);
-    let blocking = violations.iter().filter(|v| v.action == "block").collect::<Vec<_>>();
+    let blocking = violations
+        .iter()
+        .filter(|v| v.action == "block")
+        .collect::<Vec<_>>();
 
     if blocking.is_empty() {
         return (StatusCode::OK, "OK").into_response();
@@ -440,10 +478,18 @@ pub async fn guardrail_check(
     // Log violations
     for v in &blocking {
         let _ = db::insert_guardrail_violation(
-            &pool, repo_id, &new_sha, Some(&commit_ref),
-            &v.category, "blocked", &v.severity, &v.message,
-            v.file_path.as_deref(), None,
-        ).await;
+            &pool,
+            repo_id,
+            &new_sha,
+            Some(&commit_ref),
+            &v.category,
+            "blocked",
+            &v.severity,
+            &v.message,
+            v.file_path.as_deref(),
+            None,
+        )
+        .await;
     }
 
     let message = guardrail::format_block_message(&violations);

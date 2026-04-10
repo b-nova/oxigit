@@ -21,7 +21,7 @@ async fn get_blob(
     path: String,
     git_ref: String,
 ) -> Result<BlobResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -45,8 +45,7 @@ async fn get_blob(
         git_ref
     };
 
-    let content = git::read_blob(&repo_path, &git_ref, &path)
-        .map_err(sfn_err)?;
+    let content = git::read_blob(&repo_path, &git_ref, &path).map_err(sfn_err)?;
 
     let file_name = path.rsplit('/').next().unwrap_or(&path).to_string();
 

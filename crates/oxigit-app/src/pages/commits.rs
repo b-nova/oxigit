@@ -16,11 +16,8 @@ pub struct CommitEntry {
 }
 
 #[server]
-pub async fn fetch_commits(
-    owner: String,
-    repo: String,
-) -> Result<Vec<CommitEntry>, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
+pub async fn fetch_commits(owner: String, repo: String) -> Result<Vec<CommitEntry>, ServerFnError> {
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;

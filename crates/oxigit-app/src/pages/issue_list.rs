@@ -21,7 +21,7 @@ pub async fn list_issues(
     repo: String,
     status: String,
 ) -> Result<Vec<IssueSummary>, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
     use oxigit_core::db;
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -35,7 +35,11 @@ pub async fn list_issues(
         return Err(ServerFnError::new("Repository not found"));
     }
 
-    let filter = if status.is_empty() { None } else { Some(status.as_str()) };
+    let filter = if status.is_empty() {
+        None
+    } else {
+        Some(status.as_str())
+    };
     let issues = db::list_issues_cross(&control_pool, &pool, repo_db.id, filter)
         .await
         .map_err(sfn_err)?;

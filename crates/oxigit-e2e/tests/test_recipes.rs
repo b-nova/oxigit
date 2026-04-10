@@ -28,7 +28,10 @@ async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str, secr
         .await
         .unwrap();
     let status = resp.status().as_u16();
-    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {status}");
+    assert!(
+        status == 200 || status == 404,
+        "Stripe webhook returned unexpected status: {status}"
+    );
 }
 
 /// Test that the recipe marketplace page loads.
@@ -40,8 +43,15 @@ async fn test_marketplace_page_loads() {
     let resp = client.get("/recipes").await;
     let body = resp.text().await.unwrap();
 
-    assert!(body.contains("Recipe Marketplace"), "Expected marketplace heading, got: {}", &body[..300.min(body.len())]);
-    assert!(body.contains("No recipes found") || body.contains("recipe"), "Expected empty state or recipes");
+    assert!(
+        body.contains("Recipe Marketplace"),
+        "Expected marketplace heading, got: {}",
+        &body[..300.min(body.len())]
+    );
+    assert!(
+        body.contains("No recipes found") || body.contains("recipe"),
+        "Expected empty state or recipes"
+    );
 }
 
 /// Test that the session detail page shows "Share as Recipe" button for owner.
@@ -51,20 +61,34 @@ async fn test_session_detail_shows_share_button() {
     let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("reciperepo", "Recipe test", false).await;
 
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "reciperepo");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "reciperepo",
+    );
     let dest = server.data_dir.path().join("clone-recipe");
     git_clone_http(&clone_url, &dest);
     init_repo_config(&dest);
 
     create_commit_with_trailers(
-        &dest, "app.rs", "fn main() {}", "feat: main",
-        "claude-code", Some("claude-opus-4-6"), Some("Create main function"),
-        Some("recipe-sess-1"), Some(1),
+        &dest,
+        "app.rs",
+        "fn main() {}",
+        "feat: main",
+        "claude-code",
+        Some("claude-opus-4-6"),
+        Some("Create main function"),
+        Some("recipe-sess-1"),
+        Some(1),
     );
 
     let push = git_push(&dest);
@@ -75,7 +99,11 @@ async fn test_session_detail_shows_share_button() {
     let resp = client.get("/alice/reciperepo/ai/recipe-sess-1").await;
     let body = resp.text().await.unwrap();
 
-    assert!(body.contains("Share as Recipe"), "Expected 'Share as Recipe' button on session detail, got: {}", &body[..500.min(body.len())]);
+    assert!(
+        body.contains("Share as Recipe"),
+        "Expected 'Share as Recipe' button on session detail, got: {}",
+        &body[..500.min(body.len())]
+    );
 }
 
 /// Test that the share recipe page loads.
@@ -96,9 +124,15 @@ async fn test_share_recipe_page_loads() {
     init_repo_config(&dest);
 
     create_commit_with_trailers(
-        &dest, "lib.rs", "fn lib() {}", "feat: lib",
-        "cursor", None, Some("Create library"),
-        Some("share-sess-1"), None,
+        &dest,
+        "lib.rs",
+        "fn lib() {}",
+        "feat: lib",
+        "cursor",
+        None,
+        Some("Create library"),
+        Some("share-sess-1"),
+        None,
     );
 
     let push = git_push(&dest);
@@ -109,8 +143,11 @@ async fn test_share_recipe_page_loads() {
     let resp = client.get("/bob/sharerepo/ai/share-sess-1/share").await;
     let body = resp.text().await.unwrap();
 
-    assert!(body.contains("Share Session as Recipe") || body.contains("Share Recipe"),
-        "Expected share recipe form, got: {}", &body[..300.min(body.len())]);
+    assert!(
+        body.contains("Share Session as Recipe") || body.contains("Share Recipe"),
+        "Expected share recipe form, got: {}",
+        &body[..300.min(body.len())]
+    );
 }
 
 /// Test that the Recipes link appears in the navbar.
@@ -122,8 +159,14 @@ async fn test_navbar_has_recipes_link() {
     let resp = client.get("/").await;
     let body = resp.text().await.unwrap();
 
-    assert!(body.contains("Recipes"), "Expected 'Recipes' link in navbar");
-    assert!(body.contains("/recipes"), "Expected /recipes href in navbar");
+    assert!(
+        body.contains("Recipes"),
+        "Expected 'Recipes' link in navbar"
+    );
+    assert!(
+        body.contains("/recipes"),
+        "Expected /recipes href in navbar"
+    );
 }
 
 /// Test that marketplace shows no recipes for an empty instance.
@@ -132,13 +175,18 @@ async fn test_marketplace_empty_state() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("carol", "carol@test.com", "password123").await;
+    client
+        .register("carol", "carol@test.com", "password123")
+        .await;
     client.login("carol", "password123").await;
 
     let resp = client.get("/recipes").await;
     let body = resp.text().await.unwrap();
 
-    assert!(body.contains("No recipes found"), "Expected empty marketplace message");
+    assert!(
+        body.contains("No recipes found"),
+        "Expected empty marketplace message"
+    );
 }
 
 /// Test that non-owner does not see share button.
@@ -148,7 +196,9 @@ async fn test_share_button_hidden_for_non_owner() {
     let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
-    client.register("dave", "dave@test.com", "password123").await;
+    client
+        .register("dave", "dave@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("dave", "password123").await;
     client.create_repo("owneronly", "Owner only", false).await;
@@ -159,9 +209,15 @@ async fn test_share_button_hidden_for_non_owner() {
     init_repo_config(&dest);
 
     create_commit_with_trailers(
-        &dest, "x.rs", "fn x() {}", "feat: x",
-        "claude-code", None, Some("Build x"),
-        Some("owner-sess-1"), None,
+        &dest,
+        "x.rs",
+        "fn x() {}",
+        "feat: x",
+        "claude-code",
+        None,
+        Some("Build x"),
+        Some("owner-sess-1"),
+        None,
     );
     git_push(&dest);
 
@@ -176,5 +232,8 @@ async fn test_share_button_hidden_for_non_owner() {
     let body = resp.text().await.unwrap();
 
     // Non-owner should NOT see the share button
-    assert!(!body.contains("Share as Recipe"), "Non-owner should not see share button");
+    assert!(
+        !body.contains("Share as Recipe"),
+        "Non-owner should not see share button"
+    );
 }

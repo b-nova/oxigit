@@ -223,7 +223,9 @@ impl Handler for OxigitSshHandler {
                 control_pool.clone()
             }
             #[cfg(not(feature = "saas"))]
-            { control_pool.clone() }
+            {
+                control_pool.clone()
+            }
         };
 
         // For push, verify the user has write access (owner or collaborator)
@@ -234,11 +236,18 @@ impl Handler for OxigitSshHandler {
                 Ok((_, repo_db)) => {
                     let push_user = db::get_user_by_username(&control_pool, &username).await;
                     let can_push = match push_user {
-                        Ok(u) => db::can_push_repo(&repo_pool, &repo_db, u.id).await.unwrap_or(false),
+                        Ok(u) => db::can_push_repo(&repo_pool, &repo_db, u.id)
+                            .await
+                            .unwrap_or(false),
                         Err(_) => false,
                     };
                     if !can_push {
-                        tracing::warn!("SSH push denied for {} on {}/{}", username, owner, repo_name);
+                        tracing::warn!(
+                            "SSH push denied for {} on {}/{}",
+                            username,
+                            owner,
+                            repo_name
+                        );
                         let _ = session.channel_failure(channel_id);
                         return Ok(());
                     }
@@ -259,12 +268,16 @@ impl Handler for OxigitSshHandler {
                 let org_slug = db::lookup_repo_org(&control_pool, &owner, &repo_name)
                     .await
                     .unwrap_or_else(|_| owner.clone());
-                self.tenant_mgr.tenant_repos_dir(&org_slug).join(format!("{}/{}.git", owner, repo_name))
+                self.tenant_mgr
+                    .tenant_repos_dir(&org_slug)
+                    .join(format!("{}/{}.git", owner, repo_name))
             } else {
                 repo_path(&self.data_dir, &owner, &repo_name)
             }
             #[cfg(not(feature = "saas"))]
-            { repo_path(&self.data_dir, &owner, &repo_name) }
+            {
+                repo_path(&self.data_dir, &owner, &repo_name)
+            }
         };
         if !path.exists() {
             let _ = session.channel_failure(channel_id);
@@ -285,7 +298,20 @@ impl Handler for OxigitSshHandler {
         let spawn_repo_pool = repo_pool.clone();
         let spawn_control_pool = control_pool.clone();
         tokio::spawn(async move {
-            if let Err(e) = run_git_over_channel(&service, &path, &mut channel, is_receive, repo_db_id, repo_owner_id, &spawn_repo_pool, &spawn_control_pool, &ssh_owner, &ssh_repo).await {
+            if let Err(e) = run_git_over_channel(
+                &service,
+                &path,
+                &mut channel,
+                is_receive,
+                repo_db_id,
+                repo_owner_id,
+                &spawn_repo_pool,
+                &spawn_control_pool,
+                &ssh_owner,
+                &ssh_repo,
+            )
+            .await
+            {
                 tracing::error!("Git SSH error: {}", e);
             }
         });
@@ -294,6 +320,7 @@ impl Handler for OxigitSshHandler {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_git_over_channel(
     service: &str,
     repo_path: &std::path::Path,
@@ -323,26 +350,27 @@ async fn run_git_over_channel(
         .stderr(std::process::Stdio::piped());
 
     // Pass guardrail env vars for pre-receive hook (if receive-pack)
-    if is_receive {
-        if let Some(rid) = repo_db_id {
-            // Read HTTP addr from server's env to derive port
-            if let Ok(http_addr) = std::env::var("OXIGIT_HTTP_ADDR") {
-                let port = http_addr.rsplit(':').next().unwrap_or("9100");
-                cmd.env("OXIGIT_PORT", port);
-            }
-            if let Ok(secret) = std::env::var("OXIGIT_SECRET_KEY") {
-                cmd.env("OXIGIT_SECRET", secret);
-            } else {
-                // Try reading hex-encoded secret from data dir
-                let secret_path = repo_path.parent().and_then(|p| p.parent()).map(|p| p.join("secret_key"));
-                if let Some(path) = secret_path {
-                    if let Ok(key) = std::fs::read(&path) {
-                        cmd.env("OXIGIT_SECRET", hex::encode(&key));
-                    }
-                }
-            }
-            cmd.env("REPO_ID", rid.to_string());
+    if is_receive && let Some(rid) = repo_db_id {
+        // Read HTTP addr from server's env to derive port
+        if let Ok(http_addr) = std::env::var("OXIGIT_HTTP_ADDR") {
+            let port = http_addr.rsplit(':').next().unwrap_or("9100");
+            cmd.env("OXIGIT_PORT", port);
         }
+        if let Ok(secret) = std::env::var("OXIGIT_SECRET_KEY") {
+            cmd.env("OXIGIT_SECRET", secret);
+        } else {
+            // Try reading hex-encoded secret from data dir
+            let secret_path = repo_path
+                .parent()
+                .and_then(|p| p.parent())
+                .map(|p| p.join("secret_key"));
+            if let Some(path) = secret_path
+                && let Ok(key) = std::fs::read(&path)
+            {
+                cmd.env("OXIGIT_SECRET", hex::encode(&key));
+            }
+        }
+        cmd.env("REPO_ID", rid.to_string());
     }
 
     let mut child = cmd.spawn()?;
@@ -409,23 +437,24 @@ async fn run_git_over_channel(
                         let exit_code = status.code().unwrap_or(1) as u32;
 
                         // Process AI metadata after successful push
-                        if is_receive && exit_code == 0 {
-                            if let Some(rid) = repo_db_id {
-                                let after_refs = oxigit_core::git::capture_refs(repo_path).unwrap_or_default();
-                                oxigit_core::hooks::process_post_receive(
-                                    tenant_pool,
-                                    control_pool,
-                                    repo_path,
-                                    rid,
-                                    repo_owner_id.unwrap_or(0),
-                                    &before_refs,
-                                    &after_refs,
-                                    owner,
-                                    repo_name,
-                                    "",
-                                )
-                                .await;
-                            }
+                        if is_receive
+                            && exit_code == 0
+                            && let Some(rid) = repo_db_id
+                        {
+                            let after_refs = oxigit_core::git::capture_refs(repo_path).unwrap_or_default();
+                            oxigit_core::hooks::process_post_receive(
+                                tenant_pool,
+                                control_pool,
+                                repo_path,
+                                rid,
+                                repo_owner_id.unwrap_or(0),
+                                &before_refs,
+                                &after_refs,
+                                owner,
+                                repo_name,
+                                "",
+                            )
+                            .await;
                         }
 
                         // Drain remaining stdout
@@ -435,10 +464,10 @@ async fn run_git_over_channel(
                         let _ = stdout_task.await;
 
                         // Send stderr
-                        if let Ok(stderr_data) = stderr_task.await {
-                            if !stderr_data.is_empty() {
-                                let _ = channel.extended_data(1, &stderr_data[..]).await;
-                            }
+                        if let Ok(stderr_data) = stderr_task.await
+                            && !stderr_data.is_empty()
+                        {
+                            let _ = channel.extended_data(1, &stderr_data[..]).await;
                         }
 
                         channel.exit_status(exit_code).await?;

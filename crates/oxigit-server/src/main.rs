@@ -1,15 +1,18 @@
 #[cfg(feature = "saas")]
 use std::sync::Arc;
 
-use axum::{Extension, Router, routing::{get, post}};
+use axum::{
+    Extension, Router,
+    routing::{get, post},
+};
 use clap::Parser;
 use leptos::prelude::*;
-use leptos_axum::{generate_route_list, LeptosRoutes};
+use leptos_axum::{LeptosRoutes, generate_route_list};
 use tower_http::services::ServeDir;
 use tracing_subscriber::EnvFilter;
 
-use oxigit_app::{App, Shell, ShellProps};
 use oxigit_app::server_fns::AppState;
+use oxigit_app::{App, Shell, ShellProps};
 use oxigit_core::db;
 #[cfg(feature = "saas")]
 use oxigit_core::tenant::TenantPoolManager;
@@ -64,7 +67,10 @@ async fn main() {
             db::run_control_migrations(&p)
                 .await
                 .expect("Failed to run control migrations");
-            tracing::info!("Multi-tenant mode: control DB at {}", control_db_path.display());
+            tracing::info!(
+                "Multi-tenant mode: control DB at {}",
+                control_db_path.display()
+            );
             p
         } else {
             std::fs::create_dir_all(config.data_dir.join("repos"))
@@ -80,7 +86,11 @@ async fn main() {
             p
         };
 
-        let tenant_mgr = Arc::new(TenantPoolManager::new(pool.clone(), config.data_dir.clone(), 50));
+        let tenant_mgr = Arc::new(TenantPoolManager::new(
+            pool.clone(),
+            config.data_dir.clone(),
+            50,
+        ));
         (pool, multi_tenant, tenant_mgr)
     };
 
@@ -108,7 +118,12 @@ async fn main() {
         .output_name("oxigit")
         .site_root("target/site")
         .site_pkg_dir("pkg")
-        .site_addr(config.http_addr.parse::<std::net::SocketAddr>().expect("Invalid HTTP address"))
+        .site_addr(
+            config
+                .http_addr
+                .parse::<std::net::SocketAddr>()
+                .expect("Invalid HTTP address"),
+        )
         .reload_port(9101)
         .build();
 
@@ -153,9 +168,18 @@ async fn main() {
     // Git Smart HTTP routes + deploy callback (must be before Leptos routes)
     let git_routes = Router::new()
         .route("/{owner}/{repo}/info/refs", get(git_http::info_refs))
-        .route("/{owner}/{repo}/git-upload-pack", post(git_http::upload_pack))
-        .route("/{owner}/{repo}/git-receive-pack", post(git_http::receive_pack))
-        .route("/api/deploy-callback/{commit_sha}", post(git_http::deploy_callback))
+        .route(
+            "/{owner}/{repo}/git-upload-pack",
+            post(git_http::upload_pack),
+        )
+        .route(
+            "/{owner}/{repo}/git-receive-pack",
+            post(git_http::receive_pack),
+        )
+        .route(
+            "/api/deploy-callback/{commit_sha}",
+            post(git_http::deploy_callback),
+        )
         .route("/internal/guardrail-check", post(git_http::guardrail_check));
 
     #[cfg(feature = "saas")]
@@ -175,24 +199,48 @@ async fn main() {
                 .leptos_routes(&leptos_options, routes, {
                     let opts = shell_options.clone();
                     move || {
-                        Shell(ShellProps { options: opts.clone() })
+                        Shell(ShellProps {
+                            options: opts.clone(),
+                        })
                     }
                 })
-                .fallback(leptos_axum::file_and_error_handler(move |opts: LeptosOptions| {
-                    move || {
-                        Shell(ShellProps { options: opts.clone() })
-                    }
-                }))
+                .fallback(leptos_axum::file_and_error_handler(
+                    move |opts: LeptosOptions| {
+                        move || {
+                            Shell(ShellProps {
+                                options: opts.clone(),
+                            })
+                        }
+                    },
+                ))
                 .with_state(leptos_options),
         )
         .nest_service("/pkg", ServeDir::new("target/site/pkg"))
         .nest_service("/brand", ServeDir::new("target/site/brand"))
-        .route_service("/favicon.svg", tower_http::services::ServeFile::new("target/site/favicon.svg"))
-        .route_service("/favicon-16x16.png", tower_http::services::ServeFile::new("target/site/favicon-16x16.png"))
-        .route_service("/favicon-32x32.png", tower_http::services::ServeFile::new("target/site/favicon-32x32.png"))
-        .route_service("/apple-touch-icon.png", tower_http::services::ServeFile::new("target/site/apple-touch-icon.png"))
-        .route_service("/site.webmanifest", tower_http::services::ServeFile::new("target/site/site.webmanifest"))
-        .route_service("/og-image.png", tower_http::services::ServeFile::new("target/site/og-image.png"))
+        .route_service(
+            "/favicon.svg",
+            tower_http::services::ServeFile::new("target/site/favicon.svg"),
+        )
+        .route_service(
+            "/favicon-16x16.png",
+            tower_http::services::ServeFile::new("target/site/favicon-16x16.png"),
+        )
+        .route_service(
+            "/favicon-32x32.png",
+            tower_http::services::ServeFile::new("target/site/favicon-32x32.png"),
+        )
+        .route_service(
+            "/apple-touch-icon.png",
+            tower_http::services::ServeFile::new("target/site/apple-touch-icon.png"),
+        )
+        .route_service(
+            "/site.webmanifest",
+            tower_http::services::ServeFile::new("target/site/site.webmanifest"),
+        )
+        .route_service(
+            "/og-image.png",
+            tower_http::services::ServeFile::new("target/site/og-image.png"),
+        )
         .layer(Extension(state));
 
     // Start SSH server in background
@@ -202,7 +250,15 @@ async fn main() {
     {
         let ssh_tenant_mgr = tenant_mgr.clone();
         tokio::spawn(async move {
-            if let Err(e) = oxigit_ssh::run_ssh_server(ssh_addr, ssh_tenant_mgr, ssh_data_dir, host_key, multi_tenant).await {
+            if let Err(e) = oxigit_ssh::run_ssh_server(
+                ssh_addr,
+                ssh_tenant_mgr,
+                ssh_data_dir,
+                host_key,
+                multi_tenant,
+            )
+            .await
+            {
                 tracing::error!("SSH server error: {}", e);
             }
         });
@@ -211,7 +267,9 @@ async fn main() {
     {
         let ssh_pool = pool.clone();
         tokio::spawn(async move {
-            if let Err(e) = oxigit_ssh::run_ssh_server(ssh_addr, ssh_pool, ssh_data_dir, host_key).await {
+            if let Err(e) =
+                oxigit_ssh::run_ssh_server(ssh_addr, ssh_pool, ssh_data_dir, host_key).await
+            {
                 tracing::error!("SSH server error: {}", e);
             }
         });
@@ -239,8 +297,7 @@ fn load_or_generate_secret(config: &Config) -> Vec<u8> {
     // Otherwise, load from file or generate
     let key_path = config.data_dir.join("secret_key");
     if key_path.exists() {
-        let key_hex = std::fs::read_to_string(&key_path)
-            .expect("Failed to read secret_key file");
+        let key_hex = std::fs::read_to_string(&key_path).expect("Failed to read secret_key file");
         hex::decode(key_hex.trim()).expect("Invalid hex in secret_key file")
     } else {
         use rand_core::RngCore;

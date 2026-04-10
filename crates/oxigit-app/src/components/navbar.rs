@@ -1,22 +1,19 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_location;
 
-use super::icons::{IconGear, IconLogout, IconMenu, IconUser, IconX};
 #[cfg(feature = "saas")]
 use super::icons::{IconCheck, IconCreditCard, IconReceipt, IconTeam};
+use super::icons::{IconGear, IconLogout, IconMenu, IconUser, IconX};
 use super::theme_toggle::ThemeToggle;
-use crate::pages::{get_current_user, Logout};
+use crate::pages::{Logout, get_current_user};
 #[cfg(feature = "saas")]
-use crate::pages::{list_my_orgs, SwitchOrg};
+use crate::pages::{SwitchOrg, list_my_orgs};
 
 #[component]
 pub fn Navbar() -> impl IntoView {
     let location = use_location();
     // Refetch user on every route change so navbar updates after login/logout
-    let user = Resource::new(
-        move || location.pathname.get(),
-        |_| get_current_user(),
-    );
+    let user = Resource::new(move || location.pathname.get(), |_| get_current_user());
     let logout_action = ServerAction::<Logout>::new();
 
     let (menu_open, set_menu_open) = signal(false);

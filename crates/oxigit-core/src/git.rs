@@ -42,7 +42,10 @@ pub fn init_bare_repo(path: &Path) -> Result<()> {
 
 /// Resolve the on-disk path to a bare repository (legacy layout).
 pub fn repo_path(data_dir: &Path, owner: &str, name: &str) -> std::path::PathBuf {
-    data_dir.join("repos").join(owner).join(format!("{name}.git"))
+    data_dir
+        .join("repos")
+        .join(owner)
+        .join(format!("{name}.git"))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,7 +75,11 @@ pub fn list_branches(repo_path: &Path) -> Result<Vec<String>> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(stdout.lines().map(|s| s.to_string()).filter(|s| !s.is_empty()).collect())
+    Ok(stdout
+        .lines()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .collect())
 }
 
 /// Get the default branch (HEAD target or first branch).
@@ -141,9 +148,7 @@ pub fn list_tree(repo_path: &Path, git_ref: &str, path: &str) -> Result<Vec<Tree
         .collect();
 
     // Sort: directories first, then alphabetical
-    entries.sort_by(|a, b| {
-        b.is_dir.cmp(&a.is_dir).then_with(|| a.name.cmp(&b.name))
-    });
+    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.cmp(&b.name)));
 
     Ok(entries)
 }
@@ -168,12 +173,7 @@ pub fn read_blob(repo_path: &Path, git_ref: &str, path: &str) -> Result<Vec<u8>>
 pub fn get_latest_commit(repo_path: &Path, git_ref: &str) -> Result<Option<CommitInfo>> {
     let output = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .args([
-            "log",
-            "-1",
-            "--format=%H%n%s%n%an%n%ai",
-            git_ref,
-        ])
+        .args(["log", "-1", "--format=%H%n%s%n%an%n%ai", git_ref])
         .output()?;
 
     if !output.status.success() {
@@ -264,11 +264,7 @@ pub fn branch_commits(repo_path: &Path, target: &str, source: &str) -> Result<Ve
     let range = format!("{}..{}", target, source);
     let output = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .args([
-            "log",
-            "--format=%H%x00%s%x00%an%x00%ai",
-            &range,
-        ])
+        .args(["log", "--format=%H%x00%s%x00%an%x00%ai", &range])
         .output()?;
 
     if !output.status.success() {
@@ -324,9 +320,15 @@ pub fn merge_branches(repo_path: &Path, target: &str, source: &str, message: &st
         .args(["rev-parse", source])
         .output()?;
 
-    let merge_base_sha = String::from_utf8_lossy(&merge_base.stdout).trim().to_string();
-    let target_sha = String::from_utf8_lossy(&target_rev.stdout).trim().to_string();
-    let source_sha = String::from_utf8_lossy(&source_rev.stdout).trim().to_string();
+    let merge_base_sha = String::from_utf8_lossy(&merge_base.stdout)
+        .trim()
+        .to_string();
+    let target_sha = String::from_utf8_lossy(&target_rev.stdout)
+        .trim()
+        .to_string();
+    let source_sha = String::from_utf8_lossy(&source_rev.stdout)
+        .trim()
+        .to_string();
 
     if merge_base_sha == target_sha {
         // Fast-forward: just update the ref
@@ -349,16 +351,27 @@ pub fn merge_branches(repo_path: &Path, target: &str, source: &str, message: &st
             .env("GIT_DIR", repo_path)
             .args(["rev-parse", &format!("{}^{{tree}}", source)])
             .output()?;
-        let _source_tree_sha = String::from_utf8_lossy(&source_tree.stdout).trim().to_string();
+        let _source_tree_sha = String::from_utf8_lossy(&source_tree.stdout)
+            .trim()
+            .to_string();
 
         // Try a tree merge
         let read_tree = Command::new("git")
             .env("GIT_DIR", repo_path)
-            .args(["read-tree", "-m", "-i", &merge_base_sha, &target_sha, &source_sha])
+            .args([
+                "read-tree",
+                "-m",
+                "-i",
+                &merge_base_sha,
+                &target_sha,
+                &source_sha,
+            ])
             .output()?;
 
         if !read_tree.status.success() {
-            return Err(OxigitError::Git("Merge conflicts detected. Cannot auto-merge.".into()));
+            return Err(OxigitError::Git(
+                "Merge conflicts detected. Cannot auto-merge.".into(),
+            ));
         }
 
         // Write tree
@@ -370,17 +383,23 @@ pub fn merge_branches(repo_path: &Path, target: &str, source: &str, message: &st
         if !write_tree.status.success() {
             return Err(OxigitError::Git("Failed to write merge tree".into()));
         }
-        let tree_sha = String::from_utf8_lossy(&write_tree.stdout).trim().to_string();
+        let tree_sha = String::from_utf8_lossy(&write_tree.stdout)
+            .trim()
+            .to_string();
 
         // Create merge commit
         let commit = Command::new("git")
             .env("GIT_DIR", repo_path)
             .system_identity()
             .args([
-                "commit-tree", &tree_sha,
-                "-p", &target_sha,
-                "-p", &source_sha,
-                "-m", message,
+                "commit-tree",
+                &tree_sha,
+                "-p",
+                &target_sha,
+                "-p",
+                &source_sha,
+                "-m",
+                message,
             ])
             .output()?;
 
@@ -470,7 +489,10 @@ pub fn add_files_to_branch(
         let output = child.wait_with_output()?;
         if !output.status.success() {
             let _ = std::fs::remove_file(&tmp_index);
-            return Err(OxigitError::Git(format!("Failed to hash object for {}", path)));
+            return Err(OxigitError::Git(format!(
+                "Failed to hash object for {}",
+                path
+            )));
         }
         let blob_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
@@ -478,7 +500,12 @@ pub fn add_files_to_branch(
         let update = Command::new("git")
             .env("GIT_DIR", repo_path)
             .env("GIT_INDEX_FILE", &tmp_index)
-            .args(["update-index", "--add", "--cacheinfo", &format!("{},{},{}", mode, blob_sha, path)])
+            .args([
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                &format!("{},{},{}", mode, blob_sha, path),
+            ])
             .output()?;
         if !update.status.success() {
             let _ = std::fs::remove_file(&tmp_index);
@@ -501,7 +528,9 @@ pub fn add_files_to_branch(
     if !write_tree.status.success() {
         return Err(OxigitError::Git("Failed to write tree".into()));
     }
-    let tree_sha = String::from_utf8_lossy(&write_tree.stdout).trim().to_string();
+    let tree_sha = String::from_utf8_lossy(&write_tree.stdout)
+        .trim()
+        .to_string();
 
     // Create commit
     let commit = Command::new("git")
@@ -555,7 +584,9 @@ pub fn squash_session(
     if !tip_output.status.success() {
         return Err(OxigitError::Git(format!("Branch {} not found", branch)));
     }
-    let tip = String::from_utf8_lossy(&tip_output.stdout).trim().to_string();
+    let tip = String::from_utf8_lossy(&tip_output.stdout)
+        .trim()
+        .to_string();
 
     let latest = &shas[shas.len() - 1];
     let earliest = &shas[0];
@@ -573,9 +604,13 @@ pub fn squash_session(
         .args(["rev-parse", &format!("{}^", earliest)])
         .output()?;
     if !parent_output.status.success() {
-        return Err(OxigitError::Git("Cannot squash: earliest commit has no parent (root commit)".into()));
+        return Err(OxigitError::Git(
+            "Cannot squash: earliest commit has no parent (root commit)".into(),
+        ));
     }
-    let base_parent = String::from_utf8_lossy(&parent_output.stdout).trim().to_string();
+    let base_parent = String::from_utf8_lossy(&parent_output.stdout)
+        .trim()
+        .to_string();
 
     // Get the tree of the latest commit (end state)
     let tree_output = Command::new("git")
@@ -583,9 +618,13 @@ pub fn squash_session(
         .args(["rev-parse", &format!("{}^{{tree}}", latest)])
         .output()?;
     if !tree_output.status.success() {
-        return Err(OxigitError::Git("Failed to get tree for latest commit".into()));
+        return Err(OxigitError::Git(
+            "Failed to get tree for latest commit".into(),
+        ));
     }
-    let tree_sha = String::from_utf8_lossy(&tree_output.stdout).trim().to_string();
+    let tree_sha = String::from_utf8_lossy(&tree_output.stdout)
+        .trim()
+        .to_string();
 
     // Create the squashed commit
     let commit = Command::new("git")
@@ -609,11 +648,7 @@ pub fn squash_session(
 
 /// Cherry-pick a range of commits onto a target branch in a bare repo.
 /// `shas` must be ordered oldest-first.
-pub fn cherry_pick_range(
-    repo_path: &Path,
-    target_branch: &str,
-    shas: &[String],
-) -> Result<()> {
+pub fn cherry_pick_range(repo_path: &Path, target_branch: &str, shas: &[String]) -> Result<()> {
     if shas.is_empty() {
         return Ok(());
     }
@@ -624,9 +659,14 @@ pub fn cherry_pick_range(
         .args(["rev-parse", &branch_ref])
         .output()?;
     if !tip_output.status.success() {
-        return Err(OxigitError::Git(format!("Branch {} not found", target_branch)));
+        return Err(OxigitError::Git(format!(
+            "Branch {} not found",
+            target_branch
+        )));
     }
-    let mut current_tip = String::from_utf8_lossy(&tip_output.stdout).trim().to_string();
+    let mut current_tip = String::from_utf8_lossy(&tip_output.stdout)
+        .trim()
+        .to_string();
 
     let tmp_index = repo_path.join("tmp_index_cherrypick");
 
@@ -639,7 +679,9 @@ pub fn cherry_pick_range(
         if !parent_output.status.success() {
             continue; // Skip root commits
         }
-        let parent = String::from_utf8_lossy(&parent_output.stdout).trim().to_string();
+        let parent = String::from_utf8_lossy(&parent_output.stdout)
+            .trim()
+            .to_string();
 
         // Three-way merge: base=parent, ours=current_tip, theirs=sha
         let read_tree = Command::new("git")
@@ -664,23 +706,36 @@ pub fn cherry_pick_range(
             let _ = std::fs::remove_file(&tmp_index);
             return Err(OxigitError::Git("Failed to write cherry-pick tree".into()));
         }
-        let tree_sha = String::from_utf8_lossy(&write_tree.stdout).trim().to_string();
+        let tree_sha = String::from_utf8_lossy(&write_tree.stdout)
+            .trim()
+            .to_string();
 
         // Get original commit message
         let msg_output = Command::new("git")
             .env("GIT_DIR", repo_path)
             .args(["log", "-1", "--format=%B", sha])
             .output()?;
-        let original_msg = String::from_utf8_lossy(&msg_output.stdout).trim().to_string();
+        let original_msg = String::from_utf8_lossy(&msg_output.stdout)
+            .trim()
+            .to_string();
 
         let commit = Command::new("git")
             .env("GIT_DIR", repo_path)
             .system_identity()
-            .args(["commit-tree", &tree_sha, "-p", &current_tip, "-m", &original_msg])
+            .args([
+                "commit-tree",
+                &tree_sha,
+                "-p",
+                &current_tip,
+                "-m",
+                &original_msg,
+            ])
             .output()?;
         if !commit.status.success() {
             let _ = std::fs::remove_file(&tmp_index);
-            return Err(OxigitError::Git("Failed to create cherry-pick commit".into()));
+            return Err(OxigitError::Git(
+                "Failed to create cherry-pick commit".into(),
+            ));
         }
         current_tip = String::from_utf8_lossy(&commit.stdout).trim().to_string();
     }
@@ -748,9 +803,11 @@ pub fn analyze_revert_commit(
     let output = Command::new("git")
         .env("GIT_DIR", repo_path)
         .args([
-            "merge-tree", "--write-tree",
+            "merge-tree",
+            "--write-tree",
             &format!("--merge-base={}", commit_sha),
-            current_ref, &parent,
+            current_ref,
+            &parent,
         ])
         .output()?;
 
@@ -798,18 +855,29 @@ pub fn apply_conflict_resolutions(
         let output = child.wait_with_output()?;
         if !output.status.success() {
             let _ = std::fs::remove_file(&tmp_index);
-            return Err(OxigitError::Git(format!("Failed to hash resolved content for {}", path)));
+            return Err(OxigitError::Git(format!(
+                "Failed to hash resolved content for {}",
+                path
+            )));
         }
         let blob_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
         let update = Command::new("git")
             .env("GIT_DIR", repo_path)
             .env("GIT_INDEX_FILE", &tmp_index)
-            .args(["update-index", "--add", "--cacheinfo", &format!("100644,{},{}", blob_sha, path)])
+            .args([
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                &format!("100644,{},{}", blob_sha, path),
+            ])
             .output()?;
         if !update.status.success() {
             let _ = std::fs::remove_file(&tmp_index);
-            return Err(OxigitError::Git(format!("Failed to update index for {}", path)));
+            return Err(OxigitError::Git(format!(
+                "Failed to update index for {}",
+                path
+            )));
         }
     }
 
@@ -824,7 +892,9 @@ pub fn apply_conflict_resolutions(
     if !write_tree.status.success() {
         return Err(OxigitError::Git("Failed to write resolved tree".into()));
     }
-    let tree_sha = String::from_utf8_lossy(&write_tree.stdout).trim().to_string();
+    let tree_sha = String::from_utf8_lossy(&write_tree.stdout)
+        .trim()
+        .to_string();
 
     // Build commit-tree args with multiple parents
     let mut args = vec!["commit-tree".to_string(), tree_sha.clone()];
@@ -842,7 +912,9 @@ pub fn apply_conflict_resolutions(
         .output()?;
 
     if !commit.status.success() {
-        return Err(OxigitError::Git("Failed to create resolved merge commit".into()));
+        return Err(OxigitError::Git(
+            "Failed to create resolved merge commit".into(),
+        ));
     }
     let commit_sha = String::from_utf8_lossy(&commit.stdout).trim().to_string();
 
@@ -877,7 +949,10 @@ pub fn blame_file(repo_path: &Path, git_ref: &str, file_path: &str) -> Result<Ve
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(OxigitError::Git(format!("git blame failed: {}", stderr.trim())));
+        return Err(OxigitError::Git(format!(
+            "git blame failed: {}",
+            stderr.trim()
+        )));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -899,18 +974,24 @@ pub fn blame_file(repo_path: &Path, git_ref: &str, file_path: &str) -> Result<Ve
                 time: current_time.clone(),
                 content: content.to_string(),
             });
-        } else if raw_line.starts_with("author ") {
-            current_author = raw_line[7..].to_string();
-        } else if raw_line.starts_with("author-time ") {
+        } else if let Some(author) = raw_line.strip_prefix("author ") {
+            current_author = author.to_string();
+        } else if let Some(rest) = raw_line.strip_prefix("author-time ") {
             // Convert epoch to readable format
-            let epoch = raw_line[12..].trim();
+            let epoch = rest.trim();
             if let Ok(ts) = epoch.parse::<i64>() {
                 // Simple ISO-ish format without pulling in chrono
                 current_time = format_epoch(ts);
             } else {
                 current_time = epoch.to_string();
             }
-        } else if raw_line.len() >= 40 && raw_line.as_bytes().iter().take(40).all(|b| b.is_ascii_hexdigit()) {
+        } else if raw_line.len() >= 40
+            && raw_line
+                .as_bytes()
+                .iter()
+                .take(40)
+                .all(|b| b.is_ascii_hexdigit())
+        {
             // SHA line: "<sha> <orig_line> <final_line> [<num_lines>]"
             let parts: Vec<&str> = raw_line.splitn(4, ' ').collect();
             if parts.len() >= 3 {
@@ -935,17 +1016,39 @@ fn format_epoch(epoch: i64) -> String {
     let mut year = 1970i64;
 
     loop {
-        let days_in_year = if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) { 366 } else { 365 };
-        if days < days_in_year { break; }
+        let days_in_year = if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
+            366
+        } else {
+            365
+        };
+        if days < days_in_year {
+            break;
+        }
         days -= days_in_year;
         year += 1;
     }
 
     let is_leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let month_days = [31, if is_leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days = [
+        31,
+        if is_leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut month = 0;
     for (i, &md) in month_days.iter().enumerate() {
-        if days < md as i64 { month = i + 1; break; }
+        if days < md as i64 {
+            month = i + 1;
+            break;
+        }
         days -= md as i64;
     }
     let day = days + 1;
@@ -953,7 +1056,10 @@ fn format_epoch(epoch: i64) -> String {
     let hours = time_of_day / 3600;
     let minutes = (time_of_day % 3600) / 60;
 
-    format!("{:04}-{:02}-{:02} {:02}:{:02}", year, month, day, hours, minutes)
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}",
+        year, month, day, hours, minutes
+    )
 }
 
 // --- .oxigit/context.json AI metadata ---
@@ -1005,7 +1111,7 @@ pub fn read_oxigit_trailers(repo_path: &Path, sha: &str) -> Result<Option<Oxigit
 
     let body = String::from_utf8_lossy(&output.stdout);
 
-    fn trailer_value<'a>(body: &'a str, key: &str) -> Option<String> {
+    fn trailer_value(body: &str, key: &str) -> Option<String> {
         for line in body.lines().rev() {
             if let Some(val) = line.strip_prefix(key) {
                 let val = val.trim();
@@ -1022,8 +1128,8 @@ pub fn read_oxigit_trailers(repo_path: &Path, sha: &str) -> Result<Option<Oxigit
         None => return Ok(None),
     };
 
-    let prompt_index = trailer_value(&body, "Oxigit-Prompt-Index:")
-        .and_then(|v| v.parse::<i64>().ok());
+    let prompt_index =
+        trailer_value(&body, "Oxigit-Prompt-Index:").and_then(|v| v.parse::<i64>().ok());
 
     Ok(Some(OxigitContext {
         tool,
@@ -1039,7 +1145,14 @@ pub fn read_oxigit_trailers(repo_path: &Path, sha: &str) -> Result<Option<Oxigit
 pub fn list_changed_files(repo_path: &Path, sha: &str) -> Result<Vec<String>> {
     let output = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .args(["diff-tree", "--root", "--name-only", "-r", "--no-commit-id", sha])
+        .args([
+            "diff-tree",
+            "--root",
+            "--name-only",
+            "-r",
+            "--no-commit-id",
+            sha,
+        ])
         .output()?;
 
     if !output.status.success() {
@@ -1077,7 +1190,11 @@ pub fn list_new_commit_shas(repo_path: &Path, old_sha: &str, new_sha: &str) -> R
     let range = format!("{}..{}", old_sha, new_sha);
     let output = Command::new("git")
         .env("GIT_DIR", repo_path)
-        .args(["rev-list", &range, &format!("--max-count={MAX_NEW_COMMITS}")])
+        .args([
+            "rev-list",
+            &range,
+            &format!("--max-count={MAX_NEW_COMMITS}"),
+        ])
         .output()?;
 
     if !output.status.success() {
@@ -1085,12 +1202,20 @@ pub fn list_new_commit_shas(repo_path: &Path, old_sha: &str, new_sha: &str) -> R
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(stdout.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+    Ok(stdout
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect())
 }
 
 /// List commit SHAs reachable from `new_sha` but not from any of the `exclude_shas`.
 /// Used for new branches where there's no old SHA.
-pub fn list_new_commit_shas_excluding(repo_path: &Path, new_sha: &str, exclude_shas: &[&str]) -> Result<Vec<String>> {
+pub fn list_new_commit_shas_excluding(
+    repo_path: &Path,
+    new_sha: &str,
+    exclude_shas: &[&str],
+) -> Result<Vec<String>> {
     let mut args = vec!["rev-list".to_string(), new_sha.to_string()];
     if !exclude_shas.is_empty() {
         args.push("--not".to_string());
@@ -1110,7 +1235,11 @@ pub fn list_new_commit_shas_excluding(repo_path: &Path, new_sha: &str, exclude_s
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(stdout.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+    Ok(stdout
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect())
 }
 
 /// Get the aggregate diff for a session (diff between parent of earliest commit and latest commit).
@@ -1130,7 +1259,9 @@ pub fn session_aggregate_diff(repo_path: &Path, shas: &[String]) -> Result<Strin
         .output()?;
 
     let diff = if parent_output.status.success() {
-        let parent = String::from_utf8_lossy(&parent_output.stdout).trim().to_string();
+        let parent = String::from_utf8_lossy(&parent_output.stdout)
+            .trim()
+            .to_string();
         let output = Command::new("git")
             .env("GIT_DIR", repo_path)
             .args(["diff", &parent, latest])
@@ -1164,7 +1295,9 @@ pub fn session_diff_stats(repo_path: &Path, shas: &[String]) -> Result<(usize, u
         .output()?;
 
     let numstat_output = if parent_output.status.success() {
-        let parent = String::from_utf8_lossy(&parent_output.stdout).trim().to_string();
+        let parent = String::from_utf8_lossy(&parent_output.stdout)
+            .trim()
+            .to_string();
         Command::new("git")
             .env("GIT_DIR", repo_path)
             .args(["diff", "--numstat", &parent, latest])
@@ -1250,7 +1383,12 @@ pub enum RevertResult {
 /// Revert a sequence of commits on a bare repo, creating a single revert commit.
 /// `shas` should be ordered oldest-first; they are reverted newest-first.
 /// Returns `RevertResult::Conflict` if a commit cannot be cleanly reverted.
-pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: &str) -> Result<RevertResult> {
+pub fn revert_session(
+    repo_path: &Path,
+    branch: &str,
+    shas: &[String],
+    message: &str,
+) -> Result<RevertResult> {
     if shas.is_empty() {
         return Ok(RevertResult::Success);
     }
@@ -1263,7 +1401,9 @@ pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: 
     if !tip_output.status.success() {
         return Err(OxigitError::Git(format!("Branch {} not found", branch)));
     }
-    let original_tip = String::from_utf8_lossy(&tip_output.stdout).trim().to_string();
+    let original_tip = String::from_utf8_lossy(&tip_output.stdout)
+        .trim()
+        .to_string();
     let mut current = original_tip.clone();
     let mut reverted_shas = Vec::new();
 
@@ -1291,23 +1431,37 @@ pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: 
         let merge_output = Command::new("git")
             .env("GIT_DIR", repo_path)
             .args([
-                "merge-tree", "--write-tree",
+                "merge-tree",
+                "--write-tree",
                 &format!("--merge-base={}", sha),
-                &current, &parent,
+                &current,
+                &parent,
             ])
             .output()?;
         if !merge_output.status.success() {
             return Err(OxigitError::Git(format!(
-                "Cannot revert commit {}: merge-tree failed", &sha[..7.min(sha.len())]
+                "Cannot revert commit {}: merge-tree failed",
+                &sha[..7.min(sha.len())]
             )));
         }
         let tree_sha = String::from_utf8_lossy(&merge_output.stdout)
-            .lines().next().unwrap_or("").trim().to_string();
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
 
         let commit = Command::new("git")
             .env("GIT_DIR", repo_path)
             .system_identity()
-            .args(["commit-tree", &tree_sha, "-p", &current, "-m", &format!("revert {}", sha)])
+            .args([
+                "commit-tree",
+                &tree_sha,
+                "-p",
+                &current,
+                "-m",
+                &format!("revert {}", sha),
+            ])
             .output()?;
         if !commit.status.success() {
             return Err(OxigitError::Git("Failed to create revert commit".into()));
@@ -1321,15 +1475,26 @@ pub fn revert_session(repo_path: &Path, branch: &str, shas: &[String], message: 
         .env("GIT_DIR", repo_path)
         .args(["rev-parse", &format!("{}^{{tree}}", current)])
         .output()?;
-    let final_tree_sha = String::from_utf8_lossy(&final_tree.stdout).trim().to_string();
+    let final_tree_sha = String::from_utf8_lossy(&final_tree.stdout)
+        .trim()
+        .to_string();
 
     let squash = Command::new("git")
         .env("GIT_DIR", repo_path)
         .system_identity()
-        .args(["commit-tree", &final_tree_sha, "-p", &original_tip, "-m", message])
+        .args([
+            "commit-tree",
+            &final_tree_sha,
+            "-p",
+            &original_tip,
+            "-m",
+            message,
+        ])
         .output()?;
     if !squash.status.success() {
-        return Err(OxigitError::Git("Failed to create squashed revert commit".into()));
+        return Err(OxigitError::Git(
+            "Failed to create squashed revert commit".into(),
+        ));
     }
     let squash_sha = String::from_utf8_lossy(&squash.stdout).trim().to_string();
 

@@ -37,7 +37,10 @@ async fn upgrade_to_founding(client: &TestClient, base_url: &str, user_id: &str,
         .await
         .unwrap();
     let status = resp.status().as_u16();
-    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {status}");
+    assert!(
+        status == 200 || status == 404,
+        "Stripe webhook returned unexpected status: {status}"
+    );
 }
 
 /// Test: badge SVG endpoint returns valid SVG for a founding member.
@@ -45,10 +48,14 @@ async fn upgrade_to_founding(client: &TestClient, base_url: &str, user_id: &str,
 async fn badge_svg_returns_valid_svg() {
     let secret = "whsec_badge_svg_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_founding(&client, &client.base_url.clone(), "1", secret).await;
 
     let resp = client
@@ -58,7 +65,11 @@ async fn badge_svg_returns_valid_svg() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status().as_u16(), 200, "badge endpoint should return 200");
+    assert_eq!(
+        resp.status().as_u16(),
+        200,
+        "badge endpoint should return 200"
+    );
     let content_type = resp
         .headers()
         .get("content-type")
@@ -70,7 +81,10 @@ async fn badge_svg_returns_valid_svg() {
     );
 
     let body = resp.text().await.unwrap();
-    assert!(body.contains("<svg"), "badge should contain SVG element: {body}");
+    assert!(
+        body.contains("<svg"),
+        "badge should contain SVG element: {body}"
+    );
     assert!(
         body.contains("FOUNDING"),
         "badge should contain FOUNDING text: {body}"
@@ -89,7 +103,9 @@ async fn badge_svg_returns_valid_svg() {
 #[tokio::test]
 async fn badge_svg_404_for_non_founding_user() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
     client.register("bob", "bob@test.com", "password123").await;
@@ -117,7 +133,9 @@ async fn badge_svg_404_for_non_founding_user() {
 #[tokio::test]
 async fn badge_svg_404_for_nonexistent_user() {
     let server = TestServer::start().await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
     let resp = client
@@ -139,10 +157,14 @@ async fn badge_svg_404_for_nonexistent_user() {
 async fn founding_profile_shows_slot_and_embed_code() {
     let secret = "whsec_profile_slot_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_founding(&client, &client.base_url.clone(), "1", secret).await;
 
     let resp = client
@@ -177,10 +199,14 @@ async fn founding_profile_shows_slot_and_embed_code() {
 async fn founding_members_get_sequential_slots() {
     let secret = "whsec_sequential_slots_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
 
     let alice = server.client();
-    alice.register("alice", "alice@test.com", "password123").await;
+    alice
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_founding(&alice, &alice.base_url.clone(), "1", secret).await;
 
     let bob = server.client();
@@ -195,10 +221,7 @@ async fn founding_members_get_sequential_slots() {
         .await
         .unwrap();
     let body = resp.text().await.unwrap();
-    assert!(
-        body.contains("#001"),
-        "alice should have slot #001: {body}"
-    );
+    assert!(body.contains("#001"), "alice should have slot #001: {body}");
 
     // Check Bob's badge has #002
     let resp = bob
@@ -208,10 +231,7 @@ async fn founding_members_get_sequential_slots() {
         .await
         .unwrap();
     let body = resp.text().await.unwrap();
-    assert!(
-        body.contains("#002"),
-        "bob should have slot #002: {body}"
-    );
+    assert!(body.contains("#002"), "bob should have slot #002: {body}");
 }
 
 /// Test: founding member can access AI Hub with full access (not preview mode).
@@ -219,10 +239,14 @@ async fn founding_members_get_sequential_slots() {
 async fn founding_member_can_access_ai_hub() {
     let secret = "whsec_founding_ai_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_founding(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test repo", false).await;
@@ -246,11 +270,15 @@ async fn founding_member_can_access_ai_hub() {
 async fn founding_member_can_use_deploy_previews() {
     let secret = "whsec_founding_deploy_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_founding(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
     client.create_repo("webapp", "test", false).await;
@@ -265,7 +293,12 @@ async fn founding_member_can_use_deploy_previews() {
     let repo_dir = tmp.path().join("webapp");
     git_clone_http(&clone_url, &repo_dir);
     init_repo_config(&repo_dir);
-    create_commit(&repo_dir, "index.html", "<h1>Hello</h1>\n", "initial commit");
+    create_commit(
+        &repo_dir,
+        "index.html",
+        "<h1>Hello</h1>\n",
+        "initial commit",
+    );
     git_push(&repo_dir);
     let sha = get_head_sha(&repo_dir);
 
@@ -300,10 +333,14 @@ async fn founding_member_can_use_deploy_previews() {
 async fn pricing_page_shows_founding_slots() {
     let secret = "whsec_pricing_slots_test";
     let server = TestServer::start_with_stripe(secret).await;
-    if !require_saas(&server).await { return; }
+    if !require_saas(&server).await {
+        return;
+    }
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_founding(&client, &client.base_url.clone(), "1", secret).await;
 
     // Fetch pricing info — should show 99 slots remaining

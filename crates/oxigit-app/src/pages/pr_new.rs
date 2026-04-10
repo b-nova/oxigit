@@ -5,7 +5,7 @@ use crate::components::error_display::ErrorDisplay;
 
 #[server]
 async fn get_branches(owner: String, repo: String) -> Result<Vec<String>, ServerFnError> {
-    use crate::server_fns::{sfn_err, get_repo_path, get_repo_pools};
+    use crate::server_fns::{get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -26,7 +26,7 @@ async fn create_pr(
     source_branch: String,
     target_branch: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
     let user = extract_session_user()
@@ -41,14 +41,26 @@ async fn create_pr(
     // Verify branches exist
     let repo_path = get_repo_path(&owner, &repo).await?;
     if !git::branch_exists(&repo_path, &source_branch) {
-        return Err(ServerFnError::new(format!("Branch '{}' not found", source_branch)));
+        return Err(ServerFnError::new(format!(
+            "Branch '{}' not found",
+            source_branch
+        )));
     }
     if !git::branch_exists(&repo_path, &target_branch) {
-        return Err(ServerFnError::new(format!("Branch '{}' not found", target_branch)));
+        return Err(ServerFnError::new(format!(
+            "Branch '{}' not found",
+            target_branch
+        )));
     }
 
     let pr = db::create_pull_request(
-        &pool, repo_db.id, user.id, &title, &description, &source_branch, &target_branch,
+        &pool,
+        repo_db.id,
+        user.id,
+        &title,
+        &description,
+        &source_branch,
+        &target_branch,
     )
     .await
     .map_err(sfn_err)?;
@@ -63,14 +75,14 @@ pub fn PrNewPage() -> impl IntoView {
     let owner = move || params.read().get("owner").unwrap_or_default();
     let repo = move || params.read().get("repo").unwrap_or_default();
 
-    let branches = Resource::new(
-        move || (owner(), repo()),
-        move |(o, r)| get_branches(o, r),
-    );
+    let branches = Resource::new(move || (owner(), repo()), move |(o, r)| get_branches(o, r));
 
     let create_action = ServerAction::<CreatePr>::new();
     let error = move || {
-        create_action.value().get().and_then(|r| r.err().map(|e| e.to_string()))
+        create_action
+            .value()
+            .get()
+            .and_then(|r| r.err().map(|e| e.to_string()))
     };
 
     view! {

@@ -9,10 +9,18 @@ async fn commit_diff_shows_changes() {
     let client = server.client();
     let tmp = tempfile::tempdir().unwrap();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("diffrepo", "test", false).await;
 
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "diffrepo");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "diffrepo",
+    );
     let repo_dir = tmp.path().join("diffrepo");
     git_clone_http(&clone_url, &repo_dir);
     init_repo_config(&repo_dir);

@@ -23,40 +23,56 @@ async fn fetch_recipe_marketplace(
     // In multi-tenant mode, recipes are in tenant DBs and not globally indexed yet.
     #[cfg(feature = "saas")]
     if crate::server_fns::is_multi_tenant().await? {
-        return Ok(RecipeMarketplaceResponse { recipes: vec![], total: 0, has_more: false });
+        return Ok(RecipeMarketplaceResponse {
+            recipes: vec![],
+            total: 0,
+            has_more: false,
+        });
     }
 
     let total = db::count_public_recipes(&pool, &query)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let results = db::search_public_recipes(&pool, &query, &sort, limit, offset)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
-    let recipes: Vec<RecipeListItem> = results.into_iter().map(|r| {
-        let tags: Vec<String> = r.recipe.tags.as_ref()
-            .and_then(|t| serde_json::from_str(t).ok())
-            .unwrap_or_default();
-        RecipeListItem {
-            id: r.recipe.id,
-            title: r.recipe.title,
-            description: r.recipe.description,
-            ai_tool: r.recipe.ai_tool,
-            ai_model: r.recipe.ai_model,
-            tags,
-            prompt_count: r.recipe.prompt_count,
-            file_count: r.recipe.file_count,
-            vibe_score: r.recipe.vibe_score,
-            replay_count: r.recipe.replay_count,
-            author: r.author_username,
-            repo_owner: r.repo_owner,
-            repo_name: r.repo_name,
-            created_at: r.recipe.created_at,
-        }
-    }).collect();
+    let recipes: Vec<RecipeListItem> = results
+        .into_iter()
+        .map(|r| {
+            let tags: Vec<String> = r
+                .recipe
+                .tags
+                .as_ref()
+                .and_then(|t| serde_json::from_str(t).ok())
+                .unwrap_or_default();
+            RecipeListItem {
+                id: r.recipe.id,
+                title: r.recipe.title,
+                description: r.recipe.description,
+                ai_tool: r.recipe.ai_tool,
+                ai_model: r.recipe.ai_model,
+                tags,
+                prompt_count: r.recipe.prompt_count,
+                file_count: r.recipe.file_count,
+                vibe_score: r.recipe.vibe_score,
+                replay_count: r.recipe.replay_count,
+                author: r.author_username,
+                repo_owner: r.repo_owner,
+                repo_name: r.repo_name,
+                created_at: r.recipe.created_at,
+            }
+        })
+        .collect();
 
     let has_more = (offset + limit) < total;
 
-    Ok(RecipeMarketplaceResponse { recipes, total, has_more })
+    Ok(RecipeMarketplaceResponse {
+        recipes,
+        total,
+        has_more,
+    })
 }
 
 #[component]

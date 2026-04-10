@@ -24,11 +24,14 @@ pub async fn fetch_ai_hub(
     repo: String,
     query: String,
 ) -> Result<AiHubResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools};
+    use crate::server_fns::{
+        extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools, sfn_err,
+    };
     use oxigit_core::{db, entitlements::AiAccessLevel, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let current_user = extract_session_user().await
+    let current_user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let ai_access = get_ai_access_level(current_user.id).await?;
@@ -86,7 +89,9 @@ pub async fn fetch_ai_hub(
                     ai_model: meta.ai_model,
                     ai_prompt: meta.ai_prompt,
                     ai_session_id: None,
-                    ai_files_touched: meta.ai_files_touched.and_then(|f| serde_json::from_str(&f).ok()),
+                    ai_files_touched: meta
+                        .ai_files_touched
+                        .and_then(|f| serde_json::from_str(&f).ok()),
                     ai_prompt_index: meta.ai_prompt_index,
                 },
                 diff_html: None,
@@ -98,20 +103,23 @@ pub async fn fetch_ai_hub(
     let violation_records = db::list_guardrail_violations(&pool, repo_db.id, 10)
         .await
         .unwrap_or_default();
-    let violations: Vec<ViolationInfo> = violation_records.into_iter().map(|v| {
-        let short_sha = v.commit_sha[..7.min(v.commit_sha.len())].to_string();
-        ViolationInfo {
-            id: v.id,
-            commit_sha: v.commit_sha,
-            short_sha,
-            category: v.rule_category,
-            action_taken: v.action_taken,
-            severity: v.severity,
-            message: v.message,
-            file_path: v.file_path,
-            created_at: v.created_at,
-        }
-    }).collect();
+    let violations: Vec<ViolationInfo> = violation_records
+        .into_iter()
+        .map(|v| {
+            let short_sha = v.commit_sha[..7.min(v.commit_sha.len())].to_string();
+            ViolationInfo {
+                id: v.id,
+                commit_sha: v.commit_sha,
+                short_sha,
+                category: v.rule_category,
+                action_taken: v.action_taken,
+                severity: v.severity,
+                message: v.message,
+                file_path: v.file_path,
+                created_at: v.created_at,
+            }
+        })
+        .collect();
 
     Ok(AiHubResponse {
         sessions,

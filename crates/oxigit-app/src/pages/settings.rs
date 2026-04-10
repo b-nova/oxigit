@@ -14,16 +14,14 @@ pub struct SshKeyInfo {
 
 #[server]
 async fn list_ssh_keys() -> Result<Vec<SshKeyInfo>, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let pool = get_control_pool().await?;
-    let keys = db::list_ssh_keys(&pool, user.id)
-        .await
-        .map_err(sfn_err)?;
+    let keys = db::list_ssh_keys(&pool, user.id).await.map_err(sfn_err)?;
 
     Ok(keys
         .into_iter()
@@ -38,7 +36,7 @@ async fn list_ssh_keys() -> Result<Vec<SshKeyInfo>, ServerFnError> {
 
 #[server]
 async fn add_ssh_key(name: String, public_key: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -67,8 +65,14 @@ fn compute_fingerprint(public_key: &str) -> Result<String, ServerFnError> {
     }
 
     let key_type = parts[0];
-    if !["ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521"]
-        .contains(&key_type)
+    if ![
+        "ssh-rsa",
+        "ssh-ed25519",
+        "ecdsa-sha2-nistp256",
+        "ecdsa-sha2-nistp384",
+        "ecdsa-sha2-nistp521",
+    ]
+    .contains(&key_type)
     {
         return Err(ServerFnError::new(format!(
             "Unsupported key type: {}",
@@ -79,10 +83,7 @@ fn compute_fingerprint(public_key: &str) -> Result<String, ServerFnError> {
     use sha2::{Digest, Sha256};
     let key_data = base64_decode_key(parts[1])?;
     let hash = Sha256::digest(&key_data);
-    let fingerprint = format!(
-        "SHA256:{}",
-        base64_encode_nopad(&hash)
-    );
+    let fingerprint = format!("SHA256:{}", base64_encode_nopad(&hash));
     Ok(fingerprint)
 }
 
@@ -148,7 +149,7 @@ pub struct LlmSettingsInfo {
 
 #[server]
 async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_llm_config, get_control_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool, get_llm_config, sfn_err};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -162,10 +163,22 @@ async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
         .map_err(sfn_err)?;
 
     Ok(LlmSettingsInfo {
-        provider: settings.as_ref().and_then(|s| s.llm_provider.clone()).unwrap_or(default_provider),
-        api_key: settings.as_ref().and_then(|s| s.llm_api_key.clone()).unwrap_or_else(|| default_key.unwrap_or_default()),
-        model: settings.as_ref().and_then(|s| s.llm_model.clone()).unwrap_or(default_model),
-        base_url: settings.as_ref().and_then(|s| s.llm_base_url.clone()).unwrap_or_else(|| default_base_url.unwrap_or_default()),
+        provider: settings
+            .as_ref()
+            .and_then(|s| s.llm_provider.clone())
+            .unwrap_or(default_provider),
+        api_key: settings
+            .as_ref()
+            .and_then(|s| s.llm_api_key.clone())
+            .unwrap_or_else(|| default_key.unwrap_or_default()),
+        model: settings
+            .as_ref()
+            .and_then(|s| s.llm_model.clone())
+            .unwrap_or(default_model),
+        base_url: settings
+            .as_ref()
+            .and_then(|s| s.llm_base_url.clone())
+            .unwrap_or_else(|| default_base_url.unwrap_or_default()),
     })
 }
 
@@ -176,7 +189,7 @@ async fn save_llm_settings(
     model: String,
     base_url: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -184,10 +197,22 @@ async fn save_llm_settings(
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let pool = get_control_pool().await?;
 
-    let provider = if provider.is_empty() || provider == "none" { None } else { Some(provider) };
-    let api_key = if api_key.is_empty() { None } else { Some(api_key) };
+    let provider = if provider.is_empty() || provider == "none" {
+        None
+    } else {
+        Some(provider)
+    };
+    let api_key = if api_key.is_empty() {
+        None
+    } else {
+        Some(api_key)
+    };
     let model = if model.is_empty() { None } else { Some(model) };
-    let base_url = if base_url.is_empty() { None } else { Some(base_url) };
+    let base_url = if base_url.is_empty() {
+        None
+    } else {
+        Some(base_url)
+    };
 
     db::upsert_user_settings(
         &pool,
@@ -205,7 +230,7 @@ async fn save_llm_settings(
 
 #[server]
 async fn delete_key(key_id: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -232,7 +257,10 @@ pub fn SettingsPage() -> impl IntoView {
     });
 
     let error = move || {
-        add_action.value().get().and_then(|r| r.err().map(|e| e.to_string()))
+        add_action
+            .value()
+            .get()
+            .and_then(|r| r.err().map(|e| e.to_string()))
     };
 
     // LLM settings
@@ -240,10 +268,17 @@ pub fn SettingsPage() -> impl IntoView {
     let save_llm_action = ServerAction::<SaveLlmSettings>::new();
 
     let llm_save_success = move || {
-        save_llm_action.value().get().and_then(|r| r.ok()).map(|_| true)
+        save_llm_action
+            .value()
+            .get()
+            .and_then(|r| r.ok())
+            .map(|_| true)
     };
     let llm_save_error = move || {
-        save_llm_action.value().get().and_then(|r| r.err().map(|e| e.to_string()))
+        save_llm_action
+            .value()
+            .get()
+            .and_then(|r| r.err().map(|e| e.to_string()))
     };
 
     view! {

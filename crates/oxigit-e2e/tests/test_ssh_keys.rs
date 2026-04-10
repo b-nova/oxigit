@@ -1,6 +1,6 @@
 mod harness;
 
-use harness::{generate_ssh_keypair, ssh_available, TestServer};
+use harness::{TestServer, generate_ssh_keypair, ssh_available};
 
 #[tokio::test]
 async fn test_add_and_list_ssh_keys() {
@@ -12,7 +12,9 @@ async fn test_add_and_list_ssh_keys() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
 
     let key_dir = server.data_dir.path().join("keys");
     std::fs::create_dir_all(&key_dir).unwrap();
@@ -44,7 +46,9 @@ async fn test_add_duplicate_ssh_key() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
 
     let key_dir = server.data_dir.path().join("keys");
     std::fs::create_dir_all(&key_dir).unwrap();
@@ -56,7 +60,10 @@ async fn test_add_duplicate_ssh_key() {
     let resp = client.add_ssh_key("key2", &pub_key).await;
     let body = resp.text().await.unwrap();
     assert!(
-        body.contains("error") || body.contains("Error") || body.contains("already") || body.contains("UNIQUE"),
+        body.contains("error")
+            || body.contains("Error")
+            || body.contains("already")
+            || body.contains("UNIQUE"),
         "expected duplicate key error, got: {body}"
     );
 }
@@ -71,7 +78,9 @@ async fn test_delete_ssh_key() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
 
     let key_dir = server.data_dir.path().join("keys");
     std::fs::create_dir_all(&key_dir).unwrap();
@@ -103,12 +112,17 @@ async fn test_add_invalid_ssh_key() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
 
     let resp = client.add_ssh_key("bad-key", "not-a-valid-key").await;
     let body = resp.text().await.unwrap();
     assert!(
-        body.contains("error") || body.contains("Error") || body.contains("invalid") || body.contains("Invalid"),
+        body.contains("error")
+            || body.contains("Error")
+            || body.contains("invalid")
+            || body.contains("Invalid"),
         "expected invalid key error, got: {body}"
     );
 }

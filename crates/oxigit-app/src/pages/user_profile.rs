@@ -18,12 +18,10 @@ pub struct UserProfileInfo {
 }
 
 #[server]
-async fn fetch_user_profile(
-    username: String,
-) -> Result<UserProfileInfo, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
+async fn fetch_user_profile(username: String) -> Result<UserProfileInfo, ServerFnError> {
     #[cfg(feature = "saas")]
     use crate::server_fns::is_multi_tenant;
+    use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
     use oxigit_core::db;
 
     let pool = get_control_pool().await?;
@@ -111,10 +109,7 @@ pub fn UserProfilePage() -> impl IntoView {
     let params = use_params_map();
     let user = move || params.read().get("user").unwrap_or_default();
 
-    let profile = Resource::new(
-        move || user(),
-        move |username| fetch_user_profile(username),
-    );
+    let profile = Resource::new(user, fetch_user_profile);
 
     view! {
         <Suspense fallback=|| view! { <LoadingPage /> }>

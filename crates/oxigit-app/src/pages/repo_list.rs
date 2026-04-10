@@ -8,9 +8,9 @@ use super::RepoInfo;
 
 #[server]
 async fn list_repos() -> Result<(String, Vec<RepoInfo>), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_pool};
     #[cfg(feature = "saas")]
     use crate::server_fns::is_multi_tenant;
+    use crate::server_fns::{extract_session_user, get_pool, sfn_err};
     use oxigit_core::db;
 
     let user = extract_session_user()
@@ -22,38 +22,52 @@ async fn list_repos() -> Result<(String, Vec<RepoInfo>), ServerFnError> {
         {
             if is_multi_tenant().await? {
                 // In multi-tenant mode, list from the global index
-                let entries = db::list_user_repos_from_index(&pool, user.id).await.map_err(sfn_err)?;
+                let entries = db::list_user_repos_from_index(&pool, user.id)
+                    .await
+                    .map_err(sfn_err)?;
                 // Convert RepositoryIndexEntry to Repository-compatible for the UI
-                entries.into_iter().map(|e| oxigit_core::models::Repository {
-                    id: e.id,
-                    owner_id: e.owner_id,
-                    name: e.repo_name,
-                    description: e.description,
-                    is_private: e.is_private,
-                    forked_from: None,
-                    has_remix: false,
-                    created_at: e.created_at,
-                    updated_at: e.updated_at,
-                }).collect()
+                entries
+                    .into_iter()
+                    .map(|e| oxigit_core::models::Repository {
+                        id: e.id,
+                        owner_id: e.owner_id,
+                        name: e.repo_name,
+                        description: e.description,
+                        is_private: e.is_private,
+                        forked_from: None,
+                        has_remix: false,
+                        created_at: e.created_at,
+                        updated_at: e.updated_at,
+                    })
+                    .collect()
             } else {
-                db::list_user_repositories(&pool, user.id).await.map_err(sfn_err)?
+                db::list_user_repositories(&pool, user.id)
+                    .await
+                    .map_err(sfn_err)?
             }
         }
         #[cfg(not(feature = "saas"))]
-        { db::list_user_repositories(&pool, user.id).await.map_err(sfn_err)? }
+        {
+            db::list_user_repositories(&pool, user.id)
+                .await
+                .map_err(sfn_err)?
+        }
     };
 
     let username = user.username.clone();
-    Ok((username, repos
-        .into_iter()
-        .map(|r| RepoInfo {
-            id: r.id,
-            name: r.name,
-            description: r.description,
-            is_private: r.is_private,
-            created_at: r.created_at,
-        })
-        .collect()))
+    Ok((
+        username,
+        repos
+            .into_iter()
+            .map(|r| RepoInfo {
+                id: r.id,
+                name: r.name,
+                description: r.description,
+                is_private: r.is_private,
+                created_at: r.created_at,
+            })
+            .collect(),
+    ))
 }
 
 #[component]

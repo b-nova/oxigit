@@ -31,7 +31,10 @@ async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str) {
         .await
         .unwrap();
     let status = resp.status().as_u16();
-    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {status}");
+    assert!(
+        status == 200 || status == 404,
+        "Stripe webhook returned unexpected status: {status}"
+    );
 }
 
 /// Helper: full setup — register, upgrade to Pro, login, create repo, push initial commit.
@@ -80,7 +83,9 @@ async fn test_claude_code_pipeline_http() {
     let (client, dest) = setup_pro_user_with_repo(&server, "alice", "ccpipe", "1").await;
 
     // Install hooks
-    let resp = client.install_ai_hook("alice", "ccpipe", "claude-code").await;
+    let resp = client
+        .install_ai_hook("alice", "ccpipe", "claude-code")
+        .await;
     assert!(
         resp.status().is_success() || resp.status().is_redirection(),
         "hook install failed"
@@ -127,18 +132,33 @@ async fn test_claude_code_pipeline_http() {
     // Verify commit diff shows AI metadata
     let resp = client.fetch_commit_diff("alice", "ccpipe", &sha1).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("claude-code"), "Commit 1 should show claude-code tool");
-    assert!(body.contains("cc-session-1"), "Commit 1 should show session ID");
+    assert!(
+        body.contains("claude-code"),
+        "Commit 1 should show claude-code tool"
+    );
+    assert!(
+        body.contains("cc-session-1"),
+        "Commit 1 should show session ID"
+    );
 
     let resp = client.fetch_commit_diff("alice", "ccpipe", &sha2).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("claude-code"), "Commit 2 should show claude-code tool");
+    assert!(
+        body.contains("claude-code"),
+        "Commit 2 should show claude-code tool"
+    );
 
     // Verify AI timeline contains session
     let resp = client.get(&format!("/{}/{}/ai", "alice", "ccpipe")).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("claude-code"), "Timeline should show claude-code");
-    assert!(body.contains("cc-session-1"), "Timeline should show session ID");
+    assert!(
+        body.contains("claude-code"),
+        "Timeline should show claude-code"
+    );
+    assert!(
+        body.contains("cc-session-1"),
+        "Timeline should show session ID"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -192,12 +212,18 @@ async fn test_codex_pipeline_http() {
     let resp = client.fetch_commit_diff("bob", "codexpipe", &sha1).await;
     let body = resp.text().await.unwrap();
     assert!(body.contains("codex"), "Commit should show codex tool");
-    assert!(body.contains("codex-session-1"), "Commit should show session");
+    assert!(
+        body.contains("codex-session-1"),
+        "Commit should show session"
+    );
 
     let resp = client.get(&format!("/{}/{}/ai", "bob", "codexpipe")).await;
     let body = resp.text().await.unwrap();
     assert!(body.contains("codex"), "Timeline should show codex");
-    assert!(body.contains("codex-session-1"), "Timeline should show session");
+    assert!(
+        body.contains("codex-session-1"),
+        "Timeline should show session"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +236,9 @@ async fn test_gemini_pipeline_http() {
     let (client, dest) = setup_pro_user_with_repo(&server, "carol", "gempipe", "1").await;
 
     // Install hooks
-    client.install_ai_hook("carol", "gempipe", "gemini-cli").await;
+    client
+        .install_ai_hook("carol", "gempipe", "gemini-cli")
+        .await;
     git_pull(&dest);
 
     // Gemini has no model
@@ -237,7 +265,10 @@ async fn test_gemini_pipeline_http() {
 
     let resp = client.fetch_commit_diff("carol", "gempipe", &sha).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("gemini-cli"), "Commit should show gemini-cli tool");
+    assert!(
+        body.contains("gemini-cli"),
+        "Commit should show gemini-cli tool"
+    );
     assert!(
         body.contains("gemini-session-1"),
         "Commit should show session"
@@ -245,7 +276,10 @@ async fn test_gemini_pipeline_http() {
 
     let resp = client.get(&format!("/{}/{}/ai", "carol", "gempipe")).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("gemini-cli"), "Timeline should show gemini-cli");
+    assert!(
+        body.contains("gemini-cli"),
+        "Timeline should show gemini-cli"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -286,13 +320,7 @@ async fn test_claude_code_pipeline_ssh() {
     client.add_ssh_key("sshkey", &pub_key).await;
 
     let ssh_dest = server.data_dir.path().join("clone-dssh-ssh");
-    let clone_result = git_clone_ssh(
-        server.ssh_port,
-        "dssh",
-        "ccpipessh",
-        &ssh_dest,
-        &key_path,
-    );
+    let clone_result = git_clone_ssh(server.ssh_port, "dssh", "ccpipessh", &ssh_dest, &key_path);
     assert!(
         clone_result.status.success(),
         "SSH clone failed: {}",
@@ -323,9 +351,7 @@ async fn test_claude_code_pipeline_ssh() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Verify
-    let resp = client
-        .fetch_commit_diff("dssh", "ccpipessh", &sha)
-        .await;
+    let resp = client.fetch_commit_diff("dssh", "ccpipessh", &sha).await;
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("claude-code"),
@@ -360,8 +386,13 @@ async fn test_codex_pipeline_ssh() {
         .await;
 
     // Initial commit via HTTP
-    let clone_url =
-        http_clone_url(&server.base_url, "essh", "password123", "essh", "codexpipessh");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "essh",
+        "password123",
+        "essh",
+        "codexpipessh",
+    );
     let http_dest = server.data_dir.path().join("clone-essh-http");
     git_clone_http(&clone_url, &http_dest);
     init_repo_config(&http_dest);
@@ -403,9 +434,7 @@ async fn test_codex_pipeline_ssh() {
     assert!(push.status.success(), "SSH push failed");
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    let resp = client
-        .fetch_commit_diff("essh", "codexpipessh", &sha)
-        .await;
+    let resp = client.fetch_commit_diff("essh", "codexpipessh", &sha).await;
     let body = resp.text().await.unwrap();
     assert!(body.contains("codex"), "SSH push should show codex tool");
     assert!(
@@ -437,8 +466,13 @@ async fn test_gemini_pipeline_ssh() {
         .await;
 
     // Initial commit via HTTP
-    let clone_url =
-        http_clone_url(&server.base_url, "fssh", "password123", "fssh", "gempipessh");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "fssh",
+        "password123",
+        "fssh",
+        "gempipessh",
+    );
     let http_dest = server.data_dir.path().join("clone-fssh-http");
     git_clone_http(&clone_url, &http_dest);
     init_repo_config(&http_dest);
@@ -453,13 +487,7 @@ async fn test_gemini_pipeline_ssh() {
     client.add_ssh_key("sshkey3", &pub_key).await;
 
     let ssh_dest = server.data_dir.path().join("clone-fssh-ssh");
-    let clone_result = git_clone_ssh(
-        server.ssh_port,
-        "fssh",
-        "gempipessh",
-        &ssh_dest,
-        &key_path,
-    );
+    let clone_result = git_clone_ssh(server.ssh_port, "fssh", "gempipessh", &ssh_dest, &key_path);
     assert!(clone_result.status.success(), "SSH clone failed");
     init_repo_config(&ssh_dest);
 
@@ -480,9 +508,7 @@ async fn test_gemini_pipeline_ssh() {
     assert!(push.status.success(), "SSH push failed");
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    let resp = client
-        .fetch_commit_diff("fssh", "gempipessh", &sha)
-        .await;
+    let resp = client.fetch_commit_diff("fssh", "gempipessh", &sha).await;
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("gemini-cli"),
@@ -505,9 +531,7 @@ async fn test_cross_provider_same_repo() {
 
     // Install all 3 hooks
     for tool in &["claude-code", "codex", "gemini-cli"] {
-        client
-            .install_ai_hook("multi", "crossrepo", tool)
-            .await;
+        client.install_ai_hook("multi", "crossrepo", tool).await;
     }
     git_pull(&dest);
 
@@ -559,7 +583,9 @@ async fn test_cross_provider_same_repo() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Verify AI timeline contains all 3 providers
-    let resp = client.get(&format!("/{}/{}/ai", "multi", "crossrepo")).await;
+    let resp = client
+        .get(&format!("/{}/{}/ai", "multi", "crossrepo"))
+        .await;
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("claude-code"),
@@ -596,7 +622,12 @@ async fn test_mixed_ai_and_regular_commits() {
     let (client, dest) = setup_pro_user_with_repo(&server, "mixuser", "mixrepo", "1").await;
 
     // Regular commit (no trailers)
-    create_commit(&dest, "normal.txt", "regular content", "chore: regular commit");
+    create_commit(
+        &dest,
+        "normal.txt",
+        "regular content",
+        "chore: regular commit",
+    );
     let regular_sha = get_head_sha(&dest);
 
     // AI commit
@@ -621,7 +652,9 @@ async fn test_mixed_ai_and_regular_commits() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // AI timeline should contain the AI commit but not the regular ones
-    let resp = client.get(&format!("/{}/{}/ai", "mixuser", "mixrepo")).await;
+    let resp = client
+        .get(&format!("/{}/{}/ai", "mixuser", "mixrepo"))
+        .await;
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("claude-code"),
@@ -716,16 +749,15 @@ async fn test_multi_prompt_session_per_provider() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Verify AI timeline shows the session
-    let resp = client.get(&format!("/{}/{}/ai", "promptu", "promptrepo")).await;
+    let resp = client
+        .get(&format!("/{}/{}/ai", "promptu", "promptrepo"))
+        .await;
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("multi-prompt-session"),
         "Timeline should show session"
     );
-    assert!(
-        body.contains("claude-code"),
-        "Timeline should show tool"
-    );
+    assert!(body.contains("claude-code"), "Timeline should show tool");
 
     // Verify all commits appear (4 AI commits total)
     let resp = client.fetch_commits("promptu", "promptrepo").await;
@@ -789,7 +821,9 @@ async fn test_legacy_context_json_and_trailers_coexist() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Both should appear in timeline
-    let resp = client.get(&format!("/{}/{}/ai", "legacy", "legacyrepo")).await;
+    let resp = client
+        .get(&format!("/{}/{}/ai", "legacy", "legacyrepo"))
+        .await;
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("claude-code"),

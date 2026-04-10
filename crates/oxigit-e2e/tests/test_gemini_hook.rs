@@ -30,7 +30,10 @@ async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str) {
         .await
         .unwrap();
     let status = resp.status().as_u16();
-    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {status}");
+    assert!(
+        status == 200 || status == 404,
+        "Stripe webhook returned unexpected status: {status}"
+    );
 }
 
 /// Test that installing the Gemini hook produces correct script content:
@@ -43,7 +46,9 @@ async fn test_gemini_hook_script_content() {
 
     client.register("gem", "gem@test.com", "password123").await;
     client.login("gem", "password123").await;
-    client.create_repo("gemrepo", "Gemini hook test", false).await;
+    client
+        .create_repo("gemrepo", "Gemini hook test", false)
+        .await;
 
     // Need an initial commit so the repo has a branch
     let clone_url = http_clone_url(&server.base_url, "gem", "password123", "gem", "gemrepo");
@@ -113,8 +118,7 @@ async fn test_gemini_trailers_produce_ai_activity() {
         .create_repo("gemflow", "Gemini flow test", false)
         .await;
 
-    let clone_url =
-        http_clone_url(&server.base_url, "gemi", "password123", "gemi", "gemflow");
+    let clone_url = http_clone_url(&server.base_url, "gemi", "password123", "gemi", "gemflow");
     let dest = server.data_dir.path().join("clone-gemflow");
     git_clone_http(&clone_url, &dest);
     init_repo_config(&dest);

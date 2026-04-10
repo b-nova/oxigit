@@ -35,9 +35,10 @@ pub fn LoginPage() -> impl IntoView {
     let user = Resource::new(|| (), |_| get_current_user());
     let login_action = ServerAction::<LoginUser>::new();
     let error = move || {
-        login_action.value().get().and_then(|r| {
-            r.err().map(|e| e.to_string())
-        })
+        login_action
+            .value()
+            .get()
+            .and_then(|r| r.err().map(|e| e.to_string()))
     };
 
     view! {

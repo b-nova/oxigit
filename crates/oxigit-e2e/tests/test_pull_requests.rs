@@ -20,7 +20,11 @@ fn git_checkout_new_branch(repo_dir: &std::path::Path, branch: &str) {
         .current_dir(repo_dir)
         .output()
         .expect("git checkout -b failed");
-    assert!(output.status.success(), "git checkout -b failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "git checkout -b failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 /// Test: create a PR, list it, view it.
@@ -30,7 +34,9 @@ async fn create_and_view_pr() {
     let client = server.client();
     let tmp = tempfile::tempdir().unwrap();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("prtest", "PR test repo", false).await;
 
     // Push main branch
@@ -45,10 +51,23 @@ async fn create_and_view_pr() {
     git_checkout_new_branch(&repo_dir, "feature");
     create_commit(&repo_dir, "feature.txt", "new feature\n", "Add feature");
     let output = git_push_branch(&repo_dir, "feature");
-    assert!(output.status.success(), "push feature branch failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "push feature branch failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     // Create PR
-    let resp = client.create_pr("alice", "prtest", "Add feature", "This adds a cool feature", "feature", "main").await;
+    let resp = client
+        .create_pr(
+            "alice",
+            "prtest",
+            "Add feature",
+            "This adds a cool feature",
+            "feature",
+            "main",
+        )
+        .await;
     assert!(
         resp.status().is_success() || resp.status().is_redirection(),
         "create PR should succeed: status={}",
@@ -58,13 +77,22 @@ async fn create_and_view_pr() {
     // List PRs
     let resp = client.list_prs("alice", "prtest", "open").await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Add feature"), "PR should appear in list: {body}");
+    assert!(
+        body.contains("Add feature"),
+        "PR should appear in list: {body}"
+    );
 
     // View PR
     let resp = client.get_pr("alice", "prtest", 1).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Add feature"), "PR detail should contain title: {body}");
-    assert!(body.contains("feature"), "PR should reference source branch: {body}");
+    assert!(
+        body.contains("Add feature"),
+        "PR detail should contain title: {body}"
+    );
+    assert!(
+        body.contains("feature"),
+        "PR should reference source branch: {body}"
+    );
 }
 
 /// Test: merge a PR via fast-forward.
@@ -74,10 +102,18 @@ async fn merge_pr_fast_forward() {
     let client = server.client();
     let tmp = tempfile::tempdir().unwrap();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("mergeable", "merge test", false).await;
 
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "mergeable");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "mergeable",
+    );
     let repo_dir = tmp.path().join("mergeable");
     git_clone_http(&clone_url, &repo_dir);
     init_repo_config(&repo_dir);
@@ -90,7 +126,9 @@ async fn merge_pr_fast_forward() {
     assert!(output.status.success());
 
     // Create and merge PR
-    client.create_pr("alice", "mergeable", "Fix bug", "", "fix", "main").await;
+    client
+        .create_pr("alice", "mergeable", "Fix bug", "", "fix", "main")
+        .await;
 
     let resp = client.merge_pr("alice", "mergeable", 1).await;
     assert!(
@@ -112,10 +150,18 @@ async fn close_pr() {
     let client = server.client();
     let tmp = tempfile::tempdir().unwrap();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("closeable", "close test", false).await;
 
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "closeable");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "closeable",
+    );
     let repo_dir = tmp.path().join("closeable");
     git_clone_http(&clone_url, &repo_dir);
     init_repo_config(&repo_dir);
@@ -126,7 +172,9 @@ async fn close_pr() {
     create_commit(&repo_dir, "wip.txt", "wip\n", "WIP");
     git_push_branch(&repo_dir, "wip");
 
-    client.create_pr("alice", "closeable", "WIP changes", "", "wip", "main").await;
+    client
+        .create_pr("alice", "closeable", "WIP changes", "", "wip", "main")
+        .await;
 
     let resp = client.close_pr("alice", "closeable", 1).await;
     assert!(
@@ -147,17 +195,27 @@ async fn pr_same_branch_rejected() {
     let client = server.client();
     let tmp = tempfile::tempdir().unwrap();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.create_repo("samebranch", "test", false).await;
 
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "samebranch");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "samebranch",
+    );
     let repo_dir = tmp.path().join("samebranch");
     git_clone_http(&clone_url, &repo_dir);
     init_repo_config(&repo_dir);
     create_commit(&repo_dir, "f.txt", "x\n", "init");
     git_push(&repo_dir);
 
-    let resp = client.create_pr("alice", "samebranch", "Bad PR", "", "main", "main").await;
+    let resp = client
+        .create_pr("alice", "samebranch", "Bad PR", "", "main", "main")
+        .await;
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("differ") || body.contains("error") || body.contains("Error"),

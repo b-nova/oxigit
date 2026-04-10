@@ -6,7 +6,7 @@ use crate::components::error_display::ErrorDisplay;
 async fn create_org(slug: String, display_name: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, set_session_org};
+        use crate::server_fns::{extract_session_user, get_control_pool, set_session_org, sfn_err};
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -40,9 +40,10 @@ async fn create_org(slug: String, display_name: String) -> Result<(), ServerFnEr
 pub fn OrgNewPage() -> impl IntoView {
     let create_action = ServerAction::<CreateOrg>::new();
     let error = move || {
-        create_action.value().get().and_then(|r| {
-            r.err().map(|e| e.to_string())
-        })
+        create_action
+            .value()
+            .get()
+            .and_then(|r| r.err().map(|e| e.to_string()))
     };
 
     view! {

@@ -24,7 +24,9 @@ pub struct OrgSettingsData {
 async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_user_entitlements};
+        use crate::server_fns::{
+            extract_session_user, get_control_pool, get_user_entitlements, sfn_err,
+        };
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -52,11 +54,12 @@ async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError
             return Err(ServerFnError::new("Not a member of this organization"));
         }
 
-        let is_owner = membership.as_ref().map(|m| m.role == "owner").unwrap_or(false);
+        let is_owner = membership
+            .as_ref()
+            .map(|m| m.role == "owner")
+            .unwrap_or(false);
 
-        let members_raw = db::list_org_members(&pool, org.id)
-            .await
-            .map_err(sfn_err)?;
+        let members_raw = db::list_org_members(&pool, org.id).await.map_err(sfn_err)?;
 
         let members = members_raw
             .into_iter()
@@ -85,7 +88,9 @@ async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError
 async fn add_member(slug: String, username: String, role: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_user_entitlements};
+        use crate::server_fns::{
+            extract_session_user, get_control_pool, get_user_entitlements, sfn_err,
+        };
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -136,7 +141,9 @@ async fn add_member(slug: String, username: String, role: String) -> Result<(), 
 async fn remove_member(slug: String, user_id: i64) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_user_entitlements};
+        use crate::server_fns::{
+            extract_session_user, get_control_pool, get_user_entitlements, sfn_err,
+        };
         use oxigit_core::db;
 
         let user = extract_session_user()
@@ -186,10 +193,7 @@ pub fn OrgSettingsPage() -> impl IntoView {
     let params = leptos_router::hooks::use_params_map();
     let slug = move || params.read().get("slug").unwrap_or_default();
 
-    let settings = Resource::new(
-        move || slug(),
-        |slug| get_org_settings(slug),
-    );
+    let settings = Resource::new(slug, get_org_settings);
 
     let add_action = ServerAction::<AddMember>::new();
     let remove_action = Action::new(move |input: &(String, i64)| {

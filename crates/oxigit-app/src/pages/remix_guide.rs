@@ -13,11 +13,10 @@ pub struct RemixGuideData {
 }
 
 #[server]
-async fn fetch_remix_guide(
-    owner: String,
-    repo: String,
-) -> Result<RemixGuideData, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_base_url, get_repo_path, get_repo_pools};
+async fn fetch_remix_guide(owner: String, repo: String) -> Result<RemixGuideData, ServerFnError> {
+    use crate::server_fns::{
+        extract_session_user, get_base_url, get_repo_path, get_repo_pools, sfn_err,
+    };
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;

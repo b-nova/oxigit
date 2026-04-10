@@ -8,11 +8,21 @@ async fn test_prompt_history_shows_prompts() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
-    client.create_repo("promptrepo", "Prompt history test", false).await;
+    client
+        .create_repo("promptrepo", "Prompt history test", false)
+        .await;
 
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "promptrepo");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "promptrepo",
+    );
     let dest = server.data_dir.path().join("clone-prompt");
     git_clone_http(&clone_url, &dest);
     init_repo_config(&dest);
@@ -49,8 +59,15 @@ async fn test_prompt_history_shows_prompts() {
     // Fetch prompt history page
     let resp = client.get("/alice/promptrepo/prompts").await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("Add user authentication"), "Expected first prompt in history, got: {}", &body[..300.min(body.len())]);
-    assert!(body.contains("Now add a logout function"), "Expected second prompt in history");
+    assert!(
+        body.contains("Add user authentication"),
+        "Expected first prompt in history, got: {}",
+        &body[..300.min(body.len())]
+    );
+    assert!(
+        body.contains("Now add a logout function"),
+        "Expected second prompt in history"
+    );
     assert!(body.contains("claude-code"), "Expected AI tool badge");
 }
 
@@ -74,7 +91,10 @@ async fn test_prompt_history_empty_repo() {
 
     let resp = client.get("/bob/emptyrepo/prompts").await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("No AI prompts yet"), "Expected empty state message");
+    assert!(
+        body.contains("No AI prompts yet"),
+        "Expected empty state message"
+    );
 }
 
 /// Test that multiple prompts within a session are grouped correctly.
@@ -83,28 +103,59 @@ async fn test_prompt_history_groups_by_prompt_index() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("carol", "carol@test.com", "password123").await;
+    client
+        .register("carol", "carol@test.com", "password123")
+        .await;
     client.login("carol", "password123").await;
-    client.create_repo("grouprepo", "Grouping test", false).await;
+    client
+        .create_repo("grouprepo", "Grouping test", false)
+        .await;
 
-    let clone_url = http_clone_url(&server.base_url, "carol", "password123", "carol", "grouprepo");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "carol",
+        "password123",
+        "carol",
+        "grouprepo",
+    );
     let dest = server.data_dir.path().join("clone-group");
     git_clone_http(&clone_url, &dest);
     init_repo_config(&dest);
 
     // Two commits from the same prompt (prompt_index=1)
     create_commit_with_trailers(
-        &dest, "a.rs", "fn a() {}", "step 1",
-        "cursor", None, Some("Build feature A"), Some("sess-1"), Some(1),
+        &dest,
+        "a.rs",
+        "fn a() {}",
+        "step 1",
+        "cursor",
+        None,
+        Some("Build feature A"),
+        Some("sess-1"),
+        Some(1),
     );
     create_commit_with_trailers(
-        &dest, "a_test.rs", "fn test_a() {}", "step 1 tests",
-        "cursor", None, Some("Build feature A"), Some("sess-1"), Some(1),
+        &dest,
+        "a_test.rs",
+        "fn test_a() {}",
+        "step 1 tests",
+        "cursor",
+        None,
+        Some("Build feature A"),
+        Some("sess-1"),
+        Some(1),
     );
     // One commit from a different prompt (prompt_index=2)
     create_commit_with_trailers(
-        &dest, "b.rs", "fn b() {}", "step 2",
-        "cursor", None, Some("Now build feature B"), Some("sess-1"), Some(2),
+        &dest,
+        "b.rs",
+        "fn b() {}",
+        "step 2",
+        "cursor",
+        None,
+        Some("Now build feature B"),
+        Some("sess-1"),
+        Some(2),
     );
 
     let push = git_push(&dest);
@@ -117,5 +168,8 @@ async fn test_prompt_history_groups_by_prompt_index() {
     assert!(body.contains("Build feature A"), "Expected prompt A");
     assert!(body.contains("Now build feature B"), "Expected prompt B");
     // The "Build feature A" prompt should show 2 commits
-    assert!(body.contains("2 commits"), "Expected 2 commits for prompt A");
+    assert!(
+        body.contains("2 commits"),
+        "Expected 2 commits for prompt A"
+    );
 }

@@ -15,10 +15,13 @@ pub struct ExploreRepo {
 }
 
 #[server]
-async fn explore_repos(query: String, remixable_only: bool) -> Result<Vec<ExploreRepo>, ServerFnError> {
-    use crate::server_fns::{get_pool, sfn_err};
+async fn explore_repos(
+    query: String,
+    remixable_only: bool,
+) -> Result<Vec<ExploreRepo>, ServerFnError> {
     #[cfg(feature = "saas")]
     use crate::server_fns::is_multi_tenant;
+    use crate::server_fns::{get_pool, sfn_err};
     use oxigit_core::db;
 
     let pool = get_pool().await?;

@@ -9,67 +9,82 @@ use super::{RecipeDetailResponse, RecipeFileInfo, RecipeStepInfo, ReplayTargetRe
 
 #[server]
 async fn fetch_recipe_detail(recipe_id: i64) -> Result<RecipeDetailResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_pool, get_repo_path};
+    use crate::server_fns::{extract_session_user, get_pool, get_repo_path, sfn_err};
     use oxigit_core::{db, git};
 
     let pool = get_pool().await?;
     let current_user = extract_session_user().await;
 
     let recipe = db::get_recipe_by_id(&pool, recipe_id)
-        .await.map_err(sfn_err)?
+        .await
+        .map_err(sfn_err)?
         .ok_or_else(|| ServerFnError::new("Recipe not found"))?;
 
     // Get author and repo info
     let author_user = db::get_user_by_id(&pool, recipe.author_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let repo_db = sqlx::query_as::<_, oxigit_core::models::Repository>(
         "SELECT * FROM repositories WHERE id = ?",
     )
     .bind(recipe.repo_id)
     .fetch_one(&pool)
-    .await.map_err(sfn_err)?;
+    .await
+    .map_err(sfn_err)?;
 
     let owner_user = db::get_user_by_id(&pool, repo_db.owner_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let db_steps = db::get_recipe_steps(&pool, recipe_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
-    let steps: Vec<RecipeStepInfo> = db_steps.into_iter().map(|s| {
-        let files: Vec<RecipeFileInfo> = s.files_json.as_ref()
-            .and_then(|j| serde_json::from_str::<Vec<serde_json::Value>>(j).ok())
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|v| {
-                Some(RecipeFileInfo {
-                    path: v.get("path")?.as_str()?.to_string(),
-                    content: v.get("content")?.as_str()?.to_string(),
+    let steps: Vec<RecipeStepInfo> = db_steps
+        .into_iter()
+        .map(|s| {
+            let files: Vec<RecipeFileInfo> = s
+                .files_json
+                .as_ref()
+                .and_then(|j| serde_json::from_str::<Vec<serde_json::Value>>(j).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|v| {
+                    Some(RecipeFileInfo {
+                        path: v.get("path")?.as_str()?.to_string(),
+                        content: v.get("content")?.as_str()?.to_string(),
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        let diff_html = s.diff_text.as_ref()
-            .map(|d| super::render_diff(d))
-            .unwrap_or_default();
+            let diff_html = s
+                .diff_text
+                .as_ref()
+                .map(|d| super::render_diff(d))
+                .unwrap_or_default();
 
-        RecipeStepInfo {
-            step_order: s.step_order,
-            prompt_text: s.prompt_text,
-            commit_message: s.commit_message,
-            files,
-            diff_html,
-        }
-    }).collect();
+            RecipeStepInfo {
+                step_order: s.step_order,
+                prompt_text: s.prompt_text,
+                commit_message: s.commit_message,
+                files,
+                diff_html,
+            }
+        })
+        .collect();
 
-    let tags: Vec<String> = recipe.tags.as_ref()
+    let tags: Vec<String> = recipe
+        .tags
+        .as_ref()
         .and_then(|t| serde_json::from_str(t).ok())
         .unwrap_or_default();
 
     // Get user's repos for replay target picker
     let (can_replay, user_repos) = if let Some(ref user) = current_user {
         let repos = db::list_user_repositories(&pool, user.id)
-            .await.unwrap_or_default();
+            .await
+            .unwrap_or_default();
         let mut targets: Vec<ReplayTargetRepo> = Vec::new();
         for r in repos {
             let rp = get_repo_path(&user.username, &r.name).await?;
@@ -112,10 +127,13 @@ async fn replay_recipe(
     target_branch: String,
     mode: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{
+        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+    };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let entitlements = get_user_entitlements(user.id).await?;
@@ -127,28 +145,35 @@ async fn replay_recipe(
 
     let (control_pool, pool) = get_repo_pools(&target_owner, &target_repo).await?;
 
-    let (_, target_repo_db) = db::get_repository_cross(&control_pool, &pool, &target_owner, &target_repo)
-        .await.map_err(sfn_err)?;
+    let (_, target_repo_db) =
+        db::get_repository_cross(&control_pool, &pool, &target_owner, &target_repo)
+            .await
+            .map_err(sfn_err)?;
 
     let can_push = db::can_push_repo(&pool, &target_repo_db, user.id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("No push access to target repo"));
     }
 
     let _recipe = db::get_recipe_by_id(&pool, recipe_id)
-        .await.map_err(sfn_err)?
+        .await
+        .map_err(sfn_err)?
         .ok_or_else(|| ServerFnError::new("Recipe not found"))?;
 
     if mode == "apply" {
         let steps = db::get_recipe_steps(&pool, recipe_id)
-            .await.map_err(sfn_err)?;
+            .await
+            .map_err(sfn_err)?;
 
         let repo_path = get_repo_path(&target_owner, &target_repo).await?;
         let mut steps_applied = 0i64;
 
         for step in &steps {
-            let files: Vec<(String, String)> = step.files_json.as_ref()
+            let files: Vec<(String, String)> = step
+                .files_json
+                .as_ref()
                 .and_then(|j| serde_json::from_str::<Vec<serde_json::Value>>(j).ok())
                 .unwrap_or_default()
                 .into_iter()
@@ -159,40 +184,74 @@ async fn replay_recipe(
                 })
                 .collect();
 
-            if files.is_empty() { continue; }
+            if files.is_empty() {
+                continue;
+            }
 
-            let file_refs: Vec<(&str, &str, bool)> = files.iter()
+            let file_refs: Vec<(&str, &str, bool)> = files
+                .iter()
                 .map(|(p, c)| (p.as_str(), c.as_str(), false))
                 .collect();
 
             let message = format!("recipe: {}", step.commit_message);
             match git::add_files_to_branch(
-                &repo_path, &target_branch, &file_refs,
-                &message, &user.username, &format!("{}@oxigit", user.username),
+                &repo_path,
+                &target_branch,
+                &file_refs,
+                &message,
+                &user.username,
+                &format!("{}@oxigit", user.username),
             ) {
                 Ok(_) => steps_applied += 1,
                 Err(e) => {
                     let _ = db::create_recipe_replay(
-                        &pool, recipe_id, user.id, target_repo_db.id,
-                        &target_branch, "apply", "partial", steps_applied,
+                        &pool,
+                        recipe_id,
+                        user.id,
+                        target_repo_db.id,
+                        &target_branch,
+                        "apply",
+                        "partial",
+                        steps_applied,
                         Some(&e.to_string()),
-                    ).await;
+                    )
+                    .await;
                     let _ = db::increment_replay_count(&pool, recipe_id).await;
-                    return Err(ServerFnError::new(format!("Replay failed at step {}: {}", steps_applied + 1, e)));
+                    return Err(ServerFnError::new(format!(
+                        "Replay failed at step {}: {}",
+                        steps_applied + 1,
+                        e
+                    )));
                 }
             }
         }
 
         let _ = db::create_recipe_replay(
-            &pool, recipe_id, user.id, target_repo_db.id,
-            &target_branch, "apply", "success", steps_applied, None,
-        ).await;
+            &pool,
+            recipe_id,
+            user.id,
+            target_repo_db.id,
+            &target_branch,
+            "apply",
+            "success",
+            steps_applied,
+            None,
+        )
+        .await;
     } else {
         // Prompt-only mode — just track the replay
         let _ = db::create_recipe_replay(
-            &pool, recipe_id, user.id, target_repo_db.id,
-            &target_branch, "prompt_only", "success", 0, None,
-        ).await;
+            &pool,
+            recipe_id,
+            user.id,
+            target_repo_db.id,
+            &target_branch,
+            "prompt_only",
+            "success",
+            0,
+            None,
+        )
+        .await;
     }
 
     let _ = db::increment_replay_count(&pool, recipe_id).await;
@@ -203,12 +262,15 @@ async fn replay_recipe(
 #[component]
 pub fn RecipeDetailPage() -> impl IntoView {
     let params = use_params_map();
-    let recipe_id = move || params.read().get("recipe_id").and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
+    let recipe_id = move || {
+        params
+            .read()
+            .get("recipe_id")
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0)
+    };
 
-    let data = Resource::new(
-        move || recipe_id(),
-        move |id| fetch_recipe_detail(id),
-    );
+    let data = Resource::new(recipe_id, fetch_recipe_detail);
 
     let replay_action = ServerAction::<ReplayRecipe>::new();
 

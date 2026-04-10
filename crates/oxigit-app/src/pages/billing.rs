@@ -17,15 +17,19 @@ pub struct BillingInfo {
 async fn fetch_billing_info() -> Result<BillingInfo, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_stripe_config};
+        use crate::server_fns::{
+            extract_session_user, get_control_pool, get_stripe_config, sfn_err,
+        };
         use oxigit_core::db;
 
-        let user = extract_session_user().await
+        let user = extract_session_user()
+            .await
             .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
         let pool = get_control_pool().await?;
         let stripe = get_stripe_config().await?;
 
-        let sub = db::get_subscription(&pool, user.id).await
+        let sub = db::get_subscription(&pool, user.id)
+            .await
             .map_err(sfn_err)?;
 
         match sub {
@@ -55,16 +59,21 @@ async fn fetch_billing_info() -> Result<BillingInfo, ServerFnError> {
 async fn create_portal_redirect() -> Result<String, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_base_url, get_control_pool, get_stripe_config};
+        use crate::server_fns::{
+            extract_session_user, get_base_url, get_control_pool, get_stripe_config, sfn_err,
+        };
         use oxigit_core::{billing, db};
 
-        let user = extract_session_user().await
+        let user = extract_session_user()
+            .await
             .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
         let pool = get_control_pool().await?;
-        let stripe = get_stripe_config().await?
+        let stripe = get_stripe_config()
+            .await?
             .ok_or_else(|| ServerFnError::new("Billing not configured"))?;
 
-        let sub = db::get_subscription(&pool, user.id).await
+        let sub = db::get_subscription(&pool, user.id)
+            .await
             .map_err(sfn_err)?
             .ok_or_else(|| ServerFnError::new("No subscription found"))?;
 
@@ -74,7 +83,9 @@ async fn create_portal_redirect() -> Result<String, ServerFnError> {
             &stripe.secret_key,
             &sub.stripe_customer_id,
             &format!("{}/subscription", base_url),
-        ).await.map_err(sfn_err)?;
+        )
+        .await
+        .map_err(sfn_err)?;
 
         Ok(portal_url)
     }
@@ -88,9 +99,7 @@ async fn create_portal_redirect() -> Result<String, ServerFnError> {
 pub fn SubscriptionPage() -> impl IntoView {
     let billing = Resource::new(|| (), |_| fetch_billing_info());
 
-    let portal_action = Action::new(move |_: &()| async move {
-        create_portal_redirect().await
-    });
+    let portal_action = Action::new(move |_: &()| async move { create_portal_redirect().await });
 
     // Redirect when portal URL is ready
     Effect::new(move || {

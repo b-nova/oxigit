@@ -1,5 +1,4 @@
 /// AI Guardrail evaluation — checks diffs against configured rules.
-
 use crate::models::{GuardrailConfig, GuardrailRule};
 use crate::risk;
 
@@ -7,8 +6,8 @@ use crate::risk;
 #[derive(Debug, Clone)]
 pub struct Violation {
     pub category: String,
-    pub action: String,     // "block" or "warn"
-    pub severity: String,   // "low", "medium", "high", "critical"
+    pub action: String,   // "block" or "warn"
+    pub severity: String, // "low", "medium", "high", "critical"
     pub message: String,
     pub file_path: Option<String>,
 }
@@ -55,24 +54,23 @@ pub fn evaluate_diff(
     }
 
     // Check max files per push
-    if let Some(cfg) = config {
-        if let Some(max_files) = cfg.max_files_per_push {
-            if file_count as i64 > max_files {
-                // Use the strictest active action for this violation
-                let action = if rule_map.values().any(|&a| a == "block") {
-                    "block"
-                } else {
-                    "warn"
-                };
-                violations.push(Violation {
-                    category: "max_files".to_string(),
-                    action: action.to_string(),
-                    severity: "medium".to_string(),
-                    message: format!("Push touches {} files (limit: {})", file_count, max_files),
-                    file_path: None,
-                });
-            }
-        }
+    if let Some(cfg) = config
+        && let Some(max_files) = cfg.max_files_per_push
+        && file_count as i64 > max_files
+    {
+        // Use the strictest active action for this violation
+        let action = if rule_map.values().any(|&a| a == "block") {
+            "block"
+        } else {
+            "warn"
+        };
+        violations.push(Violation {
+            category: "max_files".to_string(),
+            action: action.to_string(),
+            severity: "medium".to_string(),
+            message: format!("Push touches {} files (limit: {})", file_count, max_files),
+            file_path: None,
+        });
     }
 
     violations
@@ -103,12 +101,20 @@ mod tests {
     fn make_rules(security: &str, quality: &str) -> Vec<GuardrailRule> {
         vec![
             GuardrailRule {
-                id: 1, repo_id: 1, category: "security".into(), action: security.into(),
-                created_at: String::new(), updated_at: String::new(),
+                id: 1,
+                repo_id: 1,
+                category: "security".into(),
+                action: security.into(),
+                created_at: String::new(),
+                updated_at: String::new(),
             },
             GuardrailRule {
-                id: 2, repo_id: 1, category: "quality".into(), action: quality.into(),
-                created_at: String::new(), updated_at: String::new(),
+                id: 2,
+                repo_id: 1,
+                category: "quality".into(),
+                action: quality.into(),
+                created_at: String::new(),
+                updated_at: String::new(),
             },
         ]
     }
@@ -135,8 +141,12 @@ mod tests {
     fn max_files_check() {
         let rules = make_rules("warn", "off");
         let config = Some(GuardrailConfig {
-            id: 1, repo_id: 1, min_vibe_score: None, max_files_per_push: Some(3),
-            created_at: String::new(), updated_at: String::new(),
+            id: 1,
+            repo_id: 1,
+            min_vibe_score: None,
+            max_files_per_push: Some(3),
+            created_at: String::new(),
+            updated_at: String::new(),
         });
         let violations = evaluate_diff(&rules, &config, "", 5);
         assert!(violations.iter().any(|v| v.category == "max_files"));
@@ -144,14 +154,22 @@ mod tests {
 
     #[test]
     fn has_blocking() {
-        let v = vec![
-            Violation { category: "security".into(), action: "block".into(), severity: "critical".into(), message: "test".into(), file_path: None },
-        ];
+        let v = vec![Violation {
+            category: "security".into(),
+            action: "block".into(),
+            severity: "critical".into(),
+            message: "test".into(),
+            file_path: None,
+        }];
         assert!(has_blocking_violations(&v));
 
-        let v2 = vec![
-            Violation { category: "quality".into(), action: "warn".into(), severity: "low".into(), message: "test".into(), file_path: None },
-        ];
+        let v2 = vec![Violation {
+            category: "quality".into(),
+            action: "warn".into(),
+            severity: "low".into(),
+            message: "test".into(),
+            file_path: None,
+        }];
         assert!(!has_blocking_violations(&v2));
     }
 }

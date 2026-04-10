@@ -6,11 +6,7 @@ const STRIPE_API_BASE: &str = "https://api.stripe.com/v1";
 
 /// Create a Stripe customer for a user.
 /// Returns the Stripe customer ID.
-pub async fn create_customer(
-    stripe_key: &str,
-    email: &str,
-    user_id: i64,
-) -> Result<String> {
+pub async fn create_customer(stripe_key: &str, email: &str, user_id: i64) -> Result<String> {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{}/customers", STRIPE_API_BASE))
@@ -25,10 +21,14 @@ pub async fn create_customer(
 
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
-        return Err(OxigitError::Billing(format!("Stripe create customer failed: {body}")));
+        return Err(OxigitError::Billing(format!(
+            "Stripe create customer failed: {body}"
+        )));
     }
 
-    let body: StripeCustomer = resp.json().await
+    let body: StripeCustomer = resp
+        .json()
+        .await
         .map_err(|e| OxigitError::Billing(format!("Failed to parse Stripe response: {e}")))?;
     Ok(body.id)
 }
@@ -65,12 +65,17 @@ pub async fn create_checkout_session(
 
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
-        return Err(OxigitError::Billing(format!("Stripe checkout session failed: {body}")));
+        return Err(OxigitError::Billing(format!(
+            "Stripe checkout session failed: {body}"
+        )));
     }
 
-    let body: StripeCheckoutSession = resp.json().await
+    let body: StripeCheckoutSession = resp
+        .json()
+        .await
         .map_err(|e| OxigitError::Billing(format!("Failed to parse checkout response: {e}")))?;
-    body.url.ok_or_else(|| OxigitError::Billing("Checkout session has no URL".into()))
+    body.url
+        .ok_or_else(|| OxigitError::Billing("Checkout session has no URL".into()))
 }
 
 /// Create a Stripe Customer Portal session.
@@ -84,48 +89,47 @@ pub async fn create_portal_session(
     let resp = client
         .post(format!("{}/billing_portal/sessions", STRIPE_API_BASE))
         .basic_auth(stripe_key, None::<&str>)
-        .form(&[
-            ("customer", customer_id),
-            ("return_url", return_url),
-        ])
+        .form(&[("customer", customer_id), ("return_url", return_url)])
         .send()
         .await
         .map_err(|e| OxigitError::Billing(format!("Failed to create portal session: {e}")))?;
 
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
-        return Err(OxigitError::Billing(format!("Stripe portal session failed: {body}")));
+        return Err(OxigitError::Billing(format!(
+            "Stripe portal session failed: {body}"
+        )));
     }
 
-    let body: StripePortalSession = resp.json().await
+    let body: StripePortalSession = resp
+        .json()
+        .await
         .map_err(|e| OxigitError::Billing(format!("Failed to parse portal response: {e}")))?;
     Ok(body.url)
 }
 
 /// List invoices for a Stripe customer.
 /// Returns a list of invoices with date, amount, status, and PDF URL.
-pub async fn list_invoices(
-    stripe_key: &str,
-    customer_id: &str,
-) -> Result<Vec<StripeInvoice>> {
+pub async fn list_invoices(stripe_key: &str, customer_id: &str) -> Result<Vec<StripeInvoice>> {
     let client = reqwest::Client::new();
     let resp = client
         .get(format!("{}/invoices", STRIPE_API_BASE))
         .basic_auth(stripe_key, None::<&str>)
-        .query(&[
-            ("customer", customer_id),
-            ("limit", "50"),
-        ])
+        .query(&[("customer", customer_id), ("limit", "50")])
         .send()
         .await
         .map_err(|e| OxigitError::Billing(format!("Failed to list invoices: {e}")))?;
 
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
-        return Err(OxigitError::Billing(format!("Stripe list invoices failed: {body}")));
+        return Err(OxigitError::Billing(format!(
+            "Stripe list invoices failed: {body}"
+        )));
     }
 
-    let body: StripeInvoiceList = resp.json().await
+    let body: StripeInvoiceList = resp
+        .json()
+        .await
         .map_err(|e| OxigitError::Billing(format!("Failed to parse invoices response: {e}")))?;
     Ok(body.data)
 }
@@ -160,8 +164,12 @@ pub fn verify_webhook_signature(
     }
 
     // Construct the signed payload: "timestamp.payload"
-    let signed_payload = format!("{}.{}", timestamp, std::str::from_utf8(payload)
-        .map_err(|_| OxigitError::Billing("Invalid UTF-8 in webhook payload".into()))?);
+    let signed_payload = format!(
+        "{}.{}",
+        timestamp,
+        std::str::from_utf8(payload)
+            .map_err(|_| OxigitError::Billing("Invalid UTF-8 in webhook payload".into()))?
+    );
 
     let mut mac = Hmac::<Sha256>::new_from_slice(webhook_secret.as_bytes())
         .map_err(|_| OxigitError::Billing("Invalid webhook secret".into()))?;
@@ -172,7 +180,9 @@ pub fn verify_webhook_signature(
     if signatures.iter().any(|sig| *sig == expected) {
         Ok(())
     } else {
-        Err(OxigitError::Billing("Webhook signature verification failed".into()))
+        Err(OxigitError::Billing(
+            "Webhook signature verification failed".into(),
+        ))
     }
 }
 
@@ -267,7 +277,8 @@ mod tests {
 
     #[test]
     fn test_parse_webhook_event() {
-        let payload = br#"{"type":"checkout.session.completed","data":{"object":{"id":"cs_test"}}}"#;
+        let payload =
+            br#"{"type":"checkout.session.completed","data":{"object":{"id":"cs_test"}}}"#;
         let event = parse_webhook_event(payload).unwrap();
         assert_eq!(event.event_type, "checkout.session.completed");
     }

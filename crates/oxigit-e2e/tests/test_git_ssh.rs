@@ -1,8 +1,8 @@
 mod harness;
 
 use harness::{
-    create_commit, generate_ssh_keypair, git_clone_ssh, git_pull_ssh, git_push_ssh,
-    ssh_available, TestServer,
+    TestServer, create_commit, generate_ssh_keypair, git_clone_ssh, git_pull_ssh, git_push_ssh,
+    ssh_available,
 };
 use std::path::Path;
 
@@ -16,7 +16,9 @@ async fn test_clone_push_pull_ssh() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
     let _ = client.create_repo("ssh-repo", "SSH test repo", false).await;
 
     // Generate SSH keypair and register it
@@ -74,7 +76,10 @@ async fn test_clone_push_pull_ssh() {
         "ssh pull failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(clone2.join("second.txt").exists(), "second.txt should exist after pull");
+    assert!(
+        clone2.join("second.txt").exists(),
+        "second.txt should exist after pull"
+    );
 }
 
 #[tokio::test]
@@ -88,7 +93,9 @@ async fn test_ssh_push_wrong_user() {
 
     // Alice creates a repo
     let alice = server.client();
-    let _ = alice.register("alice", "alice@example.com", "password123").await;
+    let _ = alice
+        .register("alice", "alice@example.com", "password123")
+        .await;
     let _ = alice.create_repo("alice-repo", "Alice's", false).await;
 
     // Bob registers and adds his SSH key
@@ -126,7 +133,9 @@ async fn test_ssh_clone_unregistered_key() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    let _ = client.register("alice", "alice@example.com", "password123").await;
+    let _ = client
+        .register("alice", "alice@example.com", "password123")
+        .await;
     let _ = client.create_repo("test-repo", "Test", false).await;
 
     // Generate a keypair but do NOT register it

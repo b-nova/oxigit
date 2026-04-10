@@ -25,7 +25,10 @@ pub async fn handle_webhook(
     };
 
     // Extract and verify signature
-    let signature = match headers.get("stripe-signature").and_then(|h| h.to_str().ok()) {
+    let signature = match headers
+        .get("stripe-signature")
+        .and_then(|h| h.to_str().ok())
+    {
         Some(s) => s.to_string(),
         None => {
             return (StatusCode::BAD_REQUEST, "Missing Stripe-Signature header").into_response();
@@ -60,7 +63,9 @@ pub async fn handle_webhook(
             let subscription_id = obj["subscription"].as_str();
 
             let (Some(user_id), Some(customer_id)) = (user_id, customer_id) else {
-                tracing::error!("checkout.session.completed missing client_reference_id or customer");
+                tracing::error!(
+                    "checkout.session.completed missing client_reference_id or customer"
+                );
                 return (StatusCode::OK, "OK").into_response();
             };
 
@@ -74,12 +79,22 @@ pub async fn handle_webhook(
                         tracing::info!("Founding member slot {slot} claimed by user {user_id}");
                     }
                     Ok(None) => {
-                        tracing::warn!("Founding member slots full, user {user_id} gets flat instead");
+                        tracing::warn!(
+                            "Founding member slots full, user {user_id} gets flat instead"
+                        );
                         // Fall through — will create subscription as flat instead
                         if let Err(e) = db::upsert_subscription(
-                            pool, user_id, customer_id, subscription_id,
-                            "flat", "active", None, 1,
-                        ).await {
+                            pool,
+                            user_id,
+                            customer_id,
+                            subscription_id,
+                            "flat",
+                            "active",
+                            None,
+                            1,
+                        )
+                        .await
+                        {
                             tracing::error!("Failed to upsert subscription: {e}");
                         }
                         return (StatusCode::OK, "OK").into_response();
@@ -91,9 +106,17 @@ pub async fn handle_webhook(
             }
 
             if let Err(e) = db::upsert_subscription(
-                pool, user_id, customer_id, subscription_id,
-                plan, "active", None, 1,
-            ).await {
+                pool,
+                user_id,
+                customer_id,
+                subscription_id,
+                plan,
+                "active",
+                None,
+                1,
+            )
+            .await
+            {
                 tracing::error!("Failed to upsert subscription: {e}");
             }
         }
@@ -102,15 +125,19 @@ pub async fn handle_webhook(
             let obj = &event.data.object;
             let subscription_id = obj["id"].as_str();
             let status = obj["status"].as_str();
-            let period_end = obj["current_period_end"].as_i64()
-                .map(|ts| chrono::DateTime::from_timestamp(ts, 0)
-                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()))
+            let period_end = obj["current_period_end"]
+                .as_i64()
+                .map(|ts| {
+                    chrono::DateTime::from_timestamp(ts, 0)
+                        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
+                })
                 .flatten();
 
             if let (Some(sub_id), Some(status)) = (subscription_id, status) {
-                if let Err(e) = db::update_subscription_status(
-                    pool, sub_id, status, period_end.as_deref(),
-                ).await {
+                if let Err(e) =
+                    db::update_subscription_status(pool, sub_id, status, period_end.as_deref())
+                        .await
+                {
                     tracing::error!("Failed to update subscription status: {e}");
                 }
             }
@@ -128,7 +155,8 @@ pub async fn handle_webhook(
         "invoice.payment_failed" => {
             let obj = &event.data.object;
             if let Some(sub_id) = obj["subscription"].as_str() {
-                if let Err(e) = db::update_subscription_status(pool, sub_id, "past_due", None).await {
+                if let Err(e) = db::update_subscription_status(pool, sub_id, "past_due", None).await
+                {
                     tracing::error!("Failed to mark subscription past_due: {e}");
                 }
             }

@@ -13,16 +13,14 @@ pub struct ProfileInfo {
 
 #[server]
 async fn fetch_profile() -> Result<ProfileInfo, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_control_pool};
+    use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
     use oxigit_core::db;
 
     let user = extract_session_user()
         .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let pool = get_control_pool().await?;
-    let user = db::get_user_by_id(&pool, user.id)
-        .await
-        .map_err(sfn_err)?;
+    let user = db::get_user_by_id(&pool, user.id).await.map_err(sfn_err)?;
 
     Ok(ProfileInfo {
         username: user.username,
@@ -67,13 +65,7 @@ pub fn ProfileEditPage() -> impl IntoView {
     let profile = Resource::new(|| (), |_| fetch_profile());
     let save_action = ServerAction::<SaveProfile>::new();
 
-    let save_success = move || {
-        save_action
-            .value()
-            .get()
-            .and_then(|r| r.ok())
-            .map(|_| true)
-    };
+    let save_success = move || save_action.value().get().and_then(|r| r.ok()).map(|_| true);
     let save_error = move || {
         save_action
             .value()

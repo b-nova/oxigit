@@ -9,7 +9,9 @@ async fn diff_review_flags_hardcoded_secret() {
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("myrepo", "test", false).await;
 
@@ -47,7 +49,9 @@ async fn diff_review_clean_commit_no_flags() {
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("clean", "test", false).await;
 
@@ -84,7 +88,9 @@ async fn diff_review_flags_removed_public_api() {
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("api", "test", false).await;
 
@@ -128,7 +134,9 @@ async fn diff_review_flags_todo_comment() {
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("todos", "test", false).await;
 
@@ -166,7 +174,9 @@ async fn generate_summary_requires_flat_plan() {
     let tmp = tempfile::tempdir().unwrap();
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     client.login("alice", "password123").await;
     client.create_repo("gated", "test", false).await;
 

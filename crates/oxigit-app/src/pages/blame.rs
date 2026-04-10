@@ -14,7 +14,7 @@ async fn fetch_blame(
     path: String,
     git_ref: String,
 ) -> Result<BlameResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
@@ -38,8 +38,7 @@ async fn fetch_blame(
         git_ref
     };
 
-    let blame_lines = git::blame_file(&repo_path, &git_ref, &path)
-        .map_err(sfn_err)?;
+    let blame_lines = git::blame_file(&repo_path, &git_ref, &path).map_err(sfn_err)?;
 
     // Collect unique SHAs and batch-fetch AI metadata
     let unique_shas: Vec<String> = {
@@ -54,25 +53,30 @@ async fn fetch_blame(
         .map_err(sfn_err)?;
 
     let mut ai_line_count = 0;
-    let lines: Vec<BlameLineInfo> = blame_lines.iter().map(|bl| {
-        let ai_meta = ai_map.get(&bl.commit_sha);
-        let is_ai = ai_meta.is_some();
-        if is_ai { ai_line_count += 1; }
+    let lines: Vec<BlameLineInfo> = blame_lines
+        .iter()
+        .map(|bl| {
+            let ai_meta = ai_map.get(&bl.commit_sha);
+            let is_ai = ai_meta.is_some();
+            if is_ai {
+                ai_line_count += 1;
+            }
 
-        BlameLineInfo {
-            line_number: bl.line_number,
-            content: bl.content.clone(),
-            commit_sha: bl.commit_sha.clone(),
-            short_sha: bl.commit_sha[..7.min(bl.commit_sha.len())].to_string(),
-            author: bl.author.clone(),
-            time: bl.time.clone(),
-            is_ai,
-            ai_tool: ai_meta.map(|m| m.ai_tool.clone()),
-            ai_prompt: ai_meta.and_then(|m| m.ai_prompt.clone()),
-            ai_session_id: ai_meta.and_then(|m| m.ai_session_id.clone()),
-            ai_prompt_index: ai_meta.and_then(|m| m.ai_prompt_index),
-        }
-    }).collect();
+            BlameLineInfo {
+                line_number: bl.line_number,
+                content: bl.content.clone(),
+                commit_sha: bl.commit_sha.clone(),
+                short_sha: bl.commit_sha[..7.min(bl.commit_sha.len())].to_string(),
+                author: bl.author.clone(),
+                time: bl.time.clone(),
+                is_ai,
+                ai_tool: ai_meta.map(|m| m.ai_tool.clone()),
+                ai_prompt: ai_meta.and_then(|m| m.ai_prompt.clone()),
+                ai_session_id: ai_meta.and_then(|m| m.ai_session_id.clone()),
+                ai_prompt_index: ai_meta.and_then(|m| m.ai_prompt_index),
+            }
+        })
+        .collect();
 
     let total_line_count = lines.len();
     let file_name = path.rsplit('/').next().unwrap_or(&path).to_string();

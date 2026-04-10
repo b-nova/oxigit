@@ -17,7 +17,9 @@ pub struct PricingInfo {
 async fn fetch_pricing_info() -> Result<PricingInfo, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_control_pool, get_stripe_config};
+        use crate::server_fns::{
+            extract_session_user, get_control_pool, get_stripe_config, sfn_err,
+        };
         use oxigit_core::db;
 
         let user = extract_session_user().await;
@@ -25,16 +27,12 @@ async fn fetch_pricing_info() -> Result<PricingInfo, ServerFnError> {
         let stripe = get_stripe_config().await?;
 
         let current_plan = if let Some(ref u) = user {
-            db::get_user_plan(&pool, u.id)
-                .await
-                .map_err(sfn_err)?
+            db::get_user_plan(&pool, u.id).await.map_err(sfn_err)?
         } else {
             "free".to_string()
         };
 
-        let founding_count = db::count_founding_members(&pool)
-            .await
-            .map_err(sfn_err)?;
+        let founding_count = db::count_founding_members(&pool).await.map_err(sfn_err)?;
 
         Ok(PricingInfo {
             is_authenticated: user.is_some(),
@@ -53,50 +51,58 @@ async fn fetch_pricing_info() -> Result<PricingInfo, ServerFnError> {
 async fn create_checkout(plan: String) -> Result<String, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, extract_session_user, get_base_url, get_control_pool, get_stripe_config};
+        use crate::server_fns::{
+            extract_session_user, get_base_url, get_control_pool, get_stripe_config, sfn_err,
+        };
         use oxigit_core::{billing, db};
 
-        let user = extract_session_user().await
+        let user = extract_session_user()
+            .await
             .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
         let pool = get_control_pool().await?;
-        let stripe = get_stripe_config().await?
+        let stripe = get_stripe_config()
+            .await?
             .ok_or_else(|| ServerFnError::new("Billing not configured"))?;
 
         let base_url = get_base_url().await;
 
         // Determine price ID
         let price_id = match plan.as_str() {
-            "flat" => stripe.price_flat
+            "flat" => stripe
+                .price_flat
                 .ok_or_else(|| ServerFnError::new("Flat plan price not configured"))?,
-            "team" => stripe.price_team
+            "team" => stripe
+                .price_team
                 .ok_or_else(|| ServerFnError::new("Team plan price not configured"))?,
             "founding" => {
                 // Check founding slots
-                let count = db::count_founding_members(&pool).await
-                    .map_err(sfn_err)?;
+                let count = db::count_founding_members(&pool).await.map_err(sfn_err)?;
                 if count >= 100 {
                     return Err(ServerFnError::new("All founding member slots are taken"));
                 }
-                stripe.price_founding
+                stripe
+                    .price_founding
                     .ok_or_else(|| ServerFnError::new("Founding plan price not configured"))?
             }
             _ => return Err(ServerFnError::new("Invalid plan")),
         };
 
         // Get or create Stripe customer
-        let sub = db::get_subscription(&pool, user.id).await
+        let sub = db::get_subscription(&pool, user.id)
+            .await
             .map_err(sfn_err)?;
 
         let customer_id = if let Some(ref sub) = sub {
             sub.stripe_customer_id.clone()
         } else {
             // Look up user email
-            let db_user = db::get_user_by_id(&pool, user.id).await
-                .map_err(sfn_err)?;
-            let cid = billing::create_customer(&stripe.secret_key, &db_user.email, user.id).await
+            let db_user = db::get_user_by_id(&pool, user.id).await.map_err(sfn_err)?;
+            let cid = billing::create_customer(&stripe.secret_key, &db_user.email, user.id)
+                .await
                 .map_err(sfn_err)?;
             // Store customer ID with free subscription
-            db::upsert_subscription(&pool, user.id, &cid, None, "free", "active", None, 1).await
+            db::upsert_subscription(&pool, user.id, &cid, None, "free", "active", None, 1)
+                .await
                 .map_err(sfn_err)?;
             cid
         };
@@ -112,7 +118,9 @@ async fn create_checkout(plan: String) -> Result<String, ServerFnError> {
             &format!("{}/pricing", base_url),
             &user.id.to_string(),
             &plan,
-        ).await.map_err(sfn_err)?;
+        )
+        .await
+        .map_err(sfn_err)?;
 
         Ok(checkout_url)
     }

@@ -1,3 +1,5 @@
+#![allow(dead_code, clippy::too_many_arguments)]
+
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
@@ -101,10 +103,7 @@ impl TestServer {
             .stderr(Stdio::null())
             .spawn()
             .unwrap_or_else(|e| {
-                panic!(
-                    "failed to start server binary at {}: {e}",
-                    binary.display()
-                )
+                panic!("failed to start server binary at {}: {e}", binary.display())
             });
 
         let base_url = format!("http://127.0.0.1:{http_port}");
@@ -151,10 +150,7 @@ impl TestServer {
             .stderr(Stdio::null())
             .spawn()
             .unwrap_or_else(|e| {
-                panic!(
-                    "failed to start server binary at {}: {e}",
-                    binary.display()
-                )
+                panic!("failed to start server binary at {}: {e}", binary.display())
             });
 
         let base_url = format!("http://127.0.0.1:{http_port}");
@@ -267,12 +263,7 @@ impl TestClient {
         }
     }
 
-    pub async fn register(
-        &self,
-        username: &str,
-        email: &str,
-        password: &str,
-    ) -> reqwest::Response {
+    pub async fn register(&self, username: &str, email: &str, password: &str) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_REGISTER_USER))
             .header("content-type", "application/x-www-form-urlencoded")
@@ -439,12 +430,7 @@ impl TestClient {
             .expect("fetch_commits request failed")
     }
 
-    pub async fn fetch_commit_diff(
-        &self,
-        owner: &str,
-        repo: &str,
-        sha: &str,
-    ) -> reqwest::Response {
+    pub async fn fetch_commit_diff(&self, owner: &str, repo: &str, sha: &str) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_FETCH_COMMIT_DIFF))
             .header("content-type", "application/x-www-form-urlencoded")
@@ -483,52 +469,108 @@ impl TestClient {
             .expect("fork_repo request failed")
     }
 
-    pub async fn create_issue(&self, owner: &str, repo: &str, title: &str, description: &str) -> reqwest::Response {
+    pub async fn create_issue(
+        &self,
+        owner: &str,
+        repo: &str,
+        title: &str,
+        description: &str,
+    ) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_CREATE_ISSUE))
             .header("content-type", "application/x-www-form-urlencoded")
-            .body(format!("owner={}&repo={}&title={}&description={}", urlencoded(owner), urlencoded(repo), urlencoded(title), urlencoded(description)))
-            .send().await.expect("create_issue failed")
+            .body(format!(
+                "owner={}&repo={}&title={}&description={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                urlencoded(title),
+                urlencoded(description)
+            ))
+            .send()
+            .await
+            .expect("create_issue failed")
     }
 
     pub async fn list_issues(&self, owner: &str, repo: &str, status: &str) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_LIST_ISSUES))
             .header("content-type", "application/x-www-form-urlencoded")
-            .body(format!("owner={}&repo={}&status={}", urlencoded(owner), urlencoded(repo), urlencoded(status)))
-            .send().await.expect("list_issues failed")
+            .body(format!(
+                "owner={}&repo={}&status={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                urlencoded(status)
+            ))
+            .send()
+            .await
+            .expect("list_issues failed")
     }
 
     pub async fn get_issue(&self, owner: &str, repo: &str, number: i64) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_GET_ISSUE))
             .header("content-type", "application/x-www-form-urlencoded")
-            .body(format!("owner={}&repo={}&number={}", urlencoded(owner), urlencoded(repo), number))
-            .send().await.expect("get_issue failed")
+            .body(format!(
+                "owner={}&repo={}&number={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                number
+            ))
+            .send()
+            .await
+            .expect("get_issue failed")
     }
 
     pub async fn close_issue(&self, owner: &str, repo: &str, number: i64) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_CLOSE_ISSUE))
             .header("content-type", "application/x-www-form-urlencoded")
-            .body(format!("owner={}&repo={}&number={}", urlencoded(owner), urlencoded(repo), number))
-            .send().await.expect("close_issue failed")
+            .body(format!(
+                "owner={}&repo={}&number={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                number
+            ))
+            .send()
+            .await
+            .expect("close_issue failed")
     }
 
     pub async fn reopen_issue(&self, owner: &str, repo: &str, number: i64) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_REOPEN_ISSUE))
             .header("content-type", "application/x-www-form-urlencoded")
-            .body(format!("owner={}&repo={}&number={}", urlencoded(owner), urlencoded(repo), number))
-            .send().await.expect("reopen_issue failed")
+            .body(format!(
+                "owner={}&repo={}&number={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                number
+            ))
+            .send()
+            .await
+            .expect("reopen_issue failed")
     }
 
-    pub async fn add_issue_comment(&self, owner: &str, repo: &str, number: i64, body: &str) -> reqwest::Response {
+    pub async fn add_issue_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: i64,
+        body: &str,
+    ) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_ADD_COMMENT))
             .header("content-type", "application/x-www-form-urlencoded")
-            .body(format!("owner={}&repo={}&number={}&body={}", urlencoded(owner), urlencoded(repo), number, urlencoded(body)))
-            .send().await.expect("add_comment failed")
+            .body(format!(
+                "owner={}&repo={}&number={}&body={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                number,
+                urlencoded(body)
+            ))
+            .send()
+            .await
+            .expect("add_comment failed")
     }
 
     pub async fn explore_repos(&self, query: &str) -> reqwest::Response {
@@ -627,7 +669,12 @@ impl TestClient {
             .expect("close_pr request failed")
     }
 
-    pub async fn add_collaborator(&self, owner: &str, repo: &str, username: &str) -> reqwest::Response {
+    pub async fn add_collaborator(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+    ) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_ADD_COLLABORATOR))
             .header("content-type", "application/x-www-form-urlencoded")
@@ -642,7 +689,12 @@ impl TestClient {
             .expect("add_collaborator request failed")
     }
 
-    pub async fn remove_collaborator_by_name(&self, owner: &str, repo: &str, username: &str) -> reqwest::Response {
+    pub async fn remove_collaborator_by_name(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+    ) -> reqwest::Response {
         // First list to find user_id, then remove
         let resp = self.list_collaborators(owner, repo).await;
         let body = resp.text().await.unwrap();
@@ -652,12 +704,14 @@ impl TestClient {
             .split("user_id")
             .skip(1)
             .find_map(|chunk| {
-                if chunk.contains(username) || body.split(username).nth(1).map_or(false, |_| true) {
-                    chunk.split(|c: char| !c.is_ascii_digit())
+                if chunk.contains(username) || body.split(username).nth(1).is_some() {
+                    chunk
+                        .split(|c: char| !c.is_ascii_digit())
                         .find(|s| !s.is_empty())
                         .and_then(|s| s.parse::<i64>().ok())
+                } else {
+                    None
                 }
-                else { None }
             })
             .unwrap_or(0);
 
@@ -697,7 +751,12 @@ impl TestClient {
             .expect("GET request failed")
     }
 
-    pub async fn install_ai_hook(&self, owner: &str, repo: &str, tool_id: &str) -> reqwest::Response {
+    pub async fn install_ai_hook(
+        &self,
+        owner: &str,
+        repo: &str,
+        tool_id: &str,
+    ) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_INSTALL_AI_HOOK))
             .header("content-type", "application/x-www-form-urlencoded")
@@ -794,7 +853,12 @@ impl TestClient {
             .expect("get_diff_review request failed")
     }
 
-    pub async fn generate_diff_summary(&self, owner: &str, repo: &str, sha: &str) -> reqwest::Response {
+    pub async fn generate_diff_summary(
+        &self,
+        owner: &str,
+        repo: &str,
+        sha: &str,
+    ) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_GENERATE_DIFF_SUMMARY))
             .header("content-type", "application/x-www-form-urlencoded")
@@ -837,7 +901,13 @@ impl TestClient {
             .expect("list_repo_webhooks request failed")
     }
 
-    pub async fn add_webhook(&self, owner: &str, repo: &str, url: &str, secret: &str) -> reqwest::Response {
+    pub async fn add_webhook(
+        &self,
+        owner: &str,
+        repo: &str,
+        url: &str,
+        secret: &str,
+    ) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_ADD_WEBHOOK))
             .header("content-type", "application/x-www-form-urlencoded")
@@ -863,7 +933,12 @@ impl TestClient {
             .expect("fetch_pricing_info request failed")
     }
 
-    pub async fn delete_webhook(&self, owner: &str, repo: &str, webhook_id: i64) -> reqwest::Response {
+    pub async fn delete_webhook(
+        &self,
+        owner: &str,
+        repo: &str,
+        webhook_id: i64,
+    ) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_DELETE_WEBHOOK))
             .header("content-type", "application/x-www-form-urlencoded")
@@ -904,7 +979,12 @@ impl TestClient {
             .expect("get_org_settings request failed")
     }
 
-    pub async fn add_org_member(&self, slug: &str, username: &str, role: &str) -> reqwest::Response {
+    pub async fn add_org_member(
+        &self,
+        slug: &str,
+        username: &str,
+        role: &str,
+    ) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_ADD_MEMBER))
             .header("content-type", "application/x-www-form-urlencoded")
@@ -923,11 +1003,7 @@ impl TestClient {
         self.client
             .post(format!("{}{}", self.base_url, API_REMOVE_MEMBER))
             .header("content-type", "application/x-www-form-urlencoded")
-            .body(format!(
-                "slug={}&user_id={}",
-                urlencoded(slug),
-                user_id
-            ))
+            .body(format!("slug={}&user_id={}", urlencoded(slug), user_id))
             .send()
             .await
             .expect("remove_org_member request failed")
@@ -953,13 +1029,20 @@ impl TestClient {
             .expect("switch_org request failed")
     }
 
-    pub async fn revert_session(&self, owner: &str, repo: &str, session_id: &str) -> reqwest::Response {
+    pub async fn revert_session(
+        &self,
+        owner: &str,
+        repo: &str,
+        session_id: &str,
+    ) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_REVERT_SESSION))
             .header("content-type", "application/x-www-form-urlencoded")
             .body(format!(
                 "owner={}&repo={}&session_id={}",
-                urlencoded(owner), urlencoded(repo), urlencoded(session_id)
+                urlencoded(owner),
+                urlencoded(repo),
+                urlencoded(session_id)
             ))
             .send()
             .await
@@ -991,13 +1074,7 @@ pub fn git_clone_http(url: &str, dest: &Path) -> Output {
 }
 
 /// Clone a repo via SSH.
-pub fn git_clone_ssh(
-    port: u16,
-    owner: &str,
-    repo: &str,
-    dest: &Path,
-    key_path: &Path,
-) -> Output {
+pub fn git_clone_ssh(port: u16, owner: &str, repo: &str, dest: &Path, key_path: &Path) -> Output {
     let url = format!("ssh://git@127.0.0.1:{port}/{owner}/{repo}.git");
     let ssh_cmd = format!(
         "ssh -i {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {port}",

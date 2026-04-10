@@ -28,13 +28,17 @@ async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str, secr
         .await
         .unwrap();
     let status = resp.status().as_u16();
-    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {status}");
+    assert!(
+        status == 200 || status == 404,
+        "Stripe webhook returned unexpected status: {status}"
+    );
 }
 
 /// Extract redirect location from a Leptos server function response.
 /// Leptos may return 200 or 3xx with a Location header.
 fn get_redirect_location(resp: &reqwest::Response) -> Option<String> {
-    resp.headers().get("location")
+    resp.headers()
+        .get("location")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
 }
@@ -47,12 +51,22 @@ async fn test_revert_session_conflict_redirects() {
     let server = TestServer::start_with_stripe(secret).await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("alice", "password123").await;
-    client.create_repo("conflictrepo", "Revert conflict test", false).await;
+    client
+        .create_repo("conflictrepo", "Revert conflict test", false)
+        .await;
 
-    let clone_url = http_clone_url(&server.base_url, "alice", "password123", "alice", "conflictrepo");
+    let clone_url = http_clone_url(
+        &server.base_url,
+        "alice",
+        "password123",
+        "alice",
+        "conflictrepo",
+    );
     let dest = server.data_dir.path().join("clone-conflict");
     git_clone_http(&clone_url, &dest);
     init_repo_config(&dest);
@@ -62,13 +76,24 @@ async fn test_revert_session_conflict_redirects() {
 
     // Step 2: Create an AI session commit that modifies shared.txt
     create_commit_with_trailers(
-        &dest, "shared.txt", "ai modified content\n", "ai change",
-        "claude-code", Some("claude-opus-4-6"), Some("Modify shared file"),
-        Some("conflict-sess-1"), Some(1),
+        &dest,
+        "shared.txt",
+        "ai modified content\n",
+        "ai change",
+        "claude-code",
+        Some("claude-opus-4-6"),
+        Some("Modify shared file"),
+        Some("conflict-sess-1"),
+        Some(1),
     );
 
     // Step 3: Create a non-AI commit that also modifies shared.txt (causes conflict on revert)
-    create_commit(&dest, "shared.txt", "conflicting content that overlaps\n", "manual change");
+    create_commit(
+        &dest,
+        "shared.txt",
+        "conflicting content that overlaps\n",
+        "manual change",
+    );
 
     let push = git_push(&dest);
     assert!(push.status.success(), "push should succeed");
@@ -76,29 +101,42 @@ async fn test_revert_session_conflict_redirects() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // Step 4: Attempt to revert the AI session — should detect conflict
-    let resp = client.revert_session("alice", "conflictrepo", "conflict-sess-1").await;
+    let resp = client
+        .revert_session("alice", "conflictrepo", "conflict-sess-1")
+        .await;
 
     let status = resp.status();
     assert!(
         status.is_success() || status.is_redirection(),
-        "Expected success or redirect, got status {}", status
+        "Expected success or redirect, got status {}",
+        status
     );
 
-    let location = get_redirect_location(&resp)
-        .expect("Expected Location header on revert conflict response");
+    let location =
+        get_redirect_location(&resp).expect("Expected Location header on revert conflict response");
 
     assert!(
         location.contains("/alice/conflictrepo/conflicts/"),
-        "Expected redirect to conflict resolution page, got: {}", location
+        "Expected redirect to conflict resolution page, got: {}",
+        location
     );
 
     // Step 5: Verify the conflict resolution page is accessible and shows revert info
     let conflict_page = client.get(&location).await;
     let body = strip_hydration_markers(&conflict_page.text().await.unwrap());
 
-    assert!(body.contains("revert"), "Expected revert operation type in page body");
-    assert!(body.contains("shared.txt"), "Expected conflicting file name in page");
-    assert!(body.contains("Complete Revert"), "Expected Complete Revert button");
+    assert!(
+        body.contains("revert"),
+        "Expected revert operation type in page body"
+    );
+    assert!(
+        body.contains("shared.txt"),
+        "Expected conflicting file name in page"
+    );
+    assert!(
+        body.contains("Complete Revert"),
+        "Expected Complete Revert button"
+    );
 }
 
 /// Test that reverting a session without conflicts still works normally.
@@ -111,7 +149,9 @@ async fn test_revert_session_clean_succeeds() {
     client.register("bob", "bob@test.com", "password123").await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1", secret).await;
     client.login("bob", "password123").await;
-    client.create_repo("cleanrepo", "Clean revert test", false).await;
+    client
+        .create_repo("cleanrepo", "Clean revert test", false)
+        .await;
 
     let clone_url = http_clone_url(&server.base_url, "bob", "password123", "bob", "cleanrepo");
     let dest = server.data_dir.path().join("clone-clean");
@@ -123,9 +163,15 @@ async fn test_revert_session_clean_succeeds() {
 
     // Create AI session commits on separate files (no conflict possible)
     create_commit_with_trailers(
-        &dest, "ai_file.rs", "fn ai() {}", "ai step 1",
-        "claude-code", Some("claude-opus-4-6"), Some("Add AI function"),
-        Some("clean-sess-1"), Some(1),
+        &dest,
+        "ai_file.rs",
+        "fn ai() {}",
+        "ai step 1",
+        "claude-code",
+        Some("claude-opus-4-6"),
+        Some("Add AI function"),
+        Some("clean-sess-1"),
+        Some(1),
     );
 
     let push = git_push(&dest);
@@ -134,7 +180,9 @@ async fn test_revert_session_clean_succeeds() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // Revert should succeed without conflicts — redirect back to session detail
-    let resp = client.revert_session("bob", "cleanrepo", "clean-sess-1").await;
+    let resp = client
+        .revert_session("bob", "cleanrepo", "clean-sess-1")
+        .await;
 
     let status = resp.status();
     let location = get_redirect_location(&resp).unwrap_or_default();
@@ -142,11 +190,16 @@ async fn test_revert_session_clean_succeeds() {
 
     assert!(
         status.is_success() || status.is_redirection(),
-        "Expected success or redirect, got status {}; location={}; body={}", status, location, &body[..500.min(body.len())]
+        "Expected success or redirect, got status {}; location={}; body={}",
+        status,
+        location,
+        &body[..500.min(body.len())]
     );
 
     assert!(
         location.contains("/bob/cleanrepo/ai/clean-sess-1"),
-        "Expected redirect back to session detail, got: {}; body={}", location, &body[..500.min(body.len())]
+        "Expected redirect back to session detail, got: {}; body={}",
+        location,
+        &body[..500.min(body.len())]
     );
 }

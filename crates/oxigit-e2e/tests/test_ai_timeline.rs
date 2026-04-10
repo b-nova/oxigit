@@ -32,7 +32,11 @@ async fn upgrade_to_pro(client: &TestClient, base_url: &str, user_id: &str) {
         .unwrap();
     let status = resp.status().as_u16();
     // In non-saas builds the webhook route doesn't exist (404) — users are already pro
-    assert!(status == 200 || status == 404, "Stripe webhook returned unexpected status: {}", status);
+    assert!(
+        status == 200 || status == 404,
+        "Stripe webhook returned unexpected status: {}",
+        status
+    );
 }
 
 /// Test that pushing a commit with .oxigit/context.json causes metadata to appear in the commit detail.
@@ -41,7 +45,9 @@ async fn test_ai_context_on_http_push() {
     let server = TestServer::start_with_stripe(STRIPE_SECRET).await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1").await;
     client.login("alice", "password123").await;
     client.create_repo("airepo", "AI test repo", false).await;
@@ -64,7 +70,11 @@ async fn test_ai_context_on_http_push() {
     );
     let sha = get_head_sha(&dest);
     let push_result = git_push(&dest);
-    assert!(push_result.status.success(), "push failed: {}", String::from_utf8_lossy(&push_result.stderr));
+    assert!(
+        push_result.status.success(),
+        "push failed: {}",
+        String::from_utf8_lossy(&push_result.stderr)
+    );
 
     // Give the background task a moment to process
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -72,8 +82,15 @@ async fn test_ai_context_on_http_push() {
     // Fetch commit detail and verify AI metadata is present
     let resp = client.fetch_commit_diff("alice", "airepo", &sha).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("claude-code"), "Expected AI tool in commit detail, got: {}", &body[..200.min(body.len())]);
-    assert!(body.contains("claude-opus-4-6"), "Expected AI model in commit detail");
+    assert!(
+        body.contains("claude-code"),
+        "Expected AI tool in commit detail, got: {}",
+        &body[..200.min(body.len())]
+    );
+    assert!(
+        body.contains("claude-opus-4-6"),
+        "Expected AI model in commit detail"
+    );
 }
 
 /// Test that the commits list includes AI tool badges.
@@ -111,7 +128,10 @@ async fn test_ai_badge_in_commits_list() {
     // Fetch commits list and check for AI tool presence
     let resp = client.fetch_commits("bob", "ailist").await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("cursor"), "Expected AI tool badge 'cursor' in commits list");
+    assert!(
+        body.contains("cursor"),
+        "Expected AI tool badge 'cursor' in commits list"
+    );
 }
 
 /// Test manual AI metadata attachment via server function.
@@ -120,10 +140,14 @@ async fn test_manual_ai_metadata_attachment() {
     let server = TestServer::start_with_stripe(STRIPE_SECRET).await;
     let client = server.client();
 
-    client.register("carol", "carol@test.com", "password123").await;
+    client
+        .register("carol", "carol@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1").await;
     client.login("carol", "password123").await;
-    client.create_repo("manual", "Manual metadata test", false).await;
+    client
+        .create_repo("manual", "Manual metadata test", false)
+        .await;
 
     let clone_url = http_clone_url(&server.base_url, "carol", "password123", "carol", "manual");
     let dest = server.data_dir.path().join("clone-manual");
@@ -137,16 +161,18 @@ async fn test_manual_ai_metadata_attachment() {
     assert!(push_result.status.success());
 
     // Attach AI metadata manually
-    let resp = client.attach_ai_metadata(
-        "carol",
-        "manual",
-        &sha,
-        "aider",
-        Some("gpt-4o"),
-        Some("Fix the app function"),
-        Some("manual-session-1"),
-        Some("app.rs"),
-    ).await;
+    let resp = client
+        .attach_ai_metadata(
+            "carol",
+            "manual",
+            &sha,
+            "aider",
+            Some("gpt-4o"),
+            Some("Fix the app function"),
+            Some("manual-session-1"),
+            Some("app.rs"),
+        )
+        .await;
     // Should succeed (2xx or redirect)
     let status = resp.status();
     assert!(
@@ -158,7 +184,10 @@ async fn test_manual_ai_metadata_attachment() {
     // Verify metadata shows up in commit detail
     let resp = client.fetch_commit_diff("carol", "manual", &sha).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("aider"), "Expected manually attached AI tool in commit detail");
+    assert!(
+        body.contains("aider"),
+        "Expected manually attached AI tool in commit detail"
+    );
 }
 
 /// Test that .oxigit/context.json survives SSH push.
@@ -172,7 +201,9 @@ async fn test_ai_context_via_ssh_push() {
     let server = TestServer::start_with_stripe(STRIPE_SECRET).await;
     let client = server.client();
 
-    client.register("dave", "dave@test.com", "password123").await;
+    client
+        .register("dave", "dave@test.com", "password123")
+        .await;
     upgrade_to_pro(&client, &client.base_url.clone(), "1").await;
     client.login("dave", "password123").await;
     client.create_repo("sshrepo", "SSH AI test", false).await;
@@ -200,12 +231,19 @@ async fn test_ai_context_via_ssh_push() {
     );
     let sha = get_head_sha(&dest);
     let push_result = git_push_ssh(&dest, server.ssh_port, &key_path);
-    assert!(push_result.status.success(), "SSH push failed: {}", String::from_utf8_lossy(&push_result.stderr));
+    assert!(
+        push_result.status.success(),
+        "SSH push failed: {}",
+        String::from_utf8_lossy(&push_result.stderr)
+    );
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // Verify via commit detail API
     let resp = client.fetch_commit_diff("dave", "sshrepo", &sha).await;
     let body = resp.text().await.unwrap();
-    assert!(body.contains("copilot"), "Expected AI tool from SSH push in commit detail");
+    assert!(
+        body.contains("copilot"),
+        "Expected AI tool from SSH push in commit detail"
+    );
 }

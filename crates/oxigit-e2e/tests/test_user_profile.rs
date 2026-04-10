@@ -8,8 +8,12 @@ async fn user_profile_shows_public_repos() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("alice", "alice@test.com", "password123").await;
-    client.create_repo("public-repo", "a public repo", false).await;
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
+    client
+        .create_repo("public-repo", "a public repo", false)
+        .await;
     client.create_repo("another", "another public", false).await;
 
     // Fetch profile (even as anonymous)
@@ -17,8 +21,14 @@ async fn user_profile_shows_public_repos() {
     let resp = anon.fetch_user_profile("alice").await;
     let body = resp.text().await.unwrap();
 
-    assert!(body.contains("public-repo"), "should show public repo: {body}");
-    assert!(body.contains("another"), "should show another public repo: {body}");
+    assert!(
+        body.contains("public-repo"),
+        "should show public repo: {body}"
+    );
+    assert!(
+        body.contains("another"),
+        "should show another public repo: {body}"
+    );
 }
 
 /// Test: user profile hides private repos from others.
@@ -37,7 +47,10 @@ async fn user_profile_hides_private_repos() {
     let body = resp.text().await.unwrap();
 
     assert!(body.contains("visible"), "should show public repo");
-    assert!(!body.contains("hidden"), "should NOT show private repo to anonymous: {body}");
+    assert!(
+        !body.contains("hidden"),
+        "should NOT show private repo to anonymous: {body}"
+    );
 }
 
 /// Test: user profile shows own private repos.
@@ -46,14 +59,19 @@ async fn user_profile_shows_own_private_repos() {
     let server = TestServer::start().await;
     let client = server.client();
 
-    client.register("carol", "carol@test.com", "password123").await;
+    client
+        .register("carol", "carol@test.com", "password123")
+        .await;
     client.create_repo("mypriv", "my private", true).await;
 
     // Same user's session
     let resp = client.fetch_user_profile("carol").await;
     let body = resp.text().await.unwrap();
 
-    assert!(body.contains("mypriv"), "should show own private repo: {body}");
+    assert!(
+        body.contains("mypriv"),
+        "should show own private repo: {body}"
+    );
 }
 
 /// Test: nonexistent user returns error.

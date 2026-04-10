@@ -61,9 +61,7 @@ pub fn validate_repo_name(name: &str) -> Result<()> {
         ));
     }
     if name == "." || name == ".." || name.contains("..") {
-        return Err(OxigitError::InvalidInput(
-            "Invalid repository name".into(),
-        ));
+        return Err(OxigitError::InvalidInput("Invalid repository name".into()));
     }
     Ok(())
 }

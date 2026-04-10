@@ -12,15 +12,13 @@ async fn register_user(
     password: String,
     plan: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, get_control_pool, set_session_user};
+    use crate::server_fns::{get_control_pool, set_session_user, sfn_err};
     use oxigit_core::db;
 
     let pool = get_control_pool().await?;
 
     // First registered user becomes admin automatically
-    let is_first_user = db::count_users(&pool)
-        .await
-        .map_err(sfn_err)? == 0;
+    let is_first_user = db::count_users(&pool).await.map_err(sfn_err)? == 0;
 
     let user = db::create_user(&pool, &username, &email, &password)
         .await
@@ -34,7 +32,7 @@ async fn register_user(
 
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{sfn_err, get_tenant_mgr, is_multi_tenant};
+        use crate::server_fns::{get_tenant_mgr, is_multi_tenant, sfn_err};
 
         // Create personal org for the new user
         let org = db::create_organization(&pool, &username, &username, user.id)
@@ -64,11 +62,9 @@ async fn register_user(
                     return Ok(());
                 }
 
-                db::upsert_subscription(
-                    &pool, user.id, "self-hosted", None, p, "active", None, 1,
-                )
-                .await
-                .map_err(sfn_err)?;
+                db::upsert_subscription(&pool, user.id, "self-hosted", None, p, "active", None, 1)
+                    .await
+                    .map_err(sfn_err)?;
 
                 if p == "founding" {
                     let _ = db::claim_founding_slot(&pool, user.id).await;
@@ -94,9 +90,10 @@ pub fn RegisterPage() -> impl IntoView {
     let query = use_query_map();
     let plan_param = move || query.read().get("plan").unwrap_or_default();
     let error = move || {
-        register_action.value().get().and_then(|r| {
-            r.err().map(|e| e.to_string())
-        })
+        register_action
+            .value()
+            .get()
+            .and_then(|r| r.err().map(|e| e.to_string()))
     };
 
     view! {

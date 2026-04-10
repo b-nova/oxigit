@@ -12,31 +12,37 @@ async fn share_session_as_recipe(
     description: String,
     tags: String,
 ) -> Result<i64, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools};
+    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git, vibe};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("Access denied"));
     }
 
     // Check if already shared
     if let Ok(Some(_)) = db::get_recipe_for_session(&pool, repo_db.id, &session_id).await {
-        return Err(ServerFnError::new("This session is already shared as a recipe"));
+        return Err(ServerFnError::new(
+            "This session is already shared as a recipe",
+        ));
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
 
     let metas = db::get_ai_metadata_by_session(&pool, repo_db.id, &session_id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     if metas.is_empty() {
         return Err(ServerFnError::new("Session not found"));
@@ -46,7 +52,8 @@ async fn share_session_as_recipe(
     let ai_model = metas[0].ai_model.clone();
 
     // Group commits by prompt_index (or by prompt text for ungrouped)
-    let mut prompt_groups: Vec<(Option<String>, Vec<&oxigit_core::models::AiCommitMetadata>)> = Vec::new();
+    let mut prompt_groups: Vec<(Option<String>, Vec<&oxigit_core::models::AiCommitMetadata>)> =
+        Vec::new();
     for meta in &metas {
         let key = meta.ai_prompt.clone();
         if let Some(group) = prompt_groups.iter_mut().find(|(k, _)| *k == key) {
@@ -73,34 +80,51 @@ async fn share_session_as_recipe(
     // Collect all unique files
     let mut all_files: Vec<String> = Vec::new();
     for meta in &metas {
-        if let Some(ref fj) = meta.ai_files_touched {
-            if let Ok(files) = serde_json::from_str::<Vec<String>>(fj) {
-                for f in files {
-                    if !all_files.contains(&f) { all_files.push(f); }
+        if let Some(ref fj) = meta.ai_files_touched
+            && let Ok(files) = serde_json::from_str::<Vec<String>>(fj)
+        {
+            for f in files {
+                if !all_files.contains(&f) {
+                    all_files.push(f);
                 }
             }
         }
     }
 
-    let tags_opt = if tags.trim().is_empty() { None } else {
-        let tag_list: Vec<String> = tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+    let tags_opt = if tags.trim().is_empty() {
+        None
+    } else {
+        let tag_list: Vec<String> = tags
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
         Some(serde_json::to_string(&tag_list).unwrap_or_default())
     };
 
     let recipe = db::create_recipe(
-        &pool, repo_db.id, &session_id, user.id,
-        &title, &description, &ai_tool, ai_model.as_deref(),
+        &pool,
+        repo_db.id,
+        &session_id,
+        user.id,
+        &title,
+        &description,
+        &ai_tool,
+        ai_model.as_deref(),
         tags_opt.as_deref(),
         prompt_groups.len() as i64,
         all_files.len() as i64,
         Some(vs.score as i64),
-    ).await.map_err(sfn_err)?;
+    )
+    .await
+    .map_err(sfn_err)?;
 
     // Create steps
     for (step_idx, (prompt_text, group_metas)) in prompt_groups.iter().enumerate() {
         let last_sha = &group_metas[0].commit_sha; // metas are DESC, first is latest
         let commit_message = git::get_latest_commit(&repo_path, last_sha)
-            .ok().flatten()
+            .ok()
+            .flatten()
             .map(|c| c.message)
             .unwrap_or_else(|| "unknown".into());
 
@@ -113,18 +137,24 @@ async fn share_session_as_recipe(
         let files_json = serde_json::to_string(&files).ok();
 
         // Get diff for this step
-        let step_shas: Vec<String> = group_metas.iter().rev().map(|m| m.commit_sha.clone()).collect();
+        let step_shas: Vec<String> = group_metas
+            .iter()
+            .rev()
+            .map(|m| m.commit_sha.clone())
+            .collect();
         let diff = git::session_aggregate_diff(&repo_path, &step_shas).unwrap_or_default();
 
         let _ = db::create_recipe_step(
-            &pool, recipe.id,
+            &pool,
+            recipe.id,
             step_idx as i64,
             prompt_text.as_deref(),
             group_metas[0].ai_prompt_index,
             &commit_message,
             files_json.as_deref(),
             Some(&diff),
-        ).await;
+        )
+        .await;
     }
 
     leptos_axum::redirect(&format!("/recipes/{}", recipe.id));

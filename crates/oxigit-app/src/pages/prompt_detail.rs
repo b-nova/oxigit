@@ -14,12 +14,16 @@ async fn fetch_prompt_detail(
     session_id: String,
     prompt_index: i64,
 ) -> Result<PromptDetailResponse, ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_effective_llm_config, get_user_entitlements};
-    use oxigit_core::{db, git, llm, risk};
     use super::{AiMetadataInfo, DiffSummaryInfo, RiskFlagInfo, VibeScoreInfo};
+    use crate::server_fns::{
+        extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools,
+        get_user_entitlements, sfn_err,
+    };
+    use oxigit_core::{db, git, llm, risk};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let current_user = extract_session_user().await
+    let current_user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let entitlements = get_user_entitlements(current_user.id).await?;
@@ -62,12 +66,12 @@ async fn fetch_prompt_detail(
             None => ("(commit not found)".into(), String::new(), String::new()),
         };
 
-        if let Some(ref files_json) = meta.ai_files_touched {
-            if let Ok(files) = serde_json::from_str::<Vec<String>>(files_json) {
-                for f in &files {
-                    if !all_files.contains(f) {
-                        all_files.push(f.clone());
-                    }
+        if let Some(ref files_json) = meta.ai_files_touched
+            && let Ok(files) = serde_json::from_str::<Vec<String>>(files_json)
+        {
+            for f in &files {
+                if !all_files.contains(f) {
+                    all_files.push(f.clone());
                 }
             }
         }
@@ -88,7 +92,10 @@ async fn fetch_prompt_detail(
                 ai_model: meta.ai_model.clone(),
                 ai_prompt: meta.ai_prompt.clone(),
                 ai_session_id: meta.ai_session_id.clone(),
-                ai_files_touched: meta.ai_files_touched.as_ref().and_then(|f| serde_json::from_str(f).ok()),
+                ai_files_touched: meta
+                    .ai_files_touched
+                    .as_ref()
+                    .and_then(|f| serde_json::from_str(f).ok()),
                 ai_prompt_index: meta.ai_prompt_index,
             },
             diff_html: commit_diff,
@@ -96,8 +103,14 @@ async fn fetch_prompt_detail(
     }
 
     // Time range (commits are newest-first)
-    let first_time = commits.last().map(|e| e.commit_time.clone()).unwrap_or_default();
-    let last_time = commits.first().map(|e| e.commit_time.clone()).unwrap_or_default();
+    let first_time = commits
+        .last()
+        .map(|e| e.commit_time.clone())
+        .unwrap_or_default();
+    let last_time = commits
+        .first()
+        .map(|e| e.commit_time.clone())
+        .unwrap_or_default();
 
     // Reverse SHAs to oldest-first for aggregate operations
     let mut shas_asc = shas.clone();
@@ -108,37 +121,70 @@ async fn fetch_prompt_detail(
 
     // AI summary with caching
     let cache_key = format!("prompt-{}-{}", session_id, prompt_index);
-    let cached_summary = db::get_diff_summary(&pool, repo_db.id, &cache_key).await.ok().flatten();
+    let cached_summary = db::get_diff_summary(&pool, repo_db.id, &cache_key)
+        .await
+        .ok()
+        .flatten();
 
     let summary = if let Some(s) = cached_summary {
-        let flags: Vec<RiskFlagInfo> = s.risk_flags
+        let flags: Vec<RiskFlagInfo> = s
+            .risk_flags
             .and_then(|f| serde_json::from_str(&f).ok())
             .unwrap_or_default();
-        Some(DiffSummaryInfo { summary: s.summary, risk_flags: flags, generated_by: s.generated_by })
+        Some(DiffSummaryInfo {
+            summary: s.summary,
+            risk_flags: flags,
+            generated_by: s.generated_by,
+        })
     } else {
-        let (provider, api_key, model, base_url) = get_effective_llm_config(Some(current_user.id)).await?;
+        let (provider, api_key, model, base_url) =
+            get_effective_llm_config(Some(current_user.id)).await?;
         if provider != "none" && !diff.is_empty() {
-            let config = llm::LlmConfig { provider, api_key, model: model.clone(), base_url };
+            let config = llm::LlmConfig {
+                provider,
+                api_key,
+                model: model.clone(),
+                base_url,
+            };
             match llm::generate_summary(&config, &diff, prompt_text.as_deref()).await {
                 Ok(summary_text) => {
                     let risk_flags: Vec<RiskFlagInfo> = risk::scan_diff(&diff)
                         .into_iter()
-                        .map(|f| RiskFlagInfo { category: f.category.label().to_string(), message: f.message, file: f.file })
+                        .map(|f| RiskFlagInfo {
+                            category: f.category.label().to_string(),
+                            message: f.message,
+                            file: f.file,
+                        })
                         .collect();
                     let flags_json = serde_json::to_string(&risk_flags).ok();
-                    let _ = db::upsert_diff_summary(&pool, repo_db.id, &cache_key, &summary_text, flags_json.as_deref(), &model).await;
-                    Some(DiffSummaryInfo { summary: summary_text, risk_flags, generated_by: model })
+                    let _ = db::upsert_diff_summary(
+                        &pool,
+                        repo_db.id,
+                        &cache_key,
+                        &summary_text,
+                        flags_json.as_deref(),
+                        &model,
+                    )
+                    .await;
+                    Some(DiffSummaryInfo {
+                        summary: summary_text,
+                        risk_flags,
+                        generated_by: model,
+                    })
                 }
                 Err(_) => None,
             }
-        } else { None }
+        } else {
+            None
+        }
     };
 
     // Vibe score
     let vibe_score = {
         use oxigit_core::vibe;
 
-        let (lines_added, lines_deleted) = git::session_diff_stats(&repo_path, &shas_asc).unwrap_or((0, 0));
+        let (lines_added, lines_deleted) =
+            git::session_diff_stats(&repo_path, &shas_asc).unwrap_or((0, 0));
         let risk_count = summary.as_ref().map(|s| s.risk_flags.len()).unwrap_or(0);
 
         let short_id = &session_id[..8.min(session_id.len())];
@@ -175,7 +221,8 @@ async fn fetch_prompt_detail(
 
     let branches = git::list_branches(&repo_path).unwrap_or_default();
     let default_branch = git::default_branch(&repo_path)
-        .unwrap_or(None).unwrap_or_else(|| "main".to_string());
+        .unwrap_or(None)
+        .unwrap_or_else(|| "main".to_string());
 
     Ok(PromptDetailResponse {
         session_id,
@@ -203,10 +250,13 @@ async fn revert_prompt(
     session_id: String,
     prompt_index: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{
+        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+    };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let entitlements = get_user_entitlements(user.id).await?;
@@ -219,17 +269,20 @@ async fn revert_prompt(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("Access denied"));
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
     let metas = db::get_commits_for_prompt_group(&pool, repo_db.id, &session_id, prompt_index)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     if metas.is_empty() {
         return Err(ServerFnError::new("Prompt not found"));
@@ -240,15 +293,22 @@ async fn revert_prompt(
     let short_id = &session_id[..8.min(session_id.len())];
 
     let default_branch = git::default_branch(&repo_path)
-        .unwrap_or(None).unwrap_or_else(|| "main".to_string());
+        .unwrap_or(None)
+        .unwrap_or_else(|| "main".to_string());
 
-    let message = format!("Revert prompt #{} in session {}: {}", prompt_index, short_id, prompt_text);
-    let result = git::revert_session(&repo_path, &default_branch, &shas, &message)
-        .map_err(sfn_err)?;
+    let message = format!(
+        "Revert prompt #{} in session {}: {}",
+        prompt_index, short_id, prompt_text
+    );
+    let result =
+        git::revert_session(&repo_path, &default_branch, &shas, &message).map_err(sfn_err)?;
 
     match result {
         git::RevertResult::Success => {
-            leptos_axum::redirect(&format!("/{}/{}/ai/{}/prompt/{}", owner, repo, session_id, prompt_index));
+            leptos_axum::redirect(&format!(
+                "/{}/{}/ai/{}/prompt/{}",
+                owner, repo, session_id, prompt_index
+            ));
         }
         git::RevertResult::Conflict {
             conflicting_sha,
@@ -258,8 +318,8 @@ async fn revert_prompt(
             conflict_files,
             ..
         } => {
-            let parent_sha = git::rev_parse(&repo_path, &format!("{}^", conflicting_sha))
-                .map_err(sfn_err)?;
+            let parent_sha =
+                git::rev_parse(&repo_path, &format!("{}^", conflicting_sha)).map_err(sfn_err)?;
 
             let context = serde_json::json!({
                 "session_id": session_id,
@@ -268,22 +328,26 @@ async fn revert_prompt(
                 "branch": default_branch,
                 "revert_message": message,
             });
-            let context_str = serde_json::to_string(&context)
-                .map_err(sfn_err)?;
+            let context_str = serde_json::to_string(&context).map_err(sfn_err)?;
 
             let conflict = db::create_merge_conflict(
-                &pool, repo_db.id, user.id,
+                &pool,
+                repo_db.id,
+                user.id,
                 "revert",
                 &current_commit,
                 &parent_sha,
                 &conflicting_sha,
                 auto_tree.as_deref(),
                 Some(&context_str),
-            ).await.map_err(sfn_err)?;
+            )
+            .await
+            .map_err(sfn_err)?;
 
             for file_path in &conflict_files {
                 db::create_conflict_file(&pool, conflict.id, file_path, "content")
-                    .await.map_err(sfn_err)?;
+                    .await
+                    .map_err(sfn_err)?;
             }
 
             leptos_axum::redirect(&format!("/{}/{}/conflicts/{}", owner, repo, conflict.id));
@@ -301,10 +365,13 @@ async fn cherry_pick_prompt(
     prompt_index: i64,
     target_branch: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{
+        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+    };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let entitlements = get_user_entitlements(user.id).await?;
@@ -317,17 +384,20 @@ async fn cherry_pick_prompt(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("Access denied"));
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
     let metas = db::get_commits_for_prompt_group(&pool, repo_db.id, &session_id, prompt_index)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     if metas.is_empty() {
         return Err(ServerFnError::new("Prompt not found"));
@@ -335,10 +405,12 @@ async fn cherry_pick_prompt(
 
     let shas: Vec<String> = metas.iter().map(|m| m.commit_sha.clone()).collect();
 
-    git::cherry_pick_range(&repo_path, &target_branch, &shas)
-        .map_err(sfn_err)?;
+    git::cherry_pick_range(&repo_path, &target_branch, &shas).map_err(sfn_err)?;
 
-    leptos_axum::redirect(&format!("/{}/{}/ai/{}/prompt/{}", owner, repo, session_id, prompt_index));
+    leptos_axum::redirect(&format!(
+        "/{}/{}/ai/{}/prompt/{}",
+        owner, repo, session_id, prompt_index
+    ));
     Ok(())
 }
 
@@ -350,10 +422,13 @@ async fn squash_prompt(
     prompt_index: i64,
     message: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{sfn_err, extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements};
+    use crate::server_fns::{
+        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+    };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user().await
+    let user = extract_session_user()
+        .await
         .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let entitlements = get_user_entitlements(user.id).await?;
@@ -366,17 +441,20 @@ async fn squash_prompt(
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     let can_push = db::can_push_repo(&pool, &repo_db, user.id)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
     if !can_push {
         return Err(ServerFnError::new("Access denied"));
     }
 
     let repo_path = get_repo_path(&owner, &repo).await?;
     let metas = db::get_commits_for_prompt_group(&pool, repo_db.id, &session_id, prompt_index)
-        .await.map_err(sfn_err)?;
+        .await
+        .map_err(sfn_err)?;
 
     if metas.is_empty() {
         return Err(ServerFnError::new("Prompt not found"));
@@ -386,12 +464,15 @@ async fn squash_prompt(
     shas.reverse();
 
     let default_branch = git::default_branch(&repo_path)
-        .unwrap_or(None).unwrap_or_else(|| "main".to_string());
+        .unwrap_or(None)
+        .unwrap_or_else(|| "main".to_string());
 
-    git::squash_session(&repo_path, &default_branch, &shas, &message)
-        .map_err(sfn_err)?;
+    git::squash_session(&repo_path, &default_branch, &shas, &message).map_err(sfn_err)?;
 
-    leptos_axum::redirect(&format!("/{}/{}/ai/{}/prompt/{}", owner, repo, session_id, prompt_index));
+    leptos_axum::redirect(&format!(
+        "/{}/{}/ai/{}/prompt/{}",
+        owner, repo, session_id, prompt_index
+    ));
     Ok(())
 }
 
@@ -402,7 +483,9 @@ pub fn PromptDetailPage() -> impl IntoView {
     let repo = move || params.read().get("repo").unwrap_or_default();
     let session_id = move || params.read().get("session_id").unwrap_or_default();
     let prompt_index = move || {
-        params.read().get("prompt_index")
+        params
+            .read()
+            .get("prompt_index")
             .and_then(|s| s.parse::<i64>().ok())
             .unwrap_or(0)
     };

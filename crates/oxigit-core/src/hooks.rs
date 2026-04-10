@@ -9,21 +9,33 @@ use crate::git;
 use crate::guardrail;
 use crate::webhook;
 
+/// Context for processing a post-receive hook event.
+pub struct PostReceiveContext<'a> {
+    pub pool: &'a SqlitePool,
+    pub control_pool: &'a SqlitePool,
+    pub repo_path: &'a Path,
+    pub repo_id: i64,
+    pub owner_id: i64,
+    pub before_refs: &'a HashMap<String, String>,
+    pub after_refs: &'a HashMap<String, String>,
+    pub owner: &'a str,
+    pub repo_name: &'a str,
+    pub callback_base_url: &'a str,
+}
+
 /// Process post-receive hook: detect AI metadata from `.oxigit/context.json` in new commits.
 /// Compares before/after ref snapshots to find new commits, reads context files, and auto-detects changed files.
-#[allow(clippy::too_many_arguments)]
-pub async fn process_post_receive(
-    pool: &SqlitePool,
-    control_pool: &SqlitePool,
-    repo_path: &Path,
-    repo_id: i64,
-    owner_id: i64,
-    before_refs: &HashMap<String, String>,
-    after_refs: &HashMap<String, String>,
-    owner: &str,
-    repo_name: &str,
-    callback_base_url: &str,
-) {
+pub async fn process_post_receive(ctx: &PostReceiveContext<'_>) {
+    let pool = ctx.pool;
+    let control_pool = ctx.control_pool;
+    let repo_path = ctx.repo_path;
+    let repo_id = ctx.repo_id;
+    let owner_id = ctx.owner_id;
+    let before_refs = ctx.before_refs;
+    let after_refs = ctx.after_refs;
+    let owner = ctx.owner;
+    let repo_name = ctx.repo_name;
+    let callback_base_url = ctx.callback_base_url;
     let zero_sha = "0000000000000000000000000000000000000000";
 
     for (refname, new_sha) in after_refs {

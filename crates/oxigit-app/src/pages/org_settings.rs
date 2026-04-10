@@ -25,13 +25,11 @@ async fn get_org_settings(slug: String) -> Result<OrgSettingsData, ServerFnError
     #[cfg(feature = "saas")]
     {
         use crate::server_fns::{
-            extract_session_user, get_control_pool, get_user_entitlements, sfn_err,
+            require_auth, get_control_pool, get_user_entitlements, sfn_err,
         };
         use oxigit_core::db;
 
-        let user = extract_session_user()
-            .await
-            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let user = require_auth().await?;
 
         let entitlements = get_user_entitlements(user.id).await?;
         if !entitlements.team_features {
@@ -89,13 +87,11 @@ async fn add_member(slug: String, username: String, role: String) -> Result<(), 
     #[cfg(feature = "saas")]
     {
         use crate::server_fns::{
-            extract_session_user, get_control_pool, get_user_entitlements, sfn_err,
+            require_auth, get_control_pool, get_user_entitlements, sfn_err,
         };
         use oxigit_core::db;
 
-        let user = extract_session_user()
-            .await
-            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let user = require_auth().await?;
 
         let entitlements = get_user_entitlements(user.id).await?;
         if !entitlements.team_features {
@@ -142,13 +138,11 @@ async fn remove_member(slug: String, user_id: i64) -> Result<(), ServerFnError> 
     #[cfg(feature = "saas")]
     {
         use crate::server_fns::{
-            extract_session_user, get_control_pool, get_user_entitlements, sfn_err,
+            require_auth, get_control_pool, get_user_entitlements, sfn_err,
         };
         use oxigit_core::db;
 
-        let user = extract_session_user()
-            .await
-            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let user = require_auth().await?;
 
         let entitlements = get_user_entitlements(user.id).await?;
         if !entitlements.team_features {

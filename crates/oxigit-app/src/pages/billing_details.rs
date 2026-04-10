@@ -19,13 +19,11 @@ async fn fetch_invoices() -> Result<Vec<InvoiceInfo>, ServerFnError> {
     #[cfg(feature = "saas")]
     {
         use crate::server_fns::{
-            extract_session_user, get_control_pool, get_stripe_config, sfn_err,
+            require_auth, get_control_pool, get_stripe_config, sfn_err,
         };
         use oxigit_core::{billing, db};
 
-        let user = extract_session_user()
-            .await
-            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let user = require_auth().await?;
         let pool = get_control_pool().await?;
         let stripe = get_stripe_config()
             .await?

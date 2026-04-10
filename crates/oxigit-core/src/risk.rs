@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -32,22 +34,37 @@ pub fn scan_diff(diff: &str) -> Vec<RiskFlag> {
     let mut flags = Vec::new();
     let mut current_file: Option<String> = None;
 
-    // Compile patterns once
-    let re_api_key = Regex::new(
-        r#"(?i)(api[_-]?key|secret[_-]?key|auth[_-]?token|password)\s*[:=]\s*["'][^"']{8,}"#,
-    )
-    .unwrap();
-    let re_hardcoded_secret = Regex::new(r"(AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|sk-[a-zA-Z0-9]{32,}|-----BEGIN (RSA |EC )?PRIVATE KEY)").unwrap();
-    let re_sql_inject =
+    static RE_API_KEY: OnceLock<Regex> = OnceLock::new();
+    static RE_HARDCODED_SECRET: OnceLock<Regex> = OnceLock::new();
+    static RE_SQL_INJECT: OnceLock<Regex> = OnceLock::new();
+    static RE_EVAL: OnceLock<Regex> = OnceLock::new();
+    static RE_UNSAFE: OnceLock<Regex> = OnceLock::new();
+    static RE_TODO: OnceLock<Regex> = OnceLock::new();
+    static RE_PUB_REMOVED: OnceLock<Regex> = OnceLock::new();
+    static RE_EXPORT_REMOVED: OnceLock<Regex> = OnceLock::new();
+
+    let re_api_key = RE_API_KEY.get_or_init(|| {
+        Regex::new(
+            r#"(?i)(api[_-]?key|secret[_-]?key|auth[_-]?token|password)\s*[:=]\s*["'][^"']{8,}"#,
+        )
+        .expect("valid regex")
+    });
+    let re_hardcoded_secret = RE_HARDCODED_SECRET.get_or_init(|| {
+        Regex::new(r"(AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|sk-[a-zA-Z0-9]{32,}|-----BEGIN (RSA |EC )?PRIVATE KEY)").expect("valid regex")
+    });
+    let re_sql_inject = RE_SQL_INJECT.get_or_init(|| {
         Regex::new(r#"(?i)format!\s*\(\s*"[^"]*(?:SELECT|INSERT|UPDATE|DELETE|DROP)[^"]*\{"#)
-            .unwrap();
-    let re_eval = Regex::new(r"(?i)\b(eval|exec)\s*\(").unwrap();
-    let re_unsafe = Regex::new(r"\bunsafe\s*\{").unwrap();
-    let re_todo = Regex::new(r"(?i)\b(TODO|FIXME|HACK|XXX|WORKAROUND)\b").unwrap();
-    let re_pub_removed =
-        Regex::new(r"^pub\s+(fn|struct|enum|trait|type|const|static)\s+\w+").unwrap();
-    let re_export_removed =
-        Regex::new(r"^export\s+(function|const|let|class|default|type|interface)\s+").unwrap();
+            .expect("valid regex")
+    });
+    let re_eval = RE_EVAL.get_or_init(|| Regex::new(r"(?i)\b(eval|exec)\s*\(").expect("valid regex"));
+    let re_unsafe = RE_UNSAFE.get_or_init(|| Regex::new(r"\bunsafe\s*\{").expect("valid regex"));
+    let re_todo = RE_TODO.get_or_init(|| Regex::new(r"(?i)\b(TODO|FIXME|HACK|XXX|WORKAROUND)\b").expect("valid regex"));
+    let re_pub_removed = RE_PUB_REMOVED.get_or_init(|| {
+        Regex::new(r"^pub\s+(fn|struct|enum|trait|type|const|static)\s+\w+").expect("valid regex")
+    });
+    let re_export_removed = RE_EXPORT_REMOVED.get_or_init(|| {
+        Regex::new(r"^export\s+(function|const|let|class|default|type|interface)\s+").expect("valid regex")
+    });
 
     for line in diff.lines() {
         // Track current file

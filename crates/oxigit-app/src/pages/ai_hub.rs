@@ -25,14 +25,12 @@ pub async fn fetch_ai_hub(
     query: String,
 ) -> Result<AiHubResponse, ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_ai_access_level, get_repo_path, get_repo_pools, sfn_err,
+        require_auth, get_ai_access_level, get_repo_path, get_repo_pools, sfn_err,
     };
     use oxigit_core::{db, entitlements::AiAccessLevel, git};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let current_user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let current_user = require_auth().await?;
 
     let ai_access = get_ai_access_level(current_user.id).await?;
 

@@ -16,15 +16,13 @@ async fn fetch_prompt_detail(
 ) -> Result<PromptDetailResponse, ServerFnError> {
     use super::{AiMetadataInfo, DiffSummaryInfo, RiskFlagInfo, VibeScoreInfo};
     use crate::server_fns::{
-        extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools,
+        require_auth, get_effective_llm_config, get_repo_path, get_repo_pools,
         get_user_entitlements, sfn_err,
     };
     use oxigit_core::{db, git, llm, risk};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let current_user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let current_user = require_auth().await?;
 
     let entitlements = get_user_entitlements(current_user.id).await?;
     if !entitlements.ai_features {
@@ -251,13 +249,11 @@ async fn revert_prompt(
     prompt_index: i64,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
     };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
 
     let entitlements = get_user_entitlements(user.id).await?;
     if !entitlements.ai_features {
@@ -366,13 +362,11 @@ async fn cherry_pick_prompt(
     target_branch: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
     };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
 
     let entitlements = get_user_entitlements(user.id).await?;
     if !entitlements.ai_features {
@@ -423,13 +417,11 @@ async fn squash_prompt(
     message: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
     };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
 
     let entitlements = get_user_entitlements(user.id).await?;
     if !entitlements.ai_features {

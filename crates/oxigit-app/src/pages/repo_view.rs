@@ -150,13 +150,11 @@ async fn fork_repo(owner: String, repo: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     use crate::server_fns::is_multi_tenant;
     use crate::server_fns::{
-        extract_session_user, get_data_dir, get_repo_path, get_repo_pools, sfn_err,
+        require_auth, get_data_dir, get_repo_path, get_repo_pools, sfn_err,
     };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let (_control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     // Check if source repo has REMIX.md before forking

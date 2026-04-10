@@ -59,17 +59,58 @@ pub async fn generate_summary(
     }
 }
 
+/// Send a chat completion request and extract the response text.
+async fn llm_request(
+    url: &str,
+    provider_name: &str,
+    auth_header: Option<(&str, &str)>,
+    extra_headers: &[(&str, &str)],
+    body: &impl Serialize,
+    extract_text: fn(&str) -> Result<String>,
+) -> Result<String> {
+    let client = reqwest::Client::new();
+    let mut req = client.post(url).json(body);
+
+    if let Some((key, value)) = auth_header {
+        req = req.header(key, value);
+    }
+    for (key, value) in extra_headers {
+        req = req.header(*key, *value);
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| OxigitError::Git(format!("{} request failed: {}", provider_name, e)))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(OxigitError::Git(format!(
+            "{} API error {}: {}",
+            provider_name, status, text
+        )));
+    }
+
+    let raw = resp
+        .text()
+        .await
+        .map_err(|e| OxigitError::Git(format!("Failed to read {} response: {}", provider_name, e)))?;
+
+    extract_text(&raw)
+}
+
 // --- OpenAI ---
 
 #[derive(Serialize)]
 struct OpenAiRequest {
     model: String,
-    messages: Vec<OpenAiMessage>,
+    messages: Vec<ChatMessage>,
     max_tokens: u32,
 }
 
-#[derive(Serialize)]
-struct OpenAiMessage {
+#[derive(Serialize, Deserialize)]
+struct ChatMessage {
     role: String,
     content: String,
 }
@@ -81,12 +122,7 @@ struct OpenAiResponse {
 
 #[derive(Deserialize)]
 struct OpenAiChoice {
-    message: OpenAiResponseMessage,
-}
-
-#[derive(Deserialize)]
-struct OpenAiResponseMessage {
-    content: String,
+    message: ChatMessage,
 }
 
 async fn call_openai(config: &LlmConfig, user_message: &str) -> Result<String> {
@@ -103,11 +139,11 @@ async fn call_openai(config: &LlmConfig, user_message: &str) -> Result<String> {
     let body = OpenAiRequest {
         model: config.model.clone(),
         messages: vec![
-            OpenAiMessage {
+            ChatMessage {
                 role: "system".into(),
                 content: SYSTEM_PROMPT.into(),
             },
-            OpenAiMessage {
+            ChatMessage {
                 role: "user".into(),
                 content: user_message.into(),
             },
@@ -115,33 +151,22 @@ async fn call_openai(config: &LlmConfig, user_message: &str) -> Result<String> {
         max_tokens: 512,
     };
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| OxigitError::Git(format!("LLM request failed: {}", e)))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(OxigitError::Git(format!(
-            "OpenAI API error {}: {}",
-            status, text
-        )));
-    }
-
-    let data: OpenAiResponse = resp
-        .json()
-        .await
-        .map_err(|e| OxigitError::Git(format!("Failed to parse OpenAI response: {}", e)))?;
-
-    data.choices
-        .first()
-        .map(|c| c.message.content.trim().to_string())
-        .ok_or_else(|| OxigitError::Git("Empty response from OpenAI".into()))
+    llm_request(
+        &url,
+        "OpenAI",
+        Some(("Authorization", &format!("Bearer {}", api_key))),
+        &[],
+        &body,
+        |raw| {
+            let data: OpenAiResponse = serde_json::from_str(raw)
+                .map_err(|e| OxigitError::Git(format!("Failed to parse OpenAI response: {}", e)))?;
+            data.choices
+                .first()
+                .map(|c| c.message.content.trim().to_string())
+                .ok_or_else(|| OxigitError::Git("Empty response from OpenAI".into()))
+        },
+    )
+    .await
 }
 
 // --- Anthropic ---
@@ -151,13 +176,7 @@ struct AnthropicRequest {
     model: String,
     max_tokens: u32,
     system: String,
-    messages: Vec<AnthropicMessage>,
-}
-
-#[derive(Serialize)]
-struct AnthropicMessage {
-    role: String,
-    content: String,
+    messages: Vec<ChatMessage>,
 }
 
 #[derive(Deserialize)]
@@ -185,40 +204,28 @@ async fn call_anthropic(config: &LlmConfig, user_message: &str) -> Result<String
         model: config.model.clone(),
         max_tokens: 512,
         system: SYSTEM_PROMPT.into(),
-        messages: vec![AnthropicMessage {
+        messages: vec![ChatMessage {
             role: "user".into(),
             content: user_message.into(),
         }],
     };
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| OxigitError::Git(format!("LLM request failed: {}", e)))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(OxigitError::Git(format!(
-            "Anthropic API error {}: {}",
-            status, text
-        )));
-    }
-
-    let data: AnthropicResponse = resp
-        .json()
-        .await
-        .map_err(|e| OxigitError::Git(format!("Failed to parse Anthropic response: {}", e)))?;
-
-    data.content
-        .first()
-        .map(|c| c.text.trim().to_string())
-        .ok_or_else(|| OxigitError::Git("Empty response from Anthropic".into()))
+    llm_request(
+        &url,
+        "Anthropic",
+        Some(("x-api-key", api_key)),
+        &[("anthropic-version", "2023-06-01")],
+        &body,
+        |raw| {
+            let data: AnthropicResponse = serde_json::from_str(raw)
+                .map_err(|e| OxigitError::Git(format!("Failed to parse Anthropic response: {}", e)))?;
+            data.content
+                .first()
+                .map(|c| c.text.trim().to_string())
+                .ok_or_else(|| OxigitError::Git("Empty response from Anthropic".into()))
+        },
+    )
+    .await
 }
 
 // --- Ollama ---
@@ -226,24 +233,13 @@ async fn call_anthropic(config: &LlmConfig, user_message: &str) -> Result<String
 #[derive(Serialize)]
 struct OllamaRequest {
     model: String,
-    messages: Vec<OllamaMessage>,
+    messages: Vec<ChatMessage>,
     stream: bool,
-}
-
-#[derive(Serialize)]
-struct OllamaMessage {
-    role: String,
-    content: String,
 }
 
 #[derive(Deserialize)]
 struct OllamaResponse {
-    message: OllamaResponseMessage,
-}
-
-#[derive(Deserialize)]
-struct OllamaResponseMessage {
-    content: String,
+    message: ChatMessage,
 }
 
 async fn call_ollama(config: &LlmConfig, user_message: &str) -> Result<String> {
@@ -256,11 +252,11 @@ async fn call_ollama(config: &LlmConfig, user_message: &str) -> Result<String> {
     let body = OllamaRequest {
         model: config.model.clone(),
         messages: vec![
-            OllamaMessage {
+            ChatMessage {
                 role: "system".into(),
                 content: SYSTEM_PROMPT.into(),
             },
-            OllamaMessage {
+            ChatMessage {
                 role: "user".into(),
                 content: user_message.into(),
             },
@@ -268,27 +264,10 @@ async fn call_ollama(config: &LlmConfig, user_message: &str) -> Result<String> {
         stream: false,
     };
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| OxigitError::Git(format!("Ollama request failed: {}", e)))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(OxigitError::Git(format!(
-            "Ollama API error {}: {}",
-            status, text
-        )));
-    }
-
-    let data: OllamaResponse = resp
-        .json()
-        .await
-        .map_err(|e| OxigitError::Git(format!("Failed to parse Ollama response: {}", e)))?;
-
-    Ok(data.message.content.trim().to_string())
+    llm_request(&url, "Ollama", None, &[], &body, |raw| {
+        let data: OllamaResponse = serde_json::from_str(raw)
+            .map_err(|e| OxigitError::Git(format!("Failed to parse Ollama response: {}", e)))?;
+        Ok(data.message.content.trim().to_string())
+    })
+    .await
 }

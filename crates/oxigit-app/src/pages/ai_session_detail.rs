@@ -17,15 +17,13 @@ async fn fetch_session_detail(
     session_id: String,
 ) -> Result<SessionDetailResponse, ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools,
+        require_auth, get_effective_llm_config, get_repo_path, get_repo_pools,
         get_user_entitlements, sfn_err,
     };
     use oxigit_core::{db, git, llm, risk};
 
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
-    let current_user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let current_user = require_auth().await?;
 
     let entitlements = get_user_entitlements(current_user.id).await?;
     if !entitlements.ai_features {
@@ -253,13 +251,11 @@ async fn revert_session(
     session_id: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
     };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
 
     let entitlements = get_user_entitlements(user.id).await?;
     if !entitlements.ai_features {
@@ -367,13 +363,11 @@ async fn squash_session_action(
     message: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
     };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
 
     let entitlements = get_user_entitlements(user.id).await?;
     if !entitlements.ai_features {
@@ -426,13 +420,11 @@ async fn cherry_pick_session_action(
     target_branch: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
     };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
 
     let entitlements = get_user_entitlements(user.id).await?;
     if !entitlements.ai_features {

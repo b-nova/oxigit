@@ -26,12 +26,10 @@ async fn create_pr(
     source_branch: String,
     target_branch: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
+    use crate::server_fns::{require_auth, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)

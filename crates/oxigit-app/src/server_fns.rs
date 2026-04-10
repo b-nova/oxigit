@@ -330,11 +330,16 @@ pub async fn extract_session_user() -> Option<UserInfo> {
     Some(user)
 }
 
+/// Require an authenticated session. Returns the user or "Not authenticated" error.
+pub async fn require_auth() -> Result<UserInfo, ServerFnError> {
+    extract_session_user()
+        .await
+        .ok_or_else(|| ServerFnError::new("Not authenticated"))
+}
+
 /// Require the current user to be an admin. Returns the user or a ServerFnError.
 pub async fn require_admin() -> Result<UserInfo, ServerFnError> {
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let pool = get_pool().await?;
     if !oxigit_core::db::is_user_admin(&pool, user.id)
         .await

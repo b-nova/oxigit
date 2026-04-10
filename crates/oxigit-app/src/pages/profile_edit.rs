@@ -13,12 +13,10 @@ pub struct ProfileInfo {
 
 #[server]
 async fn fetch_profile() -> Result<ProfileInfo, ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
+    use crate::server_fns::{require_auth, get_control_pool, sfn_err};
     use oxigit_core::db;
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let pool = get_control_pool().await?;
     let user = db::get_user_by_id(&pool, user.id).await.map_err(sfn_err)?;
 
@@ -31,12 +29,10 @@ async fn fetch_profile() -> Result<ProfileInfo, ServerFnError> {
 
 #[server]
 async fn save_profile(display_name: String, email: String) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_control_pool};
+    use crate::server_fns::{require_auth, get_control_pool};
     use oxigit_core::db;
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
 
     let email = email.trim().to_string();
     if email.is_empty() || !email.contains('@') {

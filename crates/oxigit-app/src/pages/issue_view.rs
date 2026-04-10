@@ -78,12 +78,10 @@ async fn get_issue(owner: String, repo: String, number: i64) -> Result<IssueDeta
 
 #[server]
 async fn close_issue_action(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
+    use crate::server_fns::{require_auth, get_repo_pools, sfn_err};
     use oxigit_core::db;
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
@@ -109,12 +107,10 @@ async fn reopen_issue_action(
     repo: String,
     number: i64,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
+    use crate::server_fns::{require_auth, get_repo_pools, sfn_err};
     use oxigit_core::db;
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await
@@ -141,12 +137,10 @@ async fn add_comment(
     number: i64,
     body: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
+    use crate::server_fns::{require_auth, get_repo_pools, sfn_err};
     use oxigit_core::db;
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
         .await

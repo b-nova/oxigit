@@ -106,12 +106,10 @@ async fn attach_ai_metadata(
     ai_session_id: Option<String>,
     ai_files_touched: Option<String>,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
+    use crate::server_fns::{require_auth, get_repo_pools, sfn_err};
     use oxigit_core::db;
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
@@ -254,14 +252,12 @@ async fn generate_diff_summary(
     sha: String,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools,
-        get_user_entitlements, sfn_err,
+        get_effective_llm_config, get_repo_path, get_repo_pools, get_user_entitlements,
+        require_auth, sfn_err,
     };
     use oxigit_core::{db, git, llm, risk};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
 
     let entitlements = get_user_entitlements(user.id).await?;
     if !entitlements.ai_features {

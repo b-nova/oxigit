@@ -114,12 +114,10 @@ async fn get_pr(owner: String, repo: String, number: i64) -> Result<PrDetail, Se
 
 #[server]
 async fn merge_pr(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_path, get_repo_pools, sfn_err};
+    use crate::server_fns::{require_auth, get_repo_path, get_repo_pools, sfn_err};
     use oxigit_core::{db, git};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
@@ -154,12 +152,10 @@ async fn merge_pr(owner: String, repo: String, number: i64) -> Result<(), Server
 
 #[server]
 async fn close_pr(owner: String, repo: String, number: i64) -> Result<(), ServerFnError> {
-    use crate::server_fns::{extract_session_user, get_repo_pools, sfn_err};
+    use crate::server_fns::{require_auth, get_repo_pools, sfn_err};
     use oxigit_core::db;
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
     let (_, repo_db) = db::get_repository_cross(&control_pool, &pool, &owner, &repo)
@@ -293,13 +289,11 @@ async fn generate_pr_diff_summary(
     number: i64,
 ) -> Result<DiffSummaryInfo, ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_effective_llm_config, get_repo_path, get_repo_pools, sfn_err,
+        require_auth, get_effective_llm_config, get_repo_path, get_repo_pools, sfn_err,
     };
     use oxigit_core::{db, git, llm, risk};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
     let (provider, api_key, model, base_url) = get_effective_llm_config(Some(user.id)).await?;
 

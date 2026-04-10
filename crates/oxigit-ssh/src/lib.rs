@@ -443,16 +443,18 @@ async fn run_git_over_channel(
                         {
                             let after_refs = oxigit_core::git::capture_refs(repo_path).unwrap_or_default();
                             oxigit_core::hooks::process_post_receive(
-                                tenant_pool,
-                                control_pool,
-                                repo_path,
-                                rid,
-                                repo_owner_id.unwrap_or(0),
-                                &before_refs,
-                                &after_refs,
-                                owner,
-                                repo_name,
-                                "",
+                                &oxigit_core::hooks::PostReceiveContext {
+                                    pool: tenant_pool,
+                                    control_pool,
+                                    repo_path,
+                                    repo_id: rid,
+                                    owner_id: repo_owner_id.unwrap_or(0),
+                                    before_refs: &before_refs,
+                                    after_refs: &after_refs,
+                                    owner,
+                                    repo_name,
+                                    callback_base_url: "",
+                                },
                             )
                             .await;
                         }

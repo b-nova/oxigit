@@ -6,12 +6,10 @@ use crate::components::error_display::ErrorDisplay;
 async fn create_org(slug: String, display_name: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool, set_session_org, sfn_err};
+        use crate::server_fns::{require_auth, get_control_pool, set_session_org, sfn_err};
         use oxigit_core::db;
 
-        let user = extract_session_user()
-            .await
-            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let user = require_auth().await?;
         let pool = get_control_pool().await?;
 
         let org = db::create_organization(&pool, &slug, &display_name, user.id)

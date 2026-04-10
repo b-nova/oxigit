@@ -536,12 +536,10 @@ pub struct OrgListItem {
 pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool, sfn_err};
+        use crate::server_fns::{require_auth, get_control_pool, sfn_err};
         use oxigit_core::db;
 
-        let user = extract_session_user()
-            .await
-            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let user = require_auth().await?;
         let pool = get_control_pool().await?;
         let orgs = db::list_user_organizations(&pool, user.id)
             .await
@@ -563,12 +561,10 @@ pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
 pub async fn switch_org(slug: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {
-        use crate::server_fns::{extract_session_user, get_control_pool, set_session_org, sfn_err};
+        use crate::server_fns::{require_auth, get_control_pool, set_session_org, sfn_err};
         use oxigit_core::db;
 
-        let user = extract_session_user()
-            .await
-            .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+        let user = require_auth().await?;
         let pool = get_control_pool().await?;
 
         let org = db::get_organization_by_slug(&pool, &slug)

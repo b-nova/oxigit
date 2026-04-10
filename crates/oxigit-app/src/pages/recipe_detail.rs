@@ -128,13 +128,11 @@ async fn replay_recipe(
     mode: String,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{
-        extract_session_user, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
+        require_auth, get_repo_path, get_repo_pools, get_user_entitlements, sfn_err,
     };
     use oxigit_core::{db, git};
 
-    let user = extract_session_user()
-        .await
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let user = require_auth().await?;
 
     let entitlements = get_user_entitlements(user.id).await?;
     if !entitlements.team_features {

@@ -166,6 +166,7 @@ async fn main() {
     };
 
     // Git Smart HTTP routes + deploy callback (must be before Leptos routes)
+    #[allow(unused_mut)]
     let mut git_routes = Router::new()
         .route("/{owner}/{repo}/info/refs", get(git_http::info_refs))
         .route(

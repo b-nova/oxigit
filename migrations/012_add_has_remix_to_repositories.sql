@@ -1,1 +1,0 @@
-ALTER TABLE repositories ADD COLUMN has_remix INTEGER NOT NULL DEFAULT 0;

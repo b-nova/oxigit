@@ -14,6 +14,16 @@ use crate::models::{FoundingMember, OrgMembership, Organization, Subscription};
 
 const MAX_DB_CONNECTIONS: u32 = 5;
 
+/// Map a SQLx UNIQUE constraint violation to an OxigitError::InvalidInput.
+fn map_unique_constraint(e: sqlx::Error, message: &str) -> OxigitError {
+    match &e {
+        sqlx::Error::Database(db_err) if db_err.message().contains("UNIQUE") => {
+            OxigitError::InvalidInput(message.into())
+        }
+        _ => e.into(),
+    }
+}
+
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
         .max_connections(MAX_DB_CONNECTIONS)
@@ -22,44 +32,718 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
     Ok(pool)
 }
 
-/// Run all migrations on a single database (legacy mode).
+/// Ensure the schema exists on a single database (legacy mode).
 pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
-    sqlx::migrate!("../../migrations")
-        .run(pool)
+    sqlx::raw_sql(SCHEMA_SQL)
+        .execute(pool)
         .await
         .map_err(|e| {
-            OxigitError::Database(sqlx::Error::Protocol(format!("Migration failed: {e}")))
+            OxigitError::Database(sqlx::Error::Protocol(format!(
+                "Schema initialization failed: {e}"
+            )))
         })?;
     Ok(())
 }
 
-/// Run control-plane migrations (users, auth, billing, orgs).
+/// Ensure the control-plane schema exists (users, auth, billing, orgs).
 #[cfg(feature = "saas")]
 pub async fn run_control_migrations(pool: &SqlitePool) -> Result<()> {
-    sqlx::migrate!("../../migrations_control")
-        .run(pool)
+    sqlx::raw_sql(CONTROL_SCHEMA_SQL)
+        .execute(pool)
         .await
         .map_err(|e| {
             OxigitError::Database(sqlx::Error::Protocol(format!(
-                "Control migration failed: {e}"
+                "Control schema initialization failed: {e}"
             )))
         })?;
     Ok(())
 }
 
-/// Run tenant migrations (repos, issues, PRs, AI data, etc.).
+/// Ensure the tenant schema exists (repos, issues, PRs, AI data, etc.).
 #[cfg(feature = "saas")]
 pub async fn run_tenant_migrations(pool: &SqlitePool) -> Result<()> {
-    sqlx::migrate!("../../migrations_tenant")
-        .run(pool)
+    sqlx::raw_sql(TENANT_SCHEMA_SQL)
+        .execute(pool)
         .await
         .map_err(|e| {
             OxigitError::Database(sqlx::Error::Protocol(format!(
-                "Tenant migration failed: {e}"
+                "Tenant schema initialization failed: {e}"
             )))
         })?;
     Ok(())
 }
+
+/// Full schema for the legacy single-database mode.
+const SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    username        TEXT NOT NULL UNIQUE,
+    email           TEXT NOT NULL UNIQUE,
+    password_hash   TEXT NOT NULL,
+    is_admin        INTEGER NOT NULL DEFAULT 0,
+    is_disabled     INTEGER NOT NULL DEFAULT 0,
+    display_name    TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+CREATE TABLE IF NOT EXISTS repositories (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    is_private      INTEGER NOT NULL DEFAULT 0,
+    forked_from     INTEGER REFERENCES repositories(id) ON DELETE SET NULL,
+    has_remix       INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(owner_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_repos_owner ON repositories(owner_id);
+
+CREATE TABLE IF NOT EXISTS ssh_keys (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL,
+    public_key      TEXT NOT NULL,
+    fingerprint     TEXT NOT NULL UNIQUE,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ssh_keys_user ON ssh_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_ssh_keys_fingerprint ON ssh_keys(fingerprint);
+
+CREATE TABLE IF NOT EXISTS collaborators (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    permission      TEXT NOT NULL DEFAULT 'write',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_collaborators_repo ON collaborators(repo_id);
+CREATE INDEX IF NOT EXISTS idx_collaborators_user ON collaborators(user_id);
+
+CREATE TABLE IF NOT EXISTS pull_requests (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    number          INTEGER NOT NULL,
+    title           TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    author_id       INTEGER NOT NULL REFERENCES users(id),
+    source_branch   TEXT NOT NULL,
+    target_branch   TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'open',
+    merged_by       INTEGER REFERENCES users(id),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, number)
+);
+CREATE INDEX IF NOT EXISTS idx_pr_repo ON pull_requests(repo_id);
+CREATE INDEX IF NOT EXISTS idx_pr_author ON pull_requests(author_id);
+CREATE INDEX IF NOT EXISTS idx_pr_status ON pull_requests(repo_id, status);
+
+CREATE TABLE IF NOT EXISTS issues (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    number          INTEGER NOT NULL,
+    title           TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    author_id       INTEGER NOT NULL REFERENCES users(id),
+    status          TEXT NOT NULL DEFAULT 'open',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, number)
+);
+CREATE INDEX IF NOT EXISTS idx_issues_repo ON issues(repo_id);
+CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(repo_id, status);
+
+CREATE TABLE IF NOT EXISTS issue_comments (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    issue_id        INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    author_id       INTEGER NOT NULL REFERENCES users(id),
+    body            TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_issue_comments_issue ON issue_comments(issue_id);
+
+CREATE TABLE IF NOT EXISTS ai_commit_metadata (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    commit_sha      TEXT NOT NULL,
+    ai_tool         TEXT NOT NULL,
+    ai_model        TEXT,
+    ai_prompt       TEXT,
+    ai_session_id   TEXT,
+    ai_files_touched TEXT,
+    ai_prompt_index INTEGER,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, commit_sha)
+);
+CREATE INDEX IF NOT EXISTS idx_ai_metadata_repo ON ai_commit_metadata(repo_id);
+CREATE INDEX IF NOT EXISTS idx_ai_metadata_session ON ai_commit_metadata(repo_id, ai_session_id);
+CREATE INDEX IF NOT EXISTS idx_ai_metadata_prompt ON ai_commit_metadata(repo_id, ai_session_id, ai_prompt_index);
+
+CREATE TABLE IF NOT EXISTS ai_diff_summaries (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    commit_sha      TEXT NOT NULL,
+    summary         TEXT NOT NULL,
+    risk_flags      TEXT,
+    generated_by    TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, commit_sha)
+);
+CREATE INDEX IF NOT EXISTS idx_ai_diff_summaries_repo ON ai_diff_summaries(repo_id);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    llm_provider    TEXT,
+    llm_api_key     TEXT,
+    llm_model       TEXT,
+    llm_base_url    TEXT,
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS repo_webhooks (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    url             TEXT NOT NULL,
+    secret          TEXT,
+    events          TEXT NOT NULL DEFAULT 'push',
+    active          INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS deploy_previews (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    commit_sha      TEXT NOT NULL,
+    branch          TEXT NOT NULL,
+    preview_url     TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_deploy_previews_repo ON deploy_previews(repo_id, commit_sha);
+
+CREATE TABLE IF NOT EXISTS merge_conflicts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    operation_type  TEXT NOT NULL,
+    target_ref      TEXT NOT NULL,
+    source_ref      TEXT NOT NULL,
+    merge_base      TEXT NOT NULL,
+    auto_tree       TEXT,
+    context_json    TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_merge_conflicts_repo ON merge_conflicts(repo_id, user_id, status);
+
+CREATE TABLE IF NOT EXISTS merge_conflict_files (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    merge_conflict_id   INTEGER NOT NULL REFERENCES merge_conflicts(id) ON DELETE CASCADE,
+    file_path           TEXT NOT NULL,
+    conflict_type       TEXT NOT NULL,
+    resolution          TEXT,
+    resolved_content    TEXT,
+    resolved_at         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS guardrail_rules (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    category        TEXT NOT NULL,
+    action          TEXT NOT NULL DEFAULT 'off',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, category)
+);
+CREATE INDEX IF NOT EXISTS idx_guardrail_rules_repo ON guardrail_rules(repo_id);
+
+CREATE TABLE IF NOT EXISTS guardrail_config (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL UNIQUE REFERENCES repositories(id) ON DELETE CASCADE,
+    min_vibe_score  INTEGER,
+    max_files_per_push INTEGER,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS guardrail_violations (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    commit_sha      TEXT NOT NULL,
+    ref_name        TEXT,
+    rule_category   TEXT NOT NULL,
+    action_taken    TEXT NOT NULL,
+    severity        TEXT NOT NULL DEFAULT 'medium',
+    message         TEXT NOT NULL,
+    file_path       TEXT,
+    pushed_by       TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_guardrail_violations_repo ON guardrail_violations(repo_id);
+CREATE INDEX IF NOT EXISTS idx_guardrail_violations_sha ON guardrail_violations(repo_id, commit_sha);
+
+CREATE TABLE IF NOT EXISTS recipes (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    session_id      TEXT NOT NULL,
+    author_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title           TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    ai_tool         TEXT NOT NULL,
+    ai_model        TEXT,
+    tags            TEXT,
+    prompt_count    INTEGER NOT NULL DEFAULT 0,
+    file_count      INTEGER NOT NULL DEFAULT 0,
+    vibe_score      INTEGER,
+    replay_count    INTEGER NOT NULL DEFAULT 0,
+    is_public       BOOLEAN NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_recipes_author ON recipes(author_id);
+CREATE INDEX IF NOT EXISTS idx_recipes_public ON recipes(is_public, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS recipe_steps (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipe_id       INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    step_order      INTEGER NOT NULL,
+    prompt_text     TEXT,
+    prompt_index    INTEGER,
+    commit_message  TEXT NOT NULL,
+    files_json      TEXT,
+    diff_text       TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(recipe_id, step_order)
+);
+CREATE INDEX IF NOT EXISTS idx_recipe_steps_recipe ON recipe_steps(recipe_id);
+
+CREATE TABLE IF NOT EXISTS recipe_replays (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipe_id       INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    target_repo_id  INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    target_branch   TEXT NOT NULL,
+    mode            TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    steps_applied   INTEGER NOT NULL DEFAULT 0,
+    error_message   TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_replays_recipe ON recipe_replays(recipe_id);
+CREATE INDEX IF NOT EXISTS idx_replays_user ON recipe_replays(user_id);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id                 INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    stripe_customer_id      TEXT NOT NULL,
+    stripe_subscription_id  TEXT,
+    plan                    TEXT NOT NULL DEFAULT 'flat',
+    status                  TEXT NOT NULL DEFAULT 'active',
+    current_period_end      TEXT,
+    seats                   INTEGER NOT NULL DEFAULT 1,
+    created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_stripe_customer_id ON subscriptions(stripe_customer_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_subscription_id ON subscriptions(stripe_subscription_id);
+
+CREATE TABLE IF NOT EXISTS founding_members (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    slot_number     INTEGER NOT NULL,
+    claimed_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS organizations (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug            TEXT NOT NULL UNIQUE,
+    display_name    TEXT NOT NULL,
+    created_by      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
+
+CREATE TABLE IF NOT EXISTS org_memberships (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id          INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role            TEXT NOT NULL DEFAULT 'member',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(org_id, user_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_org_memberships_org_user ON org_memberships(org_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_org_memberships_user_id ON org_memberships(user_id);
+
+CREATE TABLE IF NOT EXISTS repository_index (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_slug        TEXT NOT NULL,
+    owner_id        INTEGER NOT NULL,
+    owner_username  TEXT NOT NULL,
+    repo_name       TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    is_private      INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(owner_username, repo_name)
+);
+CREATE INDEX IF NOT EXISTS idx_repo_index_org ON repository_index(org_slug);
+CREATE INDEX IF NOT EXISTS idx_repo_index_owner ON repository_index(owner_username);
+CREATE INDEX IF NOT EXISTS idx_repo_index_public ON repository_index(is_private, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS contact_inquiries (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    email           TEXT NOT NULL,
+    company         TEXT NOT NULL DEFAULT '',
+    message         TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
+/// Schema for the control-plane database (multi-tenant mode).
+#[cfg(feature = "saas")]
+const CONTROL_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    username        TEXT NOT NULL UNIQUE,
+    email           TEXT NOT NULL UNIQUE,
+    password_hash   TEXT NOT NULL,
+    is_admin        INTEGER NOT NULL DEFAULT 0,
+    is_disabled     INTEGER NOT NULL DEFAULT 0,
+    display_name    TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+CREATE TABLE IF NOT EXISTS ssh_keys (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL,
+    public_key      TEXT NOT NULL,
+    fingerprint     TEXT NOT NULL UNIQUE,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ssh_keys_user ON ssh_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_ssh_keys_fingerprint ON ssh_keys(fingerprint);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    llm_provider    TEXT,
+    llm_api_key     TEXT,
+    llm_model       TEXT,
+    llm_base_url    TEXT,
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id                 INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    stripe_customer_id      TEXT NOT NULL,
+    stripe_subscription_id  TEXT,
+    plan                    TEXT NOT NULL DEFAULT 'free',
+    status                  TEXT NOT NULL DEFAULT 'active',
+    current_period_end      TEXT,
+    seats                   INTEGER NOT NULL DEFAULT 1,
+    created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_stripe_customer_id ON subscriptions(stripe_customer_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_subscription_id ON subscriptions(stripe_subscription_id);
+
+CREATE TABLE IF NOT EXISTS founding_members (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    slot_number     INTEGER NOT NULL,
+    claimed_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS organizations (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug            TEXT NOT NULL UNIQUE,
+    display_name    TEXT NOT NULL,
+    created_by      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
+
+CREATE TABLE IF NOT EXISTS org_memberships (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id          INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role            TEXT NOT NULL DEFAULT 'member',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(org_id, user_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_org_memberships_org_user ON org_memberships(org_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_org_memberships_user_id ON org_memberships(user_id);
+
+CREATE TABLE IF NOT EXISTS repository_index (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_slug        TEXT NOT NULL,
+    owner_id        INTEGER NOT NULL,
+    owner_username  TEXT NOT NULL,
+    repo_name       TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    is_private      INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(owner_username, repo_name)
+);
+CREATE INDEX IF NOT EXISTS idx_repo_index_org ON repository_index(org_slug);
+CREATE INDEX IF NOT EXISTS idx_repo_index_owner ON repository_index(owner_username);
+CREATE INDEX IF NOT EXISTS idx_repo_index_public ON repository_index(is_private, updated_at DESC);
+"#;
+
+/// Schema for per-tenant databases (multi-tenant mode).
+#[cfg(feature = "saas")]
+const TENANT_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS repositories (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id        INTEGER NOT NULL,
+    name            TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    is_private      INTEGER NOT NULL DEFAULT 0,
+    forked_from     INTEGER,
+    has_remix       INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(owner_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_repos_owner ON repositories(owner_id);
+
+CREATE TABLE IF NOT EXISTS collaborators (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL,
+    permission      TEXT NOT NULL DEFAULT 'write',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_collaborators_repo ON collaborators(repo_id);
+CREATE INDEX IF NOT EXISTS idx_collaborators_user ON collaborators(user_id);
+
+CREATE TABLE IF NOT EXISTS pull_requests (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    number          INTEGER NOT NULL,
+    title           TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    author_id       INTEGER NOT NULL,
+    source_branch   TEXT NOT NULL,
+    target_branch   TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'open',
+    merged_by       INTEGER,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, number)
+);
+CREATE INDEX IF NOT EXISTS idx_pr_repo ON pull_requests(repo_id);
+CREATE INDEX IF NOT EXISTS idx_pr_author ON pull_requests(author_id);
+CREATE INDEX IF NOT EXISTS idx_pr_status ON pull_requests(repo_id, status);
+
+CREATE TABLE IF NOT EXISTS issues (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    number          INTEGER NOT NULL,
+    title           TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    author_id       INTEGER NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'open',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, number)
+);
+CREATE INDEX IF NOT EXISTS idx_issues_repo ON issues(repo_id);
+CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(repo_id, status);
+
+CREATE TABLE IF NOT EXISTS issue_comments (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    issue_id        INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    author_id       INTEGER NOT NULL,
+    body            TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_issue_comments_issue ON issue_comments(issue_id);
+
+CREATE TABLE IF NOT EXISTS ai_commit_metadata (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    commit_sha      TEXT NOT NULL,
+    ai_tool         TEXT NOT NULL,
+    ai_model        TEXT,
+    ai_prompt       TEXT,
+    ai_session_id   TEXT,
+    ai_files_touched TEXT,
+    ai_prompt_index INTEGER,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, commit_sha)
+);
+CREATE INDEX IF NOT EXISTS idx_ai_metadata_repo ON ai_commit_metadata(repo_id);
+CREATE INDEX IF NOT EXISTS idx_ai_metadata_session ON ai_commit_metadata(repo_id, ai_session_id);
+CREATE INDEX IF NOT EXISTS idx_ai_metadata_prompt ON ai_commit_metadata(repo_id, ai_session_id, ai_prompt_index);
+
+CREATE TABLE IF NOT EXISTS ai_diff_summaries (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    commit_sha      TEXT NOT NULL,
+    summary         TEXT NOT NULL,
+    risk_flags      TEXT,
+    generated_by    TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, commit_sha)
+);
+CREATE INDEX IF NOT EXISTS idx_ai_diff_summaries_repo ON ai_diff_summaries(repo_id);
+
+CREATE TABLE IF NOT EXISTS repo_webhooks (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    url             TEXT NOT NULL,
+    secret          TEXT,
+    events          TEXT NOT NULL DEFAULT 'push',
+    active          INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS deploy_previews (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    commit_sha      TEXT NOT NULL,
+    branch          TEXT NOT NULL,
+    preview_url     TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_deploy_previews_repo ON deploy_previews(repo_id, commit_sha);
+
+CREATE TABLE IF NOT EXISTS merge_conflicts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL,
+    operation_type  TEXT NOT NULL,
+    target_ref      TEXT NOT NULL,
+    source_ref      TEXT NOT NULL,
+    merge_base      TEXT NOT NULL,
+    auto_tree       TEXT,
+    context_json    TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_merge_conflicts_repo ON merge_conflicts(repo_id, user_id, status);
+
+CREATE TABLE IF NOT EXISTS merge_conflict_files (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    merge_conflict_id   INTEGER NOT NULL REFERENCES merge_conflicts(id) ON DELETE CASCADE,
+    file_path           TEXT NOT NULL,
+    conflict_type       TEXT NOT NULL,
+    resolution          TEXT,
+    resolved_content    TEXT,
+    resolved_at         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS guardrail_rules (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    category        TEXT NOT NULL,
+    action          TEXT NOT NULL DEFAULT 'off',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, category)
+);
+CREATE INDEX IF NOT EXISTS idx_guardrail_rules_repo ON guardrail_rules(repo_id);
+
+CREATE TABLE IF NOT EXISTS guardrail_config (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL UNIQUE REFERENCES repositories(id) ON DELETE CASCADE,
+    min_vibe_score  INTEGER,
+    max_files_per_push INTEGER,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS guardrail_violations (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    commit_sha      TEXT NOT NULL,
+    ref_name        TEXT,
+    rule_category   TEXT NOT NULL,
+    action_taken    TEXT NOT NULL,
+    severity        TEXT NOT NULL DEFAULT 'medium',
+    message         TEXT NOT NULL,
+    file_path       TEXT,
+    pushed_by       TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_guardrail_violations_repo ON guardrail_violations(repo_id);
+CREATE INDEX IF NOT EXISTS idx_guardrail_violations_sha ON guardrail_violations(repo_id, commit_sha);
+
+CREATE TABLE IF NOT EXISTS recipes (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    session_id      TEXT NOT NULL,
+    author_id       INTEGER NOT NULL,
+    title           TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    ai_tool         TEXT NOT NULL,
+    ai_model        TEXT,
+    tags            TEXT,
+    prompt_count    INTEGER NOT NULL DEFAULT 0,
+    file_count      INTEGER NOT NULL DEFAULT 0,
+    vibe_score      INTEGER,
+    replay_count    INTEGER NOT NULL DEFAULT 0,
+    is_public       BOOLEAN NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(repo_id, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_recipes_author ON recipes(author_id);
+CREATE INDEX IF NOT EXISTS idx_recipes_public ON recipes(is_public, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS recipe_steps (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipe_id       INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    step_order      INTEGER NOT NULL,
+    prompt_text     TEXT,
+    prompt_index    INTEGER,
+    commit_message  TEXT NOT NULL,
+    files_json      TEXT,
+    diff_text       TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(recipe_id, step_order)
+);
+CREATE INDEX IF NOT EXISTS idx_recipe_steps_recipe ON recipe_steps(recipe_id);
+
+CREATE TABLE IF NOT EXISTS recipe_replays (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipe_id       INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL,
+    target_repo_id  INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    target_branch   TEXT NOT NULL,
+    mode            TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    steps_applied   INTEGER NOT NULL DEFAULT 0,
+    error_message   TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_replays_recipe ON recipe_replays(recipe_id);
+CREATE INDEX IF NOT EXISTS idx_replays_user ON recipe_replays(user_id);
+"#;
 
 // --- User queries ---
 
@@ -379,12 +1063,7 @@ pub async fn add_ssh_key(
     .bind(fingerprint)
     .fetch_one(pool)
     .await
-    .map_err(|e| match &e {
-        sqlx::Error::Database(db_err) if db_err.message().contains("UNIQUE") => {
-            OxigitError::InvalidInput("This SSH key is already registered".into())
-        }
-        _ => e.into(),
-    })?;
+    .map_err(|e| map_unique_constraint(e, "This SSH key is already registered"))?;
     Ok(key)
 }
 
@@ -526,12 +1205,7 @@ pub async fn add_collaborator(
     .bind(permission)
     .fetch_one(pool)
     .await
-    .map_err(|e| match &e {
-        sqlx::Error::Database(db_err) if db_err.message().contains("UNIQUE") => {
-            OxigitError::InvalidInput("User is already a collaborator".into())
-        }
-        _ => e.into(),
-    })?;
+    .map_err(|e| map_unique_constraint(e, "User is already a collaborator"))?;
     Ok(collab)
 }
 

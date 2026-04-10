@@ -1,1 +1,0 @@
-/plan Still the last prompt is not in the conversation. Can we somehow handle that without the logic of a commited file?

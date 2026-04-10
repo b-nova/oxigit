@@ -35,4 +35,7 @@ node_modules/
 CLAUDE.md
 MEMORY.md
 .claude/
-docs/agents/
+docs/
+
+# Oxigit local session data
+.oxigit/

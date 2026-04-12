@@ -145,26 +145,34 @@ pub struct LlmSettingsInfo {
 
 #[server]
 async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
-    use crate::server_fns::{get_control_pool, get_llm_config, require_auth, sfn_err};
+    use crate::server_fns::{get_control_pool, get_llm_config, require_auth, sfn_err, AppState};
+    use axum::Extension;
+    use leptos_axum::extract;
     use oxigit_core::db;
 
     let user = require_auth().await?;
     let pool = get_control_pool().await?;
+    let Extension(state): Extension<AppState> = extract().await?;
     let (default_provider, default_key, default_model, default_base_url) = get_llm_config().await?;
 
     let settings = db::get_user_settings(&pool, user.id)
         .await
         .map_err(sfn_err)?;
 
+    let raw_key = settings
+        .as_ref()
+        .and_then(|s| s.llm_api_key.as_ref())
+        .map(|k| oxigit_core::crypto::decrypt_secret(&state.secret_key, k))
+        .transpose()
+        .map_err(sfn_err)?
+        .or(default_key);
+
     Ok(LlmSettingsInfo {
         provider: settings
             .as_ref()
             .and_then(|s| s.llm_provider.clone())
             .unwrap_or(default_provider),
-        api_key: settings
-            .as_ref()
-            .and_then(|s| s.llm_api_key.clone())
-            .unwrap_or_else(|| default_key.unwrap_or_default()),
+        api_key: mask_api_key(&raw_key.unwrap_or_default()),
         model: settings
             .as_ref()
             .and_then(|s| s.llm_model.clone())
@@ -176,6 +184,16 @@ async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
     })
 }
 
+fn mask_api_key(key: &str) -> String {
+    if key.is_empty() {
+        return String::new();
+    }
+    if key.len() <= 8 {
+        return "*".repeat(key.len());
+    }
+    format!("{}...{}", &key[..4], &key[key.len() - 4..])
+}
+
 #[server]
 async fn save_llm_settings(
     provider: String,
@@ -183,18 +201,22 @@ async fn save_llm_settings(
     model: String,
     base_url: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_control_pool, require_auth, sfn_err};
+    use crate::server_fns::{get_control_pool, require_auth, sfn_err, AppState};
+    use axum::Extension;
+    use leptos_axum::extract;
     use oxigit_core::db;
 
     let user = require_auth().await?;
     let pool = get_control_pool().await?;
+    let Extension(state): Extension<AppState> = extract().await?;
 
     let provider = if provider.is_empty() || provider == "none" {
         None
     } else {
         Some(provider)
     };
-    let api_key = if api_key.is_empty() {
+    // If the key looks masked (contains "..."), the user didn't change it — preserve existing.
+    let api_key = if api_key.is_empty() || api_key.contains("...") {
         None
     } else {
         Some(api_key)
@@ -206,16 +228,37 @@ async fn save_llm_settings(
         Some(base_url)
     };
 
-    db::upsert_user_settings(
-        &pool,
-        user.id,
-        provider.as_deref(),
-        api_key.as_deref(),
-        model.as_deref(),
-        base_url.as_deref(),
-    )
-    .await
-    .map_err(sfn_err)?;
+    // When api_key is None (unchanged), preserve existing value in DB.
+    if api_key.is_none() {
+        sqlx::query(
+            "INSERT INTO user_settings (user_id, llm_provider, llm_model, llm_base_url, updated_at) \
+             VALUES (?, ?, ?, ?, datetime('now')) \
+             ON CONFLICT(user_id) DO UPDATE SET \
+             llm_provider = excluded.llm_provider, \
+             llm_model = excluded.llm_model, \
+             llm_base_url = excluded.llm_base_url, \
+             updated_at = datetime('now')",
+        )
+        .bind(user.id)
+        .bind(provider.as_deref())
+        .bind(model.as_deref())
+        .bind(base_url.as_deref())
+        .execute(&pool)
+        .await
+        .map_err(sfn_err)?;
+    } else {
+        db::upsert_user_settings(
+            &pool,
+            user.id,
+            provider.as_deref(),
+            api_key.as_deref(),
+            model.as_deref(),
+            base_url.as_deref(),
+            &state.secret_key,
+        )
+        .await
+        .map_err(sfn_err)?;
+    }
 
     Ok(())
 }

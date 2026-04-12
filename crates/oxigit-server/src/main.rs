@@ -132,6 +132,11 @@ async fn main() {
     // Load or generate secret key for session signing
     let secret_key = load_or_generate_secret(&config);
 
+    // Encrypt any plaintext API keys stored in the database
+    db::migrate_encrypt_api_keys(&pool, &secret_key)
+        .await
+        .expect("Failed to encrypt existing API keys");
+
     let state = AppState {
         #[cfg(feature = "saas")]
         tenant_mgr: tenant_mgr.clone(),

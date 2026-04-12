@@ -54,21 +54,21 @@ async fn register_user(
         set_session_user(user.id, &user.username, Some(&username)).await;
 
         // If a paid plan was selected, handle billing
-        if let Some(ref p) = plan {
-            if matches!(p.as_str(), "flat" | "team" | "founding") {
-                let stripe = crate::server_fns::get_stripe_config().await?;
-                if stripe.is_some() {
-                    leptos_axum::redirect(&format!("/pricing?checkout={}", p));
-                    return Ok(());
-                }
+        if let Some(ref p) = plan
+            && matches!(p.as_str(), "flat" | "team" | "founding")
+        {
+            let stripe = crate::server_fns::get_stripe_config().await?;
+            if stripe.is_some() {
+                leptos_axum::redirect(&format!("/pricing?checkout={}", p));
+                return Ok(());
+            }
 
-                db::upsert_subscription(&pool, user.id, "self-hosted", None, p, "active", None, 1)
-                    .await
-                    .map_err(sfn_err)?;
+            db::upsert_subscription(&pool, user.id, "self-hosted", None, p, "active", None, 1)
+                .await
+                .map_err(sfn_err)?;
 
-                if p == "founding" {
-                    let _ = db::claim_founding_slot(&pool, user.id).await;
-                }
+            if p == "founding" {
+                let _ = db::claim_founding_slot(&pool, user.id).await;
             }
         }
     }

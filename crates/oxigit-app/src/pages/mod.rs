@@ -533,6 +533,7 @@ pub struct OrgListItem {
 }
 
 #[server]
+#[allow(clippy::needless_return)]
 pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
     #[cfg(feature = "saas")]
     {
@@ -558,6 +559,7 @@ pub async fn list_my_orgs() -> Result<Vec<OrgListItem>, ServerFnError> {
 }
 
 #[server]
+#[allow(clippy::needless_return)]
 pub async fn switch_org(slug: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "saas")]
     {

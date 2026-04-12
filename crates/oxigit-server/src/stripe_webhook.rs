@@ -3,8 +3,6 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use tracing;
-
 use oxigit_core::{billing, db};
 
 use crate::AppState;
@@ -127,38 +125,36 @@ pub async fn handle_webhook(
             let status = obj["status"].as_str();
             let period_end = obj["current_period_end"]
                 .as_i64()
-                .map(|ts| {
+                .and_then(|ts| {
                     chrono::DateTime::from_timestamp(ts, 0)
                         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
-                })
-                .flatten();
+                });
 
-            if let (Some(sub_id), Some(status)) = (subscription_id, status) {
-                if let Err(e) =
+            if let (Some(sub_id), Some(status)) = (subscription_id, status)
+                && let Err(e) =
                     db::update_subscription_status(pool, sub_id, status, period_end.as_deref())
                         .await
-                {
-                    tracing::error!("Failed to update subscription status: {e}");
-                }
+            {
+                tracing::error!("Failed to update subscription status: {e}");
             }
         }
 
         "customer.subscription.deleted" => {
             let obj = &event.data.object;
-            if let Some(sub_id) = obj["id"].as_str() {
-                if let Err(e) = db::cancel_subscription(pool, sub_id).await {
-                    tracing::error!("Failed to cancel subscription: {e}");
-                }
+            if let Some(sub_id) = obj["id"].as_str()
+                && let Err(e) = db::cancel_subscription(pool, sub_id).await
+            {
+                tracing::error!("Failed to cancel subscription: {e}");
             }
         }
 
         "invoice.payment_failed" => {
             let obj = &event.data.object;
-            if let Some(sub_id) = obj["subscription"].as_str() {
-                if let Err(e) = db::update_subscription_status(pool, sub_id, "past_due", None).await
-                {
-                    tracing::error!("Failed to mark subscription past_due: {e}");
-                }
+            if let Some(sub_id) = obj["subscription"].as_str()
+                && let Err(e) =
+                    db::update_subscription_status(pool, sub_id, "past_due", None).await
+            {
+                tracing::error!("Failed to mark subscription past_due: {e}");
             }
         }
 

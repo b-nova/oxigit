@@ -1,5 +1,8 @@
 //! Shared migration logic: splits a legacy single `oxigit.db` into
 //! a control-plane `control.db` and per-user tenant databases.
+//!
+//! Migration uses raw tuple queries for one-off table copying.
+#![allow(clippy::type_complexity, clippy::collapsible_if)]
 
 use std::path::Path;
 

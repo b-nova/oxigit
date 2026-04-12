@@ -81,19 +81,19 @@ async fn llm_request(
     let resp = req
         .send()
         .await
-        .map_err(|e| OxigitError::Git(format!("{} request failed: {}", provider_name, e)))?;
+        .map_err(|e| OxigitError::Llm(format!("{} request failed: {}", provider_name, e)))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        return Err(OxigitError::Git(format!(
+        return Err(OxigitError::Llm(format!(
             "{} API error {}: {}",
             provider_name, status, text
         )));
     }
 
     let raw = resp.text().await.map_err(|e| {
-        OxigitError::Git(format!("Failed to read {} response: {}", provider_name, e))
+        OxigitError::Llm(format!("Failed to read {} response: {}", provider_name, e))
     })?;
 
     extract_text(&raw)
@@ -158,11 +158,11 @@ async fn call_openai(config: &LlmConfig, user_message: &str) -> Result<String> {
         &body,
         |raw| {
             let data: OpenAiResponse = serde_json::from_str(raw)
-                .map_err(|e| OxigitError::Git(format!("Failed to parse OpenAI response: {}", e)))?;
+                .map_err(|e| OxigitError::Llm(format!("Failed to parse OpenAI response: {}", e)))?;
             data.choices
                 .first()
                 .map(|c| c.message.content.trim().to_string())
-                .ok_or_else(|| OxigitError::Git("Empty response from OpenAI".into()))
+                .ok_or_else(|| OxigitError::Llm("Empty response from OpenAI".into()))
         },
     )
     .await
@@ -217,12 +217,12 @@ async fn call_anthropic(config: &LlmConfig, user_message: &str) -> Result<String
         &body,
         |raw| {
             let data: AnthropicResponse = serde_json::from_str(raw).map_err(|e| {
-                OxigitError::Git(format!("Failed to parse Anthropic response: {}", e))
+                OxigitError::Llm(format!("Failed to parse Anthropic response: {}", e))
             })?;
             data.content
                 .first()
                 .map(|c| c.text.trim().to_string())
-                .ok_or_else(|| OxigitError::Git("Empty response from Anthropic".into()))
+                .ok_or_else(|| OxigitError::Llm("Empty response from Anthropic".into()))
         },
     )
     .await
@@ -266,7 +266,7 @@ async fn call_ollama(config: &LlmConfig, user_message: &str) -> Result<String> {
 
     llm_request(&url, "Ollama", None, &[], &body, |raw| {
         let data: OllamaResponse = serde_json::from_str(raw)
-            .map_err(|e| OxigitError::Git(format!("Failed to parse Ollama response: {}", e)))?;
+            .map_err(|e| OxigitError::Llm(format!("Failed to parse Ollama response: {}", e)))?;
         Ok(data.message.content.trim().to_string())
     })
     .await

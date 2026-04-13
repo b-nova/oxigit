@@ -145,34 +145,55 @@ pub struct LlmSettingsInfo {
 
 #[server]
 async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
-    use crate::server_fns::{get_control_pool, get_llm_config, require_auth, sfn_err, AppState};
-    use axum::Extension;
-    use leptos_axum::extract;
+    use crate::server_fns::{get_control_pool, get_llm_config, require_auth, sfn_err};
     use oxigit_core::db;
 
     let user = require_auth().await?;
     let pool = get_control_pool().await?;
-    let Extension(state): Extension<AppState> = extract().await?;
     let (default_provider, default_key, default_model, default_base_url) = get_llm_config().await?;
 
     let settings = db::get_user_settings(&pool, user.id)
         .await
         .map_err(sfn_err)?;
 
-    let raw_key = settings
-        .as_ref()
-        .and_then(|s| s.llm_api_key.as_ref())
-        .map(|k| oxigit_core::crypto::decrypt_secret(&state.secret_key, k))
-        .transpose()
-        .map_err(sfn_err)?
-        .or(default_key);
+    // In SaaS mode, never decrypt or expose any part of the API key.
+    // Only indicate whether a key is configured.
+    #[cfg(feature = "saas")]
+    let display_key = {
+        let has_user_key = settings
+            .as_ref()
+            .and_then(|s| s.llm_api_key.as_ref())
+            .is_some();
+        let has_default = default_key.is_some();
+        if has_user_key || has_default {
+            "\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}".to_string()
+        } else {
+            String::new()
+        }
+    };
+
+    #[cfg(not(feature = "saas"))]
+    let display_key = {
+        use crate::server_fns::AppState;
+        use axum::Extension;
+        use leptos_axum::extract;
+        let Extension(state): Extension<AppState> = extract().await?;
+        let raw_key = settings
+            .as_ref()
+            .and_then(|s| s.llm_api_key.as_ref())
+            .map(|k| oxigit_core::crypto::decrypt_secret(&state.secret_key, k))
+            .transpose()
+            .map_err(sfn_err)?
+            .or(default_key);
+        mask_api_key(&raw_key.unwrap_or_default())
+    };
 
     Ok(LlmSettingsInfo {
         provider: settings
             .as_ref()
             .and_then(|s| s.llm_provider.clone())
             .unwrap_or(default_provider),
-        api_key: mask_api_key(&raw_key.unwrap_or_default()),
+        api_key: display_key,
         model: settings
             .as_ref()
             .and_then(|s| s.llm_model.clone())
@@ -216,7 +237,10 @@ async fn save_llm_settings(
         Some(provider)
     };
     // If the key looks masked (contains "..."), the user didn't change it — preserve existing.
-    let api_key = if api_key.is_empty() || api_key.contains("...") {
+    let api_key = if api_key.is_empty()
+        || api_key.contains("...")
+        || api_key == "\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}"
+    {
         None
     } else {
         Some(api_key)

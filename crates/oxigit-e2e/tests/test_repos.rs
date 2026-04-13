@@ -97,9 +97,7 @@ async fn test_toggle_repo_visibility_public_to_private() {
     );
 
     // Toggle to private
-    let resp = client
-        .update_visibility("alice", "viztoggle", true)
-        .await;
+    let resp = client.update_visibility("alice", "viztoggle", true).await;
     assert!(
         resp.status().is_success() || resp.status().is_redirection(),
         "update_visibility failed: {}",
@@ -128,9 +126,7 @@ async fn test_toggle_repo_visibility_private_to_public() {
     client.create_repo("privrepo", "Private", true).await;
 
     // Toggle to public
-    let resp = client
-        .update_visibility("alice", "privrepo", false)
-        .await;
+    let resp = client.update_visibility("alice", "privrepo", false).await;
     assert!(
         resp.status().is_success() || resp.status().is_redirection(),
         "update_visibility failed: {}",
@@ -165,9 +161,7 @@ async fn test_update_visibility_non_owner_denied() {
     client2.login("bob", "password123").await;
 
     // Bob tries to change visibility of Alice's repo
-    let resp = client2
-        .update_visibility("alice", "ownedrepo", true)
-        .await;
+    let resp = client2.update_visibility("alice", "ownedrepo", true).await;
     let body = resp.text().await.unwrap();
     assert!(
         body.contains("error")

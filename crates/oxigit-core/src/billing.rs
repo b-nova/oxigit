@@ -35,6 +35,7 @@ pub async fn create_customer(stripe_key: &str, email: &str, user_id: i64) -> Res
 
 /// Create a Stripe Checkout session.
 /// Returns the checkout session URL for client-side redirect.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_checkout_session(
     stripe_key: &str,
     customer_id: &str,
@@ -264,7 +265,7 @@ mod tests {
         let secret = "whsec_test_secret";
         let payload = b"{\"id\":\"evt_test\"}";
         let header = "t=1234567890,v1=invalidsignature";
-        assert!(verify_webhook_signature(payload, &header, secret).is_err());
+        assert!(verify_webhook_signature(payload, header, secret).is_err());
     }
 
     #[test]
@@ -272,7 +273,7 @@ mod tests {
         let secret = "whsec_test_secret";
         let payload = b"{\"id\":\"evt_test\"}";
         let header = "v1=somesig";
-        assert!(verify_webhook_signature(payload, &header, secret).is_err());
+        assert!(verify_webhook_signature(payload, header, secret).is_err());
     }
 
     #[test]

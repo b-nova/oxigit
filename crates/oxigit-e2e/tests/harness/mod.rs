@@ -1106,11 +1106,7 @@ impl TestClient {
             .expect("get_admin_dashboard request failed")
     }
 
-    pub async fn admin_toggle_disabled(
-        &self,
-        user_id: i64,
-        disabled: bool,
-    ) -> reqwest::Response {
+    pub async fn admin_toggle_disabled(&self, user_id: i64, disabled: bool) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_ADMIN_TOGGLE_DISABLED))
             .header("content-type", "application/x-www-form-urlencoded")
@@ -1204,11 +1200,7 @@ impl TestClient {
 
     // --- Repo visibility helpers ---
 
-    pub async fn fetch_repo_visibility(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> reqwest::Response {
+    pub async fn fetch_repo_visibility(&self, owner: &str, repo: &str) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_FETCH_REPO_VISIBILITY))
             .header("content-type", "application/x-www-form-urlencoded")
@@ -1244,11 +1236,7 @@ impl TestClient {
 
     // --- Guardrail settings helpers ---
 
-    pub async fn get_guardrail_settings(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> reqwest::Response {
+    pub async fn get_guardrail_settings(&self, owner: &str, repo: &str) -> reqwest::Response {
         self.client
             .post(format!("{}{}", self.base_url, API_GET_GUARDRAIL_SETTINGS))
             .header("content-type", "application/x-www-form-urlencoded")

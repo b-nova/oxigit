@@ -211,9 +211,7 @@ async fn test_guardrail_settings_save_and_fetch() {
     );
 
     // Fetch and verify
-    let resp = client
-        .get_guardrail_settings("alice", "grailrepo")
-        .await;
+    let resp = client.get_guardrail_settings("alice", "grailrepo").await;
     let body = resp.text().await.unwrap();
 
     assert!(
@@ -260,9 +258,7 @@ async fn test_guardrail_settings_non_owner_denied() {
 
     // Login as bob (also needs team plan for the entitlement check)
     let client2 = server.client();
-    client2
-        .register("bob", "bob@test.com", "password123")
-        .await;
+    client2.register("bob", "bob@test.com", "password123").await;
     upgrade_to_team(&client2, &client2.base_url.clone(), "2", secret).await;
     client2.login("bob", "password123").await;
 

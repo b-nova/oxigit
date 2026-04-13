@@ -31,6 +31,12 @@ pub enum OxigitError {
 
     #[error("Email error: {0}")]
     Email(String),
+
+    #[error("Crypto error: {0}")]
+    Crypto(String),
+
+    #[error("LLM error: {0}")]
+    Llm(String),
 }
 
 pub type Result<T> = std::result::Result<T, OxigitError>;

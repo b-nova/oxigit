@@ -60,6 +60,7 @@ impl std::fmt::Debug for AppState {
 
 impl AppState {
     /// Returns the main database pool.
+    #[allow(clippy::needless_return)]
     /// In saas mode, this is the control plane pool. In open-source mode, the single DB pool.
     pub fn pool(&self) -> SqlitePool {
         #[cfg(feature = "saas")]
@@ -171,6 +172,7 @@ pub async fn get_tenant_mgr() -> Result<Arc<oxigit_core::tenant::TenantPoolManag
 }
 
 /// Check if multi-tenant mode is active.
+#[allow(clippy::needless_return)]
 pub async fn is_multi_tenant() -> Result<bool, ServerFnError> {
     #[cfg(feature = "saas")]
     {
@@ -217,7 +219,10 @@ pub async fn get_effective_llm_config(
             provider = p;
         }
         if let Some(k) = settings.llm_api_key {
-            api_key = Some(k);
+            api_key = Some(
+                oxigit_core::crypto::decrypt_secret(&state.secret_key, &k)
+                    .map_err(|e| ServerFnError::new(e.to_string()))?,
+            );
         }
         if let Some(m) = settings.llm_model {
             model = m;

@@ -156,15 +156,44 @@ async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
         .await
         .map_err(sfn_err)?;
 
+    // In SaaS mode, never decrypt or expose any part of the API key.
+    // Only indicate whether a key is configured.
+    #[cfg(feature = "saas")]
+    let display_key = {
+        let has_user_key = settings
+            .as_ref()
+            .and_then(|s| s.llm_api_key.as_ref())
+            .is_some();
+        let has_default = default_key.is_some();
+        if has_user_key || has_default {
+            "\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}".to_string()
+        } else {
+            String::new()
+        }
+    };
+
+    #[cfg(not(feature = "saas"))]
+    let display_key = {
+        use crate::server_fns::AppState;
+        use axum::Extension;
+        use leptos_axum::extract;
+        let Extension(state): Extension<AppState> = extract().await?;
+        let raw_key = settings
+            .as_ref()
+            .and_then(|s| s.llm_api_key.as_ref())
+            .map(|k| oxigit_core::crypto::decrypt_secret(&state.secret_key, k))
+            .transpose()
+            .map_err(sfn_err)?
+            .or(default_key);
+        mask_api_key(&raw_key.unwrap_or_default())
+    };
+
     Ok(LlmSettingsInfo {
         provider: settings
             .as_ref()
             .and_then(|s| s.llm_provider.clone())
             .unwrap_or(default_provider),
-        api_key: settings
-            .as_ref()
-            .and_then(|s| s.llm_api_key.clone())
-            .unwrap_or_else(|| default_key.unwrap_or_default()),
+        api_key: display_key,
         model: settings
             .as_ref()
             .and_then(|s| s.llm_model.clone())
@@ -176,6 +205,16 @@ async fn fetch_llm_settings() -> Result<LlmSettingsInfo, ServerFnError> {
     })
 }
 
+fn mask_api_key(key: &str) -> String {
+    if key.is_empty() {
+        return String::new();
+    }
+    if key.len() <= 8 {
+        return "*".repeat(key.len());
+    }
+    format!("{}...{}", &key[..4], &key[key.len() - 4..])
+}
+
 #[server]
 async fn save_llm_settings(
     provider: String,
@@ -183,18 +222,25 @@ async fn save_llm_settings(
     model: String,
     base_url: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_control_pool, require_auth, sfn_err};
+    use crate::server_fns::{AppState, get_control_pool, require_auth, sfn_err};
+    use axum::Extension;
+    use leptos_axum::extract;
     use oxigit_core::db;
 
     let user = require_auth().await?;
     let pool = get_control_pool().await?;
+    let Extension(state): Extension<AppState> = extract().await?;
 
     let provider = if provider.is_empty() || provider == "none" {
         None
     } else {
         Some(provider)
     };
-    let api_key = if api_key.is_empty() {
+    // If the key looks masked (contains "..."), the user didn't change it — preserve existing.
+    let api_key = if api_key.is_empty()
+        || api_key.contains("...")
+        || api_key == "\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}"
+    {
         None
     } else {
         Some(api_key)
@@ -206,16 +252,37 @@ async fn save_llm_settings(
         Some(base_url)
     };
 
-    db::upsert_user_settings(
-        &pool,
-        user.id,
-        provider.as_deref(),
-        api_key.as_deref(),
-        model.as_deref(),
-        base_url.as_deref(),
-    )
-    .await
-    .map_err(sfn_err)?;
+    // When api_key is None (unchanged), preserve existing value in DB.
+    if api_key.is_none() {
+        sqlx::query(
+            "INSERT INTO user_settings (user_id, llm_provider, llm_model, llm_base_url, updated_at) \
+             VALUES (?, ?, ?, ?, datetime('now')) \
+             ON CONFLICT(user_id) DO UPDATE SET \
+             llm_provider = excluded.llm_provider, \
+             llm_model = excluded.llm_model, \
+             llm_base_url = excluded.llm_base_url, \
+             updated_at = datetime('now')",
+        )
+        .bind(user.id)
+        .bind(provider.as_deref())
+        .bind(model.as_deref())
+        .bind(base_url.as_deref())
+        .execute(&pool)
+        .await
+        .map_err(sfn_err)?;
+    } else {
+        db::upsert_user_settings(
+            &pool,
+            user.id,
+            provider.as_deref(),
+            api_key.as_deref(),
+            model.as_deref(),
+            base_url.as_deref(),
+            &state.secret_key,
+        )
+        .await
+        .map_err(sfn_err)?;
+    }
 
     Ok(())
 }

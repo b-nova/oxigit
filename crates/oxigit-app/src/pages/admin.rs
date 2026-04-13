@@ -136,6 +136,7 @@ async fn admin_toggle_disabled(user_id: i64, disabled: bool) -> Result<(), Serve
 }
 
 #[server]
+#[allow(clippy::needless_return)]
 async fn admin_set_plan(user_id: i64, plan: String) -> Result<(), ServerFnError> {
     use crate::server_fns::require_admin;
 

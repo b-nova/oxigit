@@ -2030,7 +2030,12 @@ pub async fn upsert_user_settings(
     llm_api_key: Option<&str>,
     llm_model: Option<&str>,
     llm_base_url: Option<&str>,
+    master_key: &[u8],
 ) -> Result<UserSettings> {
+    let encrypted_key = llm_api_key
+        .map(|k| crate::crypto::encrypt_secret(master_key, k))
+        .transpose()?;
+
     let row = sqlx::query_as::<_, UserSettings>(
         "INSERT INTO user_settings (user_id, llm_provider, llm_api_key, llm_model, llm_base_url, updated_at) \
          VALUES (?, ?, ?, ?, ?, datetime('now')) \
@@ -2044,12 +2049,35 @@ pub async fn upsert_user_settings(
     )
     .bind(user_id)
     .bind(llm_provider)
-    .bind(llm_api_key)
+    .bind(encrypted_key.as_deref())
     .bind(llm_model)
     .bind(llm_base_url)
     .fetch_one(pool)
     .await?;
     Ok(row)
+}
+
+/// Migrate existing plaintext API keys to encrypted form. Called once at startup.
+pub async fn migrate_encrypt_api_keys(pool: &SqlitePool, master_key: &[u8]) -> Result<()> {
+    let rows = sqlx::query_as::<_, UserSettings>(
+        "SELECT * FROM user_settings WHERE llm_api_key IS NOT NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for row in rows {
+        if let Some(ref key) = row.llm_api_key
+            && !crate::crypto::is_encrypted(key)
+        {
+            let encrypted = crate::crypto::encrypt_secret(master_key, key)?;
+            sqlx::query("UPDATE user_settings SET llm_api_key = ? WHERE id = ?")
+                .bind(&encrypted)
+                .bind(row.id)
+                .execute(pool)
+                .await?;
+        }
+    }
+    Ok(())
 }
 
 // --- Webhook queries ---
@@ -2817,6 +2845,7 @@ pub async fn get_subscription_by_stripe_subscription(
 }
 
 #[cfg(feature = "saas")]
+#[allow(clippy::too_many_arguments)]
 pub async fn upsert_subscription(
     pool: &SqlitePool,
     user_id: i64,
@@ -2887,6 +2916,7 @@ pub async fn cancel_subscription(pool: &SqlitePool, stripe_subscription_id: &str
     Ok(())
 }
 
+#[allow(clippy::needless_return)]
 pub async fn get_user_plan(pool: &SqlitePool, user_id: i64) -> Result<String> {
     #[cfg(feature = "saas")]
     {
@@ -3195,6 +3225,7 @@ pub async fn remove_org_member(pool: &SqlitePool, org_id: i64, user_id: i64) -> 
 }
 
 #[cfg(feature = "saas")]
+#[allow(clippy::type_complexity)]
 pub async fn list_org_members(pool: &SqlitePool, org_id: i64) -> Result<Vec<(User, String)>> {
     let rows: Vec<(i64, String, String, String, String, bool, bool, String, String, String)> = sqlx::query_as(
         "SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.is_admin, u.is_disabled, \

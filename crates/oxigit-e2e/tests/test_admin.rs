@@ -60,9 +60,7 @@ async fn test_admin_dashboard_non_admin_denied() {
 
     // Second user is NOT admin
     let client2 = server.client();
-    client2
-        .register("bob", "bob@test.com", "password123")
-        .await;
+    client2.register("bob", "bob@test.com", "password123").await;
     client2.login("bob", "password123").await;
 
     let resp = client2.get_admin_dashboard().await;
@@ -92,9 +90,7 @@ async fn test_admin_disable_user() {
 
     // Create second user (id=2)
     let client2 = server.client();
-    client2
-        .register("bob", "bob@test.com", "password123")
-        .await;
+    client2.register("bob", "bob@test.com", "password123").await;
 
     // Admin disables bob (user_id=2)
     let resp = client.admin_toggle_disabled(2, true).await;
@@ -135,9 +131,7 @@ async fn test_admin_enable_user() {
     client.login("admin", "password123").await;
 
     let client2 = server.client();
-    client2
-        .register("bob", "bob@test.com", "password123")
-        .await;
+    client2.register("bob", "bob@test.com", "password123").await;
 
     // Disable then enable bob
     client.admin_toggle_disabled(2, true).await;

@@ -14,7 +14,9 @@ async fn test_conflict_resolution_page_loads() {
         .register("alice", "alice@test.com", "password123")
         .await;
     client.login("alice", "password123").await;
-    client.create_repo("conflictrepo", "Conflict test", false).await;
+    client
+        .create_repo("conflictrepo", "Conflict test", false)
+        .await;
 
     // Clone and push initial commit on main
     let clone_url = http_clone_url(
@@ -87,7 +89,7 @@ async fn test_conflict_resolution_page_loads() {
 
     // Attempt to merge — should create a conflict
     let resp = client.merge_pr("alice", "conflictrepo", 1).await;
-    let body = resp.text().await.unwrap();
+    let _body = resp.text().await.unwrap();
 
     // The merge should either fail with conflict or redirect to conflict resolution
     // Check that the conflict resolution page loads

@@ -164,9 +164,15 @@ fn CompareRow(
     github: Support,
 ) -> impl IntoView {
     let cell = |s: Support| match s {
-        Support::Yes => view! { <td class="compare-cell"><span class="compare-check" title="Yes">{"\u{2713}"}</span></td> },
-        Support::No => view! { <td class="compare-cell"><span class="compare-cross" title="No">{"\u{2717}"}</span></td> },
-        Support::Partial => view! { <td class="compare-cell"><span class="compare-partial" title="Partial">{"\u{25D0}"}</span></td> },
+        Support::Yes => {
+            view! { <td class="compare-cell"><span class="compare-check" title="Yes">{"\u{2713}"}</span></td> }
+        }
+        Support::No => {
+            view! { <td class="compare-cell"><span class="compare-cross" title="No">{"\u{2717}"}</span></td> }
+        }
+        Support::Partial => {
+            view! { <td class="compare-cell"><span class="compare-partial" title="Partial">{"\u{25D0}"}</span></td> }
+        }
     };
 
     view! {

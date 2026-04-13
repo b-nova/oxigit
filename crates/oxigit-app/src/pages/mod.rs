@@ -6,6 +6,7 @@ pub mod billing_details;
 pub mod blame;
 pub mod commit_view;
 pub mod commits;
+pub mod compare;
 pub mod conflict_resolve;
 pub mod contact;
 pub mod explore;

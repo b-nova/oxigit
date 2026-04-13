@@ -13,7 +13,6 @@
 
 # Environment / secrets
 .env
-.env.*
 secret_key
 scripts/social/config.env
 

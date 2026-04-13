@@ -171,6 +171,126 @@ async fn test_guardrail_settings_owner_only() {
     );
 }
 
+/// Test saving and fetching guardrail settings via server functions.
+#[tokio::test]
+async fn test_guardrail_settings_save_and_fetch() {
+    let secret = "whsec_guardrail_crud";
+    let server = TestServer::start_with_stripe(secret).await;
+    if !server.has_saas().await {
+        eprintln!("SKIPPED: requires team plan (saas feature)");
+        return;
+    }
+    let client = server.client();
+
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
+    upgrade_to_team(&client, &client.base_url.clone(), "1", secret).await;
+    client.login("alice", "password123").await;
+    client
+        .create_repo("grailrepo", "Guardrail CRUD test", false)
+        .await;
+
+    // Save guardrail settings
+    let resp = client
+        .save_guardrail_settings(
+            "alice",
+            "grailrepo",
+            "block",
+            "warn",
+            "off",
+            "warn",
+            Some(70),
+            Some(50),
+        )
+        .await;
+    assert!(
+        resp.status().is_success() || resp.status().is_redirection(),
+        "save_guardrail_settings failed: {}",
+        resp.status()
+    );
+
+    // Fetch and verify
+    let resp = client
+        .get_guardrail_settings("alice", "grailrepo")
+        .await;
+    let body = resp.text().await.unwrap();
+
+    assert!(
+        body.contains("block"),
+        "Expected security=block in response, got: {}",
+        &body[..500.min(body.len())]
+    );
+    assert!(
+        body.contains("warn"),
+        "Expected warn-level rules in response, got: {}",
+        &body[..500.min(body.len())]
+    );
+    assert!(
+        body.contains("70"),
+        "Expected min_vibe_score=70 in response, got: {}",
+        &body[..500.min(body.len())]
+    );
+    assert!(
+        body.contains("50"),
+        "Expected max_files_per_push=50 in response, got: {}",
+        &body[..500.min(body.len())]
+    );
+}
+
+/// Non-owner cannot save guardrail settings.
+#[tokio::test]
+async fn test_guardrail_settings_non_owner_denied() {
+    let secret = "whsec_guardrail_deny";
+    let server = TestServer::start_with_stripe(secret).await;
+    if !server.has_saas().await {
+        eprintln!("SKIPPED: requires team plan (saas feature)");
+        return;
+    }
+    let client = server.client();
+
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
+    upgrade_to_team(&client, &client.base_url.clone(), "1", secret).await;
+    client.login("alice", "password123").await;
+    client
+        .create_repo("grailrepo2", "Guardrail deny test", false)
+        .await;
+
+    // Login as bob (also needs team plan for the entitlement check)
+    let client2 = server.client();
+    client2
+        .register("bob", "bob@test.com", "password123")
+        .await;
+    upgrade_to_team(&client2, &client2.base_url.clone(), "2", secret).await;
+    client2.login("bob", "password123").await;
+
+    // Bob tries to save guardrails on Alice's repo
+    let resp = client2
+        .save_guardrail_settings(
+            "alice",
+            "grailrepo2",
+            "block",
+            "block",
+            "block",
+            "block",
+            None,
+            None,
+        )
+        .await;
+    let body = resp.text().await.unwrap();
+
+    assert!(
+        body.contains("error")
+            || body.contains("Error")
+            || body.contains("owner")
+            || body.contains("denied"),
+        "Non-owner should be denied, got: {}",
+        &body[..500.min(body.len())]
+    );
+}
+
 /// Test that violations appear on the AI hub page.
 #[tokio::test]
 async fn test_violations_on_ai_hub() {

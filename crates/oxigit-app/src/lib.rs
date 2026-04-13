@@ -25,7 +25,8 @@ use components::toast::ToastProvider;
 use pages::{
     admin::AdminPage, ai_hub::AiHubPage, ai_session_detail::AiSessionDetailPage,
     billing::SubscriptionPage, billing_details::BillingDetailsPage, blame::BlamePage,
-    commit_view::CommitViewPage, commits::CommitsPage, conflict_resolve::ConflictResolvePage,
+    commit_view::CommitViewPage, commits::CommitsPage, compare::ComparisonPage,
+    conflict_resolve::ConflictResolvePage,
     contact::ContactPage, explore::ExplorePage, home::HomePage, issue_list::IssueListPage,
     issue_new::IssueNewPage, issue_view::IssueViewPage, login::LoginPage, org_new::OrgNewPage,
     org_settings::OrgSettingsPage, pr_list::PrListPage, pr_new::PrNewPage, pr_view::PrViewPage,
@@ -99,6 +100,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/pricing") view=PricingPage />
                     <Route path=path!("/subscription") view=SubscriptionPage />
                     <Route path=path!("/billing") view=BillingDetailsPage />
+                    <Route path=path!("/compare") view=ComparisonPage />
                     <Route path=path!("/contact") view=ContactPage />
                     <Route path=path!("/admin") view=AdminPage />
                     <Route path=path!("/orgs/new") view=OrgNewPage />

@@ -58,6 +58,7 @@ pub fn Navbar() -> impl IntoView {
                     <span class="navbar-divider"></span>
                     <a href="/explore" class=move || nav_class("/explore")>"Explore"</a>
                     <a href="/recipes" class=move || nav_class("/recipes")>"Recipes"</a>
+                    <a href="/compare" class=move || nav_class("/compare")>"Compare"</a>
                     {
                         #[cfg(feature = "saas")]
                         view! { <a href="/pricing" class=move || nav_class("/pricing")>"Pricing"</a> }
@@ -123,6 +124,7 @@ pub fn Navbar() -> impl IntoView {
                 </div>
                 <a href="/explore" class="mobile-nav-link">"Explore"</a>
                 <a href="/recipes" class="mobile-nav-link">"Recipes"</a>
+                <a href="/compare" class="mobile-nav-link">"Compare"</a>
                 {
                     #[cfg(feature = "saas")]
                     view! { <a href="/pricing" class="mobile-nav-link">"Pricing"</a> }

@@ -111,3 +111,41 @@ async fn test_login_nonexistent_user() {
         "expected error for nonexistent user, got: {body}"
     );
 }
+
+#[tokio::test]
+async fn test_logout_clears_session() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    client
+        .register("alice", "alice@example.com", "password123")
+        .await;
+    client.login("alice", "password123").await;
+
+    // Verify session works
+    let resp = client.list_repos().await;
+    assert!(
+        resp.status().is_success(),
+        "Authenticated user should access repos"
+    );
+
+    // Logout
+    let resp = client.logout().await;
+    assert!(
+        resp.status().is_success() || resp.status().is_redirection(),
+        "Logout should succeed, got: {}",
+        resp.status()
+    );
+
+    // After logout, authenticated actions should fail
+    let resp = client.fetch_profile().await;
+    let body = resp.text().await.unwrap();
+    assert!(
+        body.contains("error")
+            || body.contains("Error")
+            || body.contains("Not authenticated")
+            || body.contains("login"),
+        "After logout, profile fetch should fail, got: {}",
+        &body[..500.min(body.len())]
+    );
+}

@@ -4242,4 +4242,189 @@ a:hover {
         min-width: 0;
         max-width: none;
     }
+
+    .compare-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .compare-table th,
+    .compare-table td {
+        font-size: 0.8125rem;
+        padding: var(--space-2) var(--space-3);
+    }
+
+    .compare-sections {
+        grid-template-columns: 1fr;
+    }
+
+    .compare-cta-buttons {
+        flex-direction: column;
+    }
+}
+
+/* =============================================================
+   Comparison Page
+   ============================================================= */
+
+.compare-table-wrap {
+    margin-top: var(--space-6);
+    margin-bottom: var(--space-8);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.compare-table thead th {
+    background: var(--bg-secondary);
+    padding: var(--space-3) var(--space-4);
+    font-weight: 600;
+    text-align: center;
+    border-bottom: 2px solid var(--border);
+    position: sticky;
+    top: 0;
+    white-space: nowrap;
+}
+
+.compare-table thead th:first-child {
+    text-align: left;
+}
+
+.compare-table thead th.compare-highlight {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-secondary));
+}
+
+.compare-category-row td {
+    background: var(--bg-tertiary);
+    font-weight: 600;
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: var(--space-2) var(--space-4);
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+
+.compare-feature {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-muted);
+    white-space: nowrap;
+}
+
+.compare-cell {
+    text-align: center;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-muted);
+}
+
+.compare-table tbody tr:last-child .compare-feature,
+.compare-table tbody tr:last-child .compare-cell {
+    border-bottom: none;
+}
+
+.compare-check {
+    color: var(--success, #22c55e);
+    font-size: 1.125rem;
+    font-weight: 700;
+}
+
+.compare-cross {
+    color: var(--text-tertiary);
+    font-size: 1.125rem;
+    opacity: 0.4;
+}
+
+.compare-partial {
+    color: var(--warning, #eab308);
+    font-size: 1.125rem;
+}
+
+/* Highlight Oxigit column */
+.compare-table tbody td:nth-child(2) {
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+/* Platform detail sections */
+.compare-sections {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-5);
+    margin-bottom: var(--space-8);
+}
+
+.compare-section h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0 0 var(--space-1);
+}
+
+.compare-section-tagline {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    margin: 0 0 var(--space-4);
+    font-style: italic;
+}
+
+.compare-section p {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-3);
+}
+
+.compare-section ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.compare-section ul li {
+    font-size: 0.875rem;
+    padding: var(--space-1) 0;
+    color: var(--text-secondary);
+}
+
+.compare-section ul li::before {
+    content: "\2022";
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: var(--space-2);
+}
+
+.compare-section-oxigit {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 20px var(--accent-muted);
+}
+
+/* CTA */
+.compare-cta {
+    text-align: center;
+    padding: var(--space-8) var(--space-4);
+    margin-bottom: var(--space-8);
+}
+
+.compare-cta h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0 0 var(--space-2);
+}
+
+.compare-cta p {
+    color: var(--text-secondary);
+    margin-bottom: var(--space-5);
+}
+
+.compare-cta-buttons {
+    display: flex;
+    gap: var(--space-3);
+    justify-content: center;
+    flex-wrap: wrap;
 }

@@ -281,3 +281,47 @@ async fn webhook_returns_503_when_not_configured() {
 
     assert_eq!(resp.status().as_u16(), 503);
 }
+
+/// Test: fetch_invoices requires authentication.
+#[tokio::test]
+async fn fetch_invoices_requires_auth() {
+    let server = TestServer::start().await;
+    if !require_saas(&server).await {
+        return;
+    }
+    let client = server.client();
+
+    let resp = client.fetch_invoices().await;
+    let body = resp.text().await.unwrap();
+    assert!(
+        body.contains("error")
+            || body.contains("Error")
+            || body.contains("Not authenticated")
+            || body.contains("login"),
+        "Expected auth error for unauthenticated fetch_invoices, got: {}",
+        &body[..500.min(body.len())]
+    );
+}
+
+/// Test: billing details page renders for authenticated user.
+#[tokio::test]
+async fn billing_details_page_renders() {
+    let server = TestServer::start().await;
+    if !require_saas(&server).await {
+        return;
+    }
+    let client = server.client();
+
+    client
+        .register("alice", "alice@test.com", "password123")
+        .await;
+    client.login("alice", "password123").await;
+
+    let resp = client.get("/billing").await;
+    let status = resp.status();
+    assert!(
+        status.is_success(),
+        "Billing details page should load, got: {}",
+        status
+    );
+}

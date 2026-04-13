@@ -69,6 +69,51 @@ const API_DELETE_WEBHOOK: &str = "/api/delete_webhook2543744637116902123";
 // Session/Prompt Revert
 const API_REVERT_SESSION: &str = "/api/revert_session3910524453944931178";
 
+// Admin
+const API_GET_ADMIN_DASHBOARD: &str = "/api/get_admin_dashboard10343083099908754128";
+const API_ADMIN_TOGGLE_DISABLED: &str = "/api/admin_toggle_disabled10343083099908754128";
+const API_ADMIN_SET_PLAN: &str = "/api/admin_set_plan10343083099908754128";
+
+// Dashboard
+const API_FETCH_DASHBOARD: &str = "/api/fetch_dashboard16349087840902220210";
+
+// Profile edit
+const API_FETCH_PROFILE: &str = "/api/fetch_profile6741283644462793557";
+const API_SAVE_PROFILE: &str = "/api/save_profile6741283644462793557";
+
+// LLM settings
+const API_FETCH_LLM_SETTINGS: &str = "/api/fetch_llm_settings18273532019570338376";
+const API_SAVE_LLM_SETTINGS: &str = "/api/save_llm_settings18273532019570338376";
+
+// Repo visibility
+const API_FETCH_REPO_VISIBILITY: &str = "/api/fetch_repo_visibility2543744637116902123";
+const API_UPDATE_VISIBILITY: &str = "/api/update_visibility2543744637116902123";
+
+// Guardrail settings
+const API_GET_GUARDRAIL_SETTINGS: &str = "/api/get_guardrail_settings2543744637116902123";
+const API_SAVE_GUARDRAIL_SETTINGS: &str = "/api/save_guardrail_settings2543744637116902123";
+
+// Conflict resolution
+const API_FETCH_CONFLICT_DETAIL: &str = "/api/fetch_conflict_detail18247994797148916106";
+const API_FETCH_CONFLICT_FILE_CONTENT: &str =
+    "/api/fetch_conflict_file_content18247994797148916106";
+const API_RESOLVE_FILE: &str = "/api/resolve_file18247994797148916106";
+const API_COMPLETE_RESOLUTION: &str = "/api/complete_resolution18247994797148916106";
+const API_CANCEL_RESOLUTION: &str = "/api/cancel_resolution18247994797148916106";
+
+// Recipe detail / replay
+const API_FETCH_RECIPE_DETAIL: &str = "/api/fetch_recipe_detail14641840129477380670";
+const API_REPLAY_RECIPE: &str = "/api/replay_recipe14641840129477380670";
+
+// Contact
+const API_SUBMIT_CONTACT_INQUIRY: &str = "/api/submit_contact_inquiry16127124721183601264";
+
+// Billing details
+const API_FETCH_INVOICES: &str = "/api/fetch_invoices3952946776246938380";
+
+// Logout
+const API_LOGOUT: &str = "/api/logout18378147844618610829";
+
 // Organizations (Team Features)
 const API_CREATE_ORG: &str = "/api/create_org7865708971083396342";
 const API_GET_ORG_SETTINGS: &str = "/api/get_org_settings4903785691938244665";
@@ -1047,6 +1092,409 @@ impl TestClient {
             .send()
             .await
             .expect("revert_session request failed")
+    }
+
+    // --- Admin helpers ---
+
+    pub async fn get_admin_dashboard(&self) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_GET_ADMIN_DASHBOARD))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body("")
+            .send()
+            .await
+            .expect("get_admin_dashboard request failed")
+    }
+
+    pub async fn admin_toggle_disabled(
+        &self,
+        user_id: i64,
+        disabled: bool,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_ADMIN_TOGGLE_DISABLED))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!("user_id={}&disabled={}", user_id, disabled))
+            .send()
+            .await
+            .expect("admin_toggle_disabled request failed")
+    }
+
+    pub async fn admin_set_plan(&self, user_id: i64, plan: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_ADMIN_SET_PLAN))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!("user_id={}&plan={}", user_id, urlencoded(plan)))
+            .send()
+            .await
+            .expect("admin_set_plan request failed")
+    }
+
+    // --- Dashboard helpers ---
+
+    pub async fn fetch_dashboard(&self) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_FETCH_DASHBOARD))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body("")
+            .send()
+            .await
+            .expect("fetch_dashboard request failed")
+    }
+
+    // --- Profile edit helpers ---
+
+    pub async fn fetch_profile(&self) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_FETCH_PROFILE))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body("")
+            .send()
+            .await
+            .expect("fetch_profile request failed")
+    }
+
+    pub async fn save_profile(&self, display_name: &str, email: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_SAVE_PROFILE))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "display_name={}&email={}",
+                urlencoded(display_name),
+                urlencoded(email)
+            ))
+            .send()
+            .await
+            .expect("save_profile request failed")
+    }
+
+    // --- LLM settings helpers ---
+
+    pub async fn fetch_llm_settings(&self) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_FETCH_LLM_SETTINGS))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body("")
+            .send()
+            .await
+            .expect("fetch_llm_settings request failed")
+    }
+
+    pub async fn save_llm_settings(
+        &self,
+        provider: &str,
+        api_key: &str,
+        model: &str,
+        base_url: &str,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_SAVE_LLM_SETTINGS))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "provider={}&api_key={}&model={}&base_url={}",
+                urlencoded(provider),
+                urlencoded(api_key),
+                urlencoded(model),
+                urlencoded(base_url)
+            ))
+            .send()
+            .await
+            .expect("save_llm_settings request failed")
+    }
+
+    // --- Repo visibility helpers ---
+
+    pub async fn fetch_repo_visibility(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_FETCH_REPO_VISIBILITY))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}",
+                urlencoded(owner),
+                urlencoded(repo)
+            ))
+            .send()
+            .await
+            .expect("fetch_repo_visibility request failed")
+    }
+
+    pub async fn update_visibility(
+        &self,
+        owner: &str,
+        repo: &str,
+        is_private: bool,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_UPDATE_VISIBILITY))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&is_private={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                is_private
+            ))
+            .send()
+            .await
+            .expect("update_visibility request failed")
+    }
+
+    // --- Guardrail settings helpers ---
+
+    pub async fn get_guardrail_settings(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_GET_GUARDRAIL_SETTINGS))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}",
+                urlencoded(owner),
+                urlencoded(repo)
+            ))
+            .send()
+            .await
+            .expect("get_guardrail_settings request failed")
+    }
+
+    pub async fn save_guardrail_settings(
+        &self,
+        owner: &str,
+        repo: &str,
+        security: &str,
+        breaking: &str,
+        performance: &str,
+        quality: &str,
+        min_vibe_score: Option<i64>,
+        max_files_per_push: Option<i64>,
+    ) -> reqwest::Response {
+        let mut body = format!(
+            "owner={}&repo={}&security={}&breaking={}&performance={}&quality={}",
+            urlencoded(owner),
+            urlencoded(repo),
+            urlencoded(security),
+            urlencoded(breaking),
+            urlencoded(performance),
+            urlencoded(quality)
+        );
+        if let Some(score) = min_vibe_score {
+            body.push_str(&format!("&min_vibe_score={}", score));
+        }
+        if let Some(files) = max_files_per_push {
+            body.push_str(&format!("&max_files_per_push={}", files));
+        }
+        self.client
+            .post(format!("{}{}", self.base_url, API_SAVE_GUARDRAIL_SETTINGS))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .expect("save_guardrail_settings request failed")
+    }
+
+    // --- Conflict resolution helpers ---
+
+    pub async fn fetch_conflict_detail(
+        &self,
+        owner: &str,
+        repo: &str,
+        conflict_id: i64,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_FETCH_CONFLICT_DETAIL))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&conflict_id={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                conflict_id
+            ))
+            .send()
+            .await
+            .expect("fetch_conflict_detail request failed")
+    }
+
+    pub async fn fetch_conflict_file_content(
+        &self,
+        owner: &str,
+        repo: &str,
+        conflict_id: i64,
+        file_path: &str,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!(
+                "{}{}",
+                self.base_url, API_FETCH_CONFLICT_FILE_CONTENT
+            ))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&conflict_id={}&file_path={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                conflict_id,
+                urlencoded(file_path)
+            ))
+            .send()
+            .await
+            .expect("fetch_conflict_file_content request failed")
+    }
+
+    pub async fn resolve_file(
+        &self,
+        owner: &str,
+        repo: &str,
+        conflict_id: i64,
+        file_id: i64,
+        resolution: &str,
+        manual_content: Option<&str>,
+    ) -> reqwest::Response {
+        let mut body = format!(
+            "owner={}&repo={}&conflict_id={}&file_id={}&resolution={}",
+            urlencoded(owner),
+            urlencoded(repo),
+            conflict_id,
+            file_id,
+            urlencoded(resolution)
+        );
+        if let Some(content) = manual_content {
+            body.push_str(&format!("&manual_content={}", urlencoded(content)));
+        }
+        self.client
+            .post(format!("{}{}", self.base_url, API_RESOLVE_FILE))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .expect("resolve_file request failed")
+    }
+
+    pub async fn complete_resolution(
+        &self,
+        owner: &str,
+        repo: &str,
+        conflict_id: i64,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_COMPLETE_RESOLUTION))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&conflict_id={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                conflict_id
+            ))
+            .send()
+            .await
+            .expect("complete_resolution request failed")
+    }
+
+    pub async fn cancel_resolution(
+        &self,
+        owner: &str,
+        repo: &str,
+        conflict_id: i64,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_CANCEL_RESOLUTION))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "owner={}&repo={}&conflict_id={}",
+                urlencoded(owner),
+                urlencoded(repo),
+                conflict_id
+            ))
+            .send()
+            .await
+            .expect("cancel_resolution request failed")
+    }
+
+    // --- Recipe detail helpers ---
+
+    pub async fn fetch_recipe_detail(&self, recipe_id: i64) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_FETCH_RECIPE_DETAIL))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!("recipe_id={}", recipe_id))
+            .send()
+            .await
+            .expect("fetch_recipe_detail request failed")
+    }
+
+    pub async fn replay_recipe(
+        &self,
+        recipe_id: i64,
+        target_owner: &str,
+        target_repo: &str,
+        target_branch: &str,
+        mode: &str,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_REPLAY_RECIPE))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "recipe_id={}&target_owner={}&target_repo={}&target_branch={}&mode={}",
+                recipe_id,
+                urlencoded(target_owner),
+                urlencoded(target_repo),
+                urlencoded(target_branch),
+                urlencoded(mode)
+            ))
+            .send()
+            .await
+            .expect("replay_recipe request failed")
+    }
+
+    // --- Contact helpers ---
+
+    pub async fn submit_contact_inquiry(
+        &self,
+        name: &str,
+        email: &str,
+        company: &str,
+        message: &str,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_SUBMIT_CONTACT_INQUIRY))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(format!(
+                "name={}&email={}&company={}&message={}",
+                urlencoded(name),
+                urlencoded(email),
+                urlencoded(company),
+                urlencoded(message)
+            ))
+            .send()
+            .await
+            .expect("submit_contact_inquiry request failed")
+    }
+
+    // --- Billing details helpers ---
+
+    pub async fn fetch_invoices(&self) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_FETCH_INVOICES))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body("")
+            .send()
+            .await
+            .expect("fetch_invoices request failed")
+    }
+
+    // --- Logout helper ---
+
+    pub async fn logout(&self) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, API_LOGOUT))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body("")
+            .send()
+            .await
+            .expect("logout request failed")
     }
 }
 

@@ -1,37 +1,35 @@
-.PHONY: dev dev-saas build build-saas clean docker docker-run e2e ensure-infra
+-include .env
+export
 
-INFRA_DIR ?= $(HOME)/Development/infrastructure
-INFRA_REPO ?= git@github.com:b-nova/infrastructure.git
+.DEFAULT_GOAL := help
 
-ensure-infra:
-	@if [ ! -d "$(INFRA_DIR)" ]; then \
-		echo "📦 Cloning shared infrastructure..."; \
-		git clone $(INFRA_REPO) $(INFRA_DIR); \
-	fi
-	@$(INFRA_DIR)/scripts/ensure-running.sh
+# ─── Help ────────────────────────────────────────────────────────────
+.PHONY: help
+help: ## Show available targets
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-dev:
+# ─── Dev ─────────────────────────────────────────────────────────────
+.PHONY: dev
+dev: ## Start dev server
 	. "$$HOME/.cargo/env" && cargo leptos watch
 
-dev-saas:
+.PHONY: dev-saas
+dev-saas: ## Start dev server with SaaS features
 	. "$$HOME/.cargo/env" && cargo leptos watch --features saas
 
-build:
-	. "$$HOME/.cargo/env" && cargo leptos build --release
-
-build-saas:
-	. "$$HOME/.cargo/env" && cargo leptos build --release --features saas
-
-clean:
-	cargo clean
-
-docker:
+# ─── Docker ──────────────────────────────────────────────────────────
+.PHONY: docker
+docker: ## Build Docker image
 	docker build -t oxigit .
 
-docker-run: ensure-infra
-	docker compose up -d
-
-e2e: build
+# ─── E2E ─────────────────────────────────────────────────────────────
+.PHONY: e2e
+e2e: ## Run e2e tests
+	. "$$HOME/.cargo/env" && cargo leptos build --release
 	cargo test -p oxigit-e2e -- --test-threads=4
 
-
+# ─── Clean ───────────────────────────────────────────────────────────
+.PHONY: clean
+clean: ## Remove build artifacts
+	cargo clean

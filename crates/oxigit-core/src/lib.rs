@@ -1,7 +1,7 @@
 pub mod auth;
-pub mod crypto;
 #[cfg(feature = "saas")]
 pub mod billing;
+pub mod crypto;
 pub mod db;
 pub mod email;
 pub mod entitlements;

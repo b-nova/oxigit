@@ -1,8 +1,8 @@
 use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::aead::{Aead, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Nonce};
-use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use hkdf::Hkdf;
 use sha2::Sha256;
 
@@ -63,9 +63,9 @@ pub fn decrypt_secret(master_key: &[u8], stored: &str) -> Result<String> {
         .map_err(|e| OxigitError::Crypto(format!("cipher init: {e}")))?;
     let nonce = Nonce::from_slice(nonce_bytes);
 
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|_| OxigitError::Crypto("decryption failed (wrong key or tampered data)".into()))?;
+    let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|_| {
+        OxigitError::Crypto("decryption failed (wrong key or tampered data)".into())
+    })?;
 
     String::from_utf8(plaintext)
         .map_err(|e| OxigitError::Crypto(format!("decrypted data not UTF-8: {e}")))

@@ -222,7 +222,7 @@ async fn save_llm_settings(
     model: String,
     base_url: String,
 ) -> Result<(), ServerFnError> {
-    use crate::server_fns::{get_control_pool, require_auth, sfn_err, AppState};
+    use crate::server_fns::{AppState, get_control_pool, require_auth, sfn_err};
     use axum::Extension;
     use leptos_axum::extract;
     use oxigit_core::db;

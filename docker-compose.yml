@@ -3,12 +3,15 @@ services:
   oxigit:
     image: ghcr.io/b-nova/oxigit:main
     ports:
-      - "9100:9100"
-      - "2222:2222"
+      - "${OXIGIT_HTTP_PORT:-9100}:9100"
+      - "${OXIGIT_SSH_PORT:-9102}:9102"
     volumes:
       - oxigit-data:/app/data
+    env_file:
+      - .env
     environment:
-      - RUST_LOG=info
+      - OXIGIT_HTTP_ADDR=0.0.0.0:9100
+      - OXIGIT_SSH_ADDR=0.0.0.0:9102
 
 volumes:
   oxigit-data:

@@ -1,0 +1,20 @@
+# b-nova internal development override
+# Copy to docker-compose.override.yml (auto-merged by docker compose):
+#   cp docker-compose.override.yml.bnova docker-compose.override.yml
+services:
+  oxigit:
+    ports:
+      - "8400:9100"
+      - "8401:2222"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.oxigit.rule=Host(`app.oxigit`)"
+      - "traefik.http.routers.oxigit.entrypoints=websecure"
+      - "traefik.http.routers.oxigit.tls=true"
+      - "traefik.http.services.oxigit.loadbalancer.server.port=9100"
+    networks:
+      - web
+
+networks:
+  web:
+    external: true

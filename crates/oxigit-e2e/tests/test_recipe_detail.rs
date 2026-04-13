@@ -31,9 +31,7 @@ async fn test_recipe_publish_and_fetch_detail() {
         .register("alice", "alice@test.com", "password123")
         .await;
     client.login("alice", "password123").await;
-    client
-        .create_repo("reciperepo", "Recipe test", false)
-        .await;
+    client.create_repo("reciperepo", "Recipe test", false).await;
 
     // Push AI commits to create a session
     let clone_url = http_clone_url(
@@ -73,9 +71,7 @@ async fn test_recipe_publish_and_fetch_detail() {
     );
 
     // The session detail page should have a share button
-    let resp = client
-        .get("/alice/reciperepo/ai/recipe-session-1")
-        .await;
+    let resp = client.get("/alice/reciperepo/ai/recipe-session-1").await;
     let body = resp.text().await.unwrap();
 
     // Session detail may or may not have share button depending on plan

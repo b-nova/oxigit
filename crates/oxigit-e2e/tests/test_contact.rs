@@ -92,7 +92,12 @@ async fn test_contact_inquiry_visible_in_admin() {
     // Submit a contact inquiry (no auth needed)
     let client2 = server.client();
     client2
-        .submit_contact_inquiry("Jane Doe", "jane@example.com", "ACME", "Hello from E2E test")
+        .submit_contact_inquiry(
+            "Jane Doe",
+            "jane@example.com",
+            "ACME",
+            "Hello from E2E test",
+        )
         .await;
 
     // Admin should see it in dashboard

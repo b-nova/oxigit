@@ -14,7 +14,9 @@ async fn test_conflict_resolution_page_loads() {
         .register("alice", "alice@test.com", "password123")
         .await;
     client.login("alice", "password123").await;
-    client.create_repo("conflictrepo", "Conflict test", false).await;
+    client
+        .create_repo("conflictrepo", "Conflict test", false)
+        .await;
 
     // Clone and push initial commit on main
     let clone_url = http_clone_url(

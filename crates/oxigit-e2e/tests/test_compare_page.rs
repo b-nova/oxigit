@@ -16,10 +16,7 @@ async fn test_compare_page_renders() {
         "Expected comparison title, got: {}",
         &body[..500.min(body.len())]
     );
-    assert!(
-        body.contains("Gitea"),
-        "Expected Gitea in comparison table"
-    );
+    assert!(body.contains("Gitea"), "Expected Gitea in comparison table");
     assert!(
         body.contains("Forgejo"),
         "Expected Forgejo in comparison table"

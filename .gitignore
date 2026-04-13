@@ -15,7 +15,6 @@
 .env
 secret_key
 scripts/social/config.env
-docker-compose.override.yml
 
 # OS files
 .DS_Store

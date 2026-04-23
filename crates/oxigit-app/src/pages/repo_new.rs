@@ -6,11 +6,12 @@ use crate::components::error_display::ErrorDisplay;
 async fn create_repo(
     name: String,
     description: String,
-    is_private: bool,
+    is_private: Option<String>,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{get_data_dir, get_pool, get_user_entitlements, require_auth, sfn_err};
     use oxigit_core::db;
 
+    let is_private = is_private.as_deref() == Some("true");
     let user = require_auth().await?;
     let pool = get_pool().await?;
     let data_dir = get_data_dir().await?;
@@ -126,7 +127,6 @@ pub fn NewRepoPage() -> impl IntoView {
                         <input type="text" id="description" name="description" />
                     </div>
                     <div class="form-group form-inline">
-                        <input type="hidden" name="is_private" value="false" />
                         <input type="checkbox" id="is_private" name="is_private" value="true" class="form-checkbox" />
                         <label for="is_private">"Private repository"</label>
                     </div>

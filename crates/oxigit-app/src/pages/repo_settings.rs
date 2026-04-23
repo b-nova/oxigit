@@ -617,11 +617,12 @@ async fn fetch_repo_visibility(owner: String, repo: String) -> Result<bool, Serv
 async fn update_visibility(
     owner: String,
     repo: String,
-    is_private: bool,
+    is_private: Option<String>,
 ) -> Result<(), ServerFnError> {
     use crate::server_fns::{get_repo_pools, require_auth, sfn_err};
     use oxigit_core::db;
 
+    let is_private = is_private.as_deref() == Some("true");
     let user = require_auth().await?;
     let (control_pool, pool) = get_repo_pools(&owner, &repo).await?;
 
@@ -943,7 +944,6 @@ pub fn RepoSettingsPage() -> impl IntoView {
                                     <input type="hidden" name="owner" value={owner_val} />
                                     <input type="hidden" name="repo" value={repo_val} />
                                     <div class="form-group form-inline">
-                                        <input type="hidden" name="is_private" value="false" />
                                         <input
                                             type="checkbox"
                                             id="is_private"

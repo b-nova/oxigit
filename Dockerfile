@@ -20,6 +20,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y \
     git \
     ca-certificates \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

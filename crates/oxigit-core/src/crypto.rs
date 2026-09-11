@@ -127,7 +127,7 @@ mod tests {
         assert!(!verify_hook_token(&key, &hex::encode(&key)));
         assert!(!verify_hook_token(&key, ""));
         assert!(!verify_hook_token(&key, "not-hex"));
-        assert!(!verify_hook_token(&vec![0xCD; 32], &token));
+        assert!(!verify_hook_token(&[0xCD; 32], &token));
     }
 
     #[test]

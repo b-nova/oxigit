@@ -241,10 +241,10 @@ pub async fn receive_pack(
     // Pass environment for pre-receive hook (guardrail blocking)
     let http_addr = state.leptos_options.site_addr.to_string();
     let port = http_addr.rsplit(':').next().unwrap_or("9100").to_string();
-    let secret_hex = hex::encode(&state.secret_key);
+    let hook_token = oxigit_core::crypto::hook_token(&state.secret_key);
     let env_vars = vec![
         ("OXIGIT_PORT".to_string(), port),
-        ("OXIGIT_SECRET".to_string(), secret_hex),
+        ("OXIGIT_SECRET".to_string(), hook_token),
         ("REPO_ID".to_string(), repo_db_id.to_string()),
     ];
     let response = run_git_service_with_env("git-receive-pack", &path, &body, &env_vars).await;
@@ -402,19 +402,24 @@ async fn run_git_service_with_env(
 }
 
 /// POST /internal/guardrail-check — Called by pre-receive hook to validate push.
+/// Only reachable from loopback, and only with the derived hook token.
 pub async fn guardrail_check(
+    axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<std::net::SocketAddr>,
     headers: HeaderMap,
     axum::extract::State(state): axum::extract::State<AppState>,
     body: String,
 ) -> Response {
-    // Validate internal secret
-    let expected_secret = hex::encode(&state.secret_key);
+    if !peer.ip().is_loopback() {
+        return (StatusCode::NOT_FOUND, "Not found").into_response();
+    }
+
+    // Validate hook token (constant-time)
     let provided_secret = headers
         .get("X-Internal-Secret")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    if provided_secret != expected_secret {
+    if !oxigit_core::crypto::verify_hook_token(&state.secret_key, provided_secret) {
         return (StatusCode::FORBIDDEN, "Invalid secret").into_response();
     }
 

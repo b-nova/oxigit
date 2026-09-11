@@ -356,19 +356,20 @@ async fn run_git_over_channel(
             let port = http_addr.rsplit(':').next().unwrap_or("9100");
             cmd.env("OXIGIT_PORT", port);
         }
-        if let Ok(secret) = std::env::var("OXIGIT_SECRET_KEY") {
-            cmd.env("OXIGIT_SECRET", secret);
+        // Resolve the master key, then hand the hook only a derived token.
+        let master_key = if let Ok(secret) = std::env::var("OXIGIT_SECRET_KEY") {
+            hex::decode(secret.trim()).ok()
         } else {
             // Try reading hex-encoded secret from data dir
-            let secret_path = repo_path
+            repo_path
                 .parent()
                 .and_then(|p| p.parent())
-                .map(|p| p.join("secret_key"));
-            if let Some(path) = secret_path
-                && let Ok(key) = std::fs::read(&path)
-            {
-                cmd.env("OXIGIT_SECRET", hex::encode(&key));
-            }
+                .map(|p| p.join("secret_key"))
+                .and_then(|path| std::fs::read_to_string(path).ok())
+                .and_then(|hex_key| hex::decode(hex_key.trim()).ok())
+        };
+        if let Some(key) = master_key {
+            cmd.env("OXIGIT_SECRET", oxigit_core::crypto::hook_token(&key));
         }
         cmd.env("REPO_ID", rid.to_string());
     }

@@ -289,9 +289,12 @@ async fn main() {
     tracing::info!("Oxigit listening on http://{}", config.http_addr);
     tracing::info!("SSH server on ssh://{}", config.ssh_addr);
 
-    axum::serve(listener, app.into_make_service())
-        .await
-        .expect("Server error");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .expect("Server error");
 }
 
 fn load_or_generate_secret(config: &Config) -> Vec<u8> {

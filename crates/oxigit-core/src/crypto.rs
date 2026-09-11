@@ -4,6 +4,7 @@ use aes_gcm::{Aes256Gcm, Nonce};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use hkdf::Hkdf;
+use hmac::Hmac;
 use sha2::Sha256;
 
 use crate::error::{OxigitError, Result};
@@ -76,6 +77,29 @@ pub fn is_encrypted(stored: &str) -> bool {
     stored.starts_with(ENC_PREFIX)
 }
 
+const HOOK_TOKEN_LABEL: &[u8] = b"oxigit-guardrail-hook";
+
+/// Derive the token that git hooks present to `/internal/guardrail-check`.
+/// This is a purpose-bound HMAC of the master key, so the master key itself
+/// is never handed to hook processes.
+pub fn hook_token(master_key: &[u8]) -> String {
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(master_key).expect("HMAC-SHA256 accepts keys of any length");
+    hmac::Mac::update(&mut mac, HOOK_TOKEN_LABEL);
+    hex::encode(hmac::Mac::finalize(mac).into_bytes())
+}
+
+/// Constant-time check of a hook token presented by a caller.
+pub fn verify_hook_token(master_key: &[u8], provided: &str) -> bool {
+    let Ok(provided) = hex::decode(provided) else {
+        return false;
+    };
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(master_key).expect("HMAC-SHA256 accepts keys of any length");
+    hmac::Mac::update(&mut mac, HOOK_TOKEN_LABEL);
+    hmac::Mac::verify_slice(mac, &provided).is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,6 +116,18 @@ mod tests {
         assert!(encrypted.starts_with(ENC_PREFIX));
         let decrypted = decrypt_secret(&key, &encrypted).unwrap();
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn hook_token_verifies_and_differs_from_key() {
+        let key = test_key();
+        let token = hook_token(&key);
+        assert_ne!(token, hex::encode(&key));
+        assert!(verify_hook_token(&key, &token));
+        assert!(!verify_hook_token(&key, &hex::encode(&key)));
+        assert!(!verify_hook_token(&key, ""));
+        assert!(!verify_hook_token(&key, "not-hex"));
+        assert!(!verify_hook_token(&vec![0xCD; 32], &token));
     }
 
     #[test]

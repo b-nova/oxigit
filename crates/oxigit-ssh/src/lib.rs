@@ -498,10 +498,9 @@ fn parse_git_command(cmd: &str) -> Option<(String, String)> {
         ("git-receive-pack".to_string(), rest)
     } else if let Some(rest) = cmd.strip_prefix("git upload-pack ") {
         ("git-upload-pack".to_string(), rest)
-    } else if let Some(rest) = cmd.strip_prefix("git receive-pack ") {
-        ("git-receive-pack".to_string(), rest)
     } else {
-        return None;
+        let rest = cmd.strip_prefix("git receive-pack ")?;
+        ("git-receive-pack".to_string(), rest)
     };
 
     let path = rest.trim().trim_matches('\'').trim_matches('"').to_string();

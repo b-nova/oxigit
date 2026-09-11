@@ -2,7 +2,7 @@ FROM rust:1.94-bookworm AS builder
 
 # Install wasm target
 RUN rustup target add wasm32-unknown-unknown
-RUN cargo install cargo-leptos
+RUN cargo install cargo-leptos --locked
 
 WORKDIR /app
 COPY . .
